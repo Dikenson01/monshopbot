@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS bot_orders (
     supplier_id TEXT,
     delivered_at TIMESTAMPTZ,
     is_priority BOOLEAN DEFAULT FALSE,
+    product_name TEXT,
+    quantity INT DEFAULT 1,
+    platform TEXT DEFAULT 'telegram',
+    discount_applied FLOAT DEFAULT 0,
     livreur_name TEXT
 );
 
