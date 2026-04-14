@@ -2406,11 +2406,15 @@ async function updateBroadcast(broadcastId, data) {
     }
 }
 async function claimBroadcast(broadcastId) {
+    const rescueTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    
+    // On peut claim une diffusion si elle est 'pending' 
+    // OU si elle est 'in_progress' mais "stuck" (plus de 10 mins d'inactivité)
     const { data, error } = await supabase
         .from(COL_BROADCASTS)
-        .update({ status: 'in_progress' })
+        .update({ status: 'in_progress', updated_at: ts() })
         .eq('id', broadcastId)
-        .or('status.eq.pending,status.eq.stuck')
+        .or(`status.eq.pending,and(status.eq.in_progress,created_at.lt.${rescueTime})`)
         .select();
 
     if (error || !data || data.length === 0) {
