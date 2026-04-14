@@ -996,7 +996,11 @@ function createServer() {
                 } else {
                     currentIds = currentIds.filter(id => id !== String(platformId));
                 }
-                await updateAppSettings({ list_moderators: currentIds.join(', ') });
+                try {
+                    await updateAppSettings({ list_moderators: currentIds.join(', ') });
+                } catch (e) {
+                    console.warn("⚠️ list_moderators update failed (legacy column?):", e.message);
+                }
                 return res.json({ success: true, ids: currentIds });
             }
 

@@ -1,6 +1,6 @@
 const { Markup } = require('telegraf');
 const {
-    getProducts, getProduct, createOrder, getUser, setLivreurStatus,
+    getProducts, getProduct, updateProduct, createOrder, getUser, setLivreurStatus,
     updateLivreurPosition, getAvailableOrders, updateOrderStatus,
     getOrder, getAppSettings, setLivreurAvailability,
     incrementOrderCount, getAllLivreurs, _userCache,
@@ -1110,7 +1110,7 @@ function setupOrderSystem(bot) {
                         updates.is_active = false;
                         console.log(`[STOCK] Produit ${p.name} épuisé, désactivation automatique.`);
                     }
-                    return saveProduct(updates).catch(e => console.error(`[STOCK-ERR] ${p.id}:`, e.message));
+                    return updateProduct(p.id, updates).catch(e => console.error(`[STOCK-ERR] ${p.id}:`, e.message));
                 }
                 return Promise.resolve();
             });

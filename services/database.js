@@ -2248,6 +2248,20 @@ async function saveProduct(data) {
     return id;
 }
 
+async function updateProduct(id, updates) {
+    const { error } = await supabase
+        .from(COL_PRODUCTS)
+        .update({ ...updates, updated_at: ts() })
+        .eq('id', id);
+
+    if (error) {
+        console.error(`Error updateProduct (${id})`, error);
+        throw new Error(`Erreur Supabase: ${error.message}`);
+    }
+    _productsCache = null;
+    return true;
+}
+
 async function deleteProduct(id) {
     await supabase.from(COL_PRODUCTS).delete().eq('id', id);
     _productsCache = null; // Invalidate cache
@@ -3007,7 +3021,7 @@ module.exports = {
     createOrder, updateOrderStatus, assignOrderLivreur, getOrder, deleteOrder, getAvailableOrders, getAllOrders,
     saveBroadcast, updateBroadcast, deleteBroadcast, getBroadcastHistory, getPendingBroadcasts, recordPollVote, recordPollFreeResponse, incrementStat, incrementDailyStat,
     getGlobalStats, getDailyStats, getStatsOverview, getAppSettings, updateAppSettings, getClientActiveOrders,
-    updateUserField,
+    updateUserField, updateProduct,
     getProducts, getProduct, saveProduct, deleteProduct, setLivreurAvailability,
     getAvailableLivreurs, getAllLivreurs, getOrderAnalytics, backfillOrderCities, saveUserLocation, addMessageToTrack, getLastMenuId, getTrackedMessages, getLivreurOrders, getLivreurHistory, getOrdersByUser, getDetailedLivreurActivity, saveFeedback, setPendingFeedback, getAndClearPendingFeedback, nukeDatabase,
     saveReview, getReviews, getPublicReviews, deleteReview, uploadMediaFromUrl, uploadMediaBuffer,
