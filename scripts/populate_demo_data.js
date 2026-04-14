@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const { encrypt } = require('../services/encryption');
 
 // Setup Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -20,66 +21,26 @@ const randomDate = (start, end) => {
 };
 
 async function populate() {
-    console.log('🚀 Starting demo data population for monshopbot...');
+    console.log('🚀 Syncing and Encrypting demo data for monshopbot...');
 
-    // Helper to get columns (robust version)
+    // Helper to get columns
     const getColumns = async (table) => {
         try {
             const { data, error } = await supabase.from(table).select('*').limit(1);
-            if (error) {
-                console.warn(`⚠️ Could not fetch columns for ${table}:`, error.message);
-                return [];
-            }
-            if (!data || data.length === 0) {
-                console.warn(`⚠️ Table ${table} is empty. Trying a minimal insert to trigger schema...`);
-                return [];
-            }
+            if (error || !data || data.length === 0) return [];
             return Object.keys(data[0]);
-        } catch (e) {
-            return [];
-        }
+        } catch (e) { return []; }
     };
 
-    // 1. Rebranding Settings
-    console.log('⚙️ Updating settings...');
-    const settingsCols = await getColumns('bot_settings');
-    
-    const settingsData = {
-        id: 'default',
-        bot_name: 'monshopbot',
-        dashboard_title: 'monshopbot'
-    };
-    
-    // Only add columns that exist
-    const finalSettings = {};
-    Object.keys(settingsData).forEach(k => {
-        if (settingsCols.includes(k) || settingsCols.length === 0) finalSettings[k] = settingsData[k];
-    });
-    
-    // Add other fields if they exist
-    const optionalSettings = {
-        welcome_message: 'Bienvenue sur monshopbot ! 🚀 Votre service de livraison express.',
-        bot_description: 'Service de livraison express monshopbot',
-        bot_short_description: 'monshopbot - Livraison express',
-        admin_password: process.env.ADMIN_PASSWORD || 'admin0123456789'
-    };
-
-    Object.keys(optionalSettings).forEach(k => {
-        if (settingsCols.includes(k)) finalSettings[k] = optionalSettings[k];
-    });
-
-    const { error: settingsError } = await supabase.from('bot_settings').upsert(finalSettings);
-    if (settingsError) console.error('❌ Settings update failed:', settingsError.message);
-
-    // 2. Demo Products (Legal)
-    console.log('🍎 Adding legal products...');
+    // 1. Demo Products (Plain URLs)
+    console.log('🍎 Adding products (Plain URLs)...');
     const products = [
         {
             id: 'prod_banana',
             name: 'Bananes Bio (1kg)',
             price: 2.50,
             category: 'Fruits',
-            image_url: JSON.stringify(['https://images.unsplash.com/photo-1571771894821-ad9902621ec0?auto=format&fit=crop&w=800&q=80']),
+            image_url: 'https://images.unsplash.com/photo-1571771894821-ad9902621ec0?auto=format&fit=crop&w=800&q=80',
             description: 'Bananes fraîches et biologiques, parfaites pour vos smoothies.',
             stock: 100,
             unit: 'kg',
@@ -90,7 +51,7 @@ async function populate() {
             name: 'Farine de Blé T55',
             price: 1.80,
             category: 'Épicerie',
-            image_url: JSON.stringify(['https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80']),
+            image_url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
             description: 'Farine de qualité supérieure pour toutes vos pâtisseries.',
             stock: 50,
             unit: 'pièce',
@@ -101,7 +62,7 @@ async function populate() {
             name: 'Lait Entier Bio (1L)',
             price: 1.45,
             category: 'Frais',
-            image_url: JSON.stringify(['https://images.unsplash.com/photo-1563636619-e9108b901977?auto=format&fit=crop&w=800&q=80']),
+            image_url: 'https://images.unsplash.com/photo-1563636619-e9108b901977?auto=format&fit=crop&w=800&q=80',
             description: 'Lait frais de ferme, pasteurisé et riche en goût.',
             stock: 80,
             unit: 'pièce',
@@ -112,7 +73,7 @@ async function populate() {
             name: 'Œufs Frais x12',
             price: 3.20,
             category: 'Frais',
-            image_url: JSON.stringify(['https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80']),
+            image_url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
             description: 'Douzaine d\'œufs de poules élevées en plein air.',
             stock: 40,
             unit: 'boîte',
@@ -123,7 +84,7 @@ async function populate() {
             name: 'Baguette Tradition',
             price: 1.20,
             category: 'Boulangerie',
-            image_url: JSON.stringify(['https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80']),
+            image_url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
             description: 'Croustillante et cuite au feu de bois.',
             stock: 30,
             unit: 'pièce',
@@ -131,38 +92,48 @@ async function populate() {
         }
     ];
 
+    await supabase.from('bot_orders').delete().neq('id', 'void');
+    await supabase.from('bot_products').delete().neq('id', 'void');
+
     for (const p of products) {
-        await supabase.from('bot_products').delete().eq('id', p.id); // Delete old version first
         await supabase.from('bot_products').insert({ ...p, is_active: true, supplier_id: null });
     }
 
-    // 3. Demo Users
-    console.log('👥 Adding fake clients...');
-    const fakeUsers = [
-        { id: 'tg_11111', platform: 'telegram', first_name: 'Jean', username: 'jean_demo', is_approved: true, referral_code: 'REF1' },
-        { id: 'tg_22222', platform: 'telegram', first_name: 'Marie', username: 'marie_demo', is_approved: true, referral_code: 'REF2' },
-        { id: 'tg_33333', platform: 'telegram', first_name: 'Luc', username: 'luc_demo', is_approved: true, referral_code: 'REF3' },
-        { id: 'wa_44444', platform: 'whatsapp', first_name: 'Sophie', username: 'sophie_wa', is_approved: true, referral_code: 'REF4' },
-        { id: 'wa_55555', platform: 'whatsapp', first_name: 'Thomas', username: 'thomas_wa', is_approved: true, referral_code: 'REF5' }
+    // 2. Demo Users (ENCRYPTED)
+    console.log('👥 Restoring users (Encrypted for Broadcast compatibility)...');
+    const usersToRestore = [
+        { id: 'telegram_1183134641', platform: 'telegram', platform_id: '1183134641', first_name: 'Gazolina94', username: 'Gazolina94', type: 'user' },
+        { id: 'telegram_user1', platform: 'telegram', platform_id: '1', first_name: 'Jean', username: 'jean_demo', type: 'user' },
+        { id: 'telegram_user2', platform: 'telegram', platform_id: '2', first_name: 'Marie', username: 'marie_demo', type: 'user' },
+        { id: 'whatsapp_user4', platform: 'whatsapp', platform_id: '4', first_name: 'Sophie', username: 'sophie_wa', type: 'user' }
     ];
 
-    for (const u of fakeUsers) {
-        await supabase.from('bot_users').upsert({
-            ...u,
+    // Wipe users first to ensure correct encryption key is used for all
+    await supabase.from('bot_users').delete().neq('id', 'void');
+
+    for (const u of usersToRestore) {
+        const encryptedUser = {
+            id: u.id,
+            platform: u.platform,
+            platform_id: u.platform_id,
+            type: u.type,
+            first_name: encrypt(u.first_name),
+            username: encrypt(u.username),
             date_inscription: randomDate(new Date(2026, 0, 1), new Date()),
-            is_active: true
-        });
+            is_active: true,
+            is_blocked: false,
+            is_approved: true
+        };
+        await supabase.from('bot_users').insert(encryptedUser);
     }
 
-    // 4. Demo Orders (Populate Charts)
+    // 3. Demo Orders (Populate Charts)
     console.log('📦 Generating orders for analytics...');
     const orderCols = await getColumns('bot_orders');
-    
     const statuses = ['delivered', 'delivered', 'delivered', 'delivered', 'cancelled', 'pending'];
-    const districts = ['Paris 01', 'Paris 08', 'Paris 16', 'Boulogne', 'Neuilly'];
     
-    for (let i = 0; i < 40; i++) {
-        const user = fakeUsers[Math.floor(Math.random() * fakeUsers.length)];
+    for (let i = 0; i < 80; i++) {
+        const user = usersToRestore[Math.floor(Math.random() * usersToRestore.length)];
         const product = products[Math.floor(Math.random() * products.length)];
         const qty = Math.floor(Math.random() * 3) + 1;
         const total = product.price * qty;
@@ -178,41 +149,22 @@ async function populate() {
         };
 
         const tryAdd = (key, val) => {
-            if (orderCols.length === 0 || orderCols.includes(key) || ['delivered_at', 'is_priority'].includes(key)) orderData[key] = val;
+            if (orderCols.length === 0 || orderCols.includes(key) || ['delivered_at', 'is_priority', 'livreur_name', 'cart', 'product_name', 'quantity', 'platform', 'first_name'].includes(key)) orderData[key] = val;
         };
 
         if (status === 'delivered') tryAdd('delivered_at', new Date(new Date(date).getTime() + 3600000).toISOString());
         tryAdd('is_priority', Math.random() > 0.8);
-        tryAdd('livreur_name', 'Thomas (Livreur Test)');
-        tryAdd('updated_at', date);
-        tryAdd('items', `${product.name} x${qty}`);
-        tryAdd('address', `${Math.floor(Math.random() * 100) + 1} Rue de la Demo`);
-        tryAdd('city', 'Paris');
-        tryAdd('district', districts[Math.floor(Math.random() * districts.length)]);
-        tryAdd('platform', user.platform);
+        tryAdd('livreur_name', 'Thomas (Livreur Demo)');
         tryAdd('cart', JSON.stringify([{ id: product.id, name: product.name, price: product.price, qty }]));
         tryAdd('product_name', product.name);
         tryAdd('quantity', qty);
-        tryAdd('first_name', user.first_name);
-        tryAdd('username', user.username);
+        tryAdd('platform', user.platform);
+        tryAdd('first_name', user.first_name); // Keep for historical display
 
         const { error } = await supabase.from('bot_orders').insert(orderData);
-        if (error) {
-            // If it failed and we were guessing (empty table), let's try a VERY minimal insert
-            if (orderCols.length === 0) {
-                 await supabase.from('bot_orders').insert({
-                    id: orderData.id,
-                    user_id: orderData.user_id,
-                    total_price: orderData.total_price,
-                    status: orderData.status,
-                    created_at: orderData.created_at
-                 });
-            }
-        }
     }
 
-    console.log('✅ Demo data population complete!');
-    console.log('👉 Refresh your dashboard to see the results.');
+    console.log('✅ Final population complete! Everything is synced and encrypted.');
 }
 
 populate();

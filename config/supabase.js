@@ -8,8 +8,8 @@ if (!validateLicense()) {
 }
 
 // Emergency hardcoded fallback if environment variables are missing
-const supabaseUrl = process.env.SUPABASE_URL || 'https://tsafkhhyqmlknxrgnqgw.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzYWZraGh5cW1sa254cmducWd3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjY3MDg0MCwiZXhwIjoyMDg4MjQ2ODQwfQ.1-AzrYIDY9PU-VbWRHe_KoIzlpzD6Fj3Q_nCOIOeXnQ';
+const supabaseUrl = process.env.SUPABASE_URL || 'https://kryiyykqdpcpwkknodeq.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeWl5eWtxZHBjcHdra25vZGVxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDM3MDM4MCwiZXhwIjoyMDg5OTQ2MzgwfQ.pPBWSna6tDoDhDFt-sFP1l0s2D8-YcIBFTltCzII_QE';
 
 if (!supabaseUrl || !supabaseKey) {
     console.error('❌ ERREUR CRITIQUE : Identifiants Supabase absents du système.');
