@@ -461,6 +461,12 @@ async function setLivreurStatus(userId, platform, isLivreur) {
     if (error) throw new Error(error.message);
     _userCache.delete(docId);
 }
+async function updateUserField(docId, field, value) {
+    const updates = { [field]: value, updated_at: ts() };
+    const { error } = await supabase.from(COL_USERS).update(updates).eq('id', docId);
+    if (error) throw new Error(error.message);
+    _userCache.delete(docId);
+}
 async function setLivreurAvailability(docId, isAvailable) {
     const updates = {
         is_available: !!isAvailable,
@@ -3001,6 +3007,7 @@ module.exports = {
     createOrder, updateOrderStatus, assignOrderLivreur, getOrder, deleteOrder, getAvailableOrders, getAllOrders,
     saveBroadcast, updateBroadcast, deleteBroadcast, getBroadcastHistory, getPendingBroadcasts, recordPollVote, recordPollFreeResponse, incrementStat, incrementDailyStat,
     getGlobalStats, getDailyStats, getStatsOverview, getAppSettings, updateAppSettings, getClientActiveOrders,
+    updateUserField,
     getProducts, getProduct, saveProduct, deleteProduct, setLivreurAvailability,
     getAvailableLivreurs, getAllLivreurs, getOrderAnalytics, backfillOrderCities, saveUserLocation, addMessageToTrack, getLastMenuId, getTrackedMessages, getLivreurOrders, getLivreurHistory, getOrdersByUser, getDetailedLivreurActivity, saveFeedback, setPendingFeedback, getAndClearPendingFeedback, nukeDatabase,
     saveReview, getReviews, getPublicReviews, deleteReview, uploadMediaFromUrl, uploadMediaBuffer,
