@@ -354,7 +354,7 @@ async function getAllActiveUsers(platform = null, type = null) {
 
 // Nouvelle fonction pour le broadcast : inclut TOUS les utilisateurs (même bloqués)
 async function getAllUsersForBroadcast(platform = null, type = null) {
-    let q = supabase.from(COL_USERS).select('id, platform, platform_id, type, username, first_name, last_name, order_count, wallet_balance, points, date_inscription, is_livreur, is_available, is_blocked, current_city, data, blocked_at');
+    let q = supabase.from(COL_USERS).select('id, platform, platform_id, type, username, first_name, last_name, order_count, wallet_balance, points, date_inscription, is_livreur, is_available, is_blocked, current_city, data');
     if (platform && platform !== 'all') q = q.eq('platform', platform);
     if (type === 'livreurs') {
         q = q.eq('is_livreur', true);

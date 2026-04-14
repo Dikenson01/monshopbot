@@ -21,7 +21,7 @@ const randomDate = (start, end) => {
 };
 
 async function populate() {
-    console.log('🚀 Syncing and Encrypting demo data for monshopbot...');
+    console.log('🚀 Final restoration of demo data for monshopbot (Stable Images & Encrypted Users)...');
 
     // Helper to get columns
     const getColumns = async (table) => {
@@ -32,15 +32,32 @@ async function populate() {
         } catch (e) { return []; }
     };
 
-    // 1. Demo Products (Plain URLs)
-    console.log('🍎 Adding products (Plain URLs)...');
+    // 1. Rebranding Settings
+    console.log('⚙️ Updating settings...');
+    const settingsCols = await getColumns('bot_settings');
+    const settingsData = {
+        id: 'default',
+        bot_name: 'monshopbot',
+        dashboard_title: 'monshopbot',
+        welcome_message: 'Bienvenue sur monshopbot ! 🚀 Votre service de livraison express.',
+        admin_password: process.env.ADMIN_PASSWORD || 'admin0123456789'
+    };
+    
+    const finalSettings = {};
+    Object.keys(settingsData).forEach(k => {
+        if (settingsCols.includes(k) || settingsCols.length === 0) finalSettings[k] = settingsData[k];
+    });
+    await supabase.from('bot_settings').upsert(finalSettings);
+
+    // 2. Demo Products (Legal & Stable Pexels Images)
+    console.log('🍎 Adding products (Stable Pexels URLs)...');
     const products = [
         {
             id: 'prod_banana',
             name: 'Bananes Bio (1kg)',
             price: 2.50,
             category: 'Fruits',
-            image_url: 'https://images.unsplash.com/photo-1571771894821-ad9902621ec0?auto=format&fit=crop&w=800&q=80',
+            image_url: 'https://images.pexels.com/photos/2870882/pexels-photo-2870882.jpeg?auto=compress&cs=tinysrgb&w=800',
             description: 'Bananes fraîches et biologiques, parfaites pour vos smoothies.',
             stock: 100,
             unit: 'kg',
@@ -51,7 +68,7 @@ async function populate() {
             name: 'Farine de Blé T55',
             price: 1.80,
             category: 'Épicerie',
-            image_url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
+            image_url: 'https://images.pexels.com/photos/5765/agriculture-wheat-flour-grains.jpg?auto=compress&cs=tinysrgb&w=800',
             description: 'Farine de qualité supérieure pour toutes vos pâtisseries.',
             stock: 50,
             unit: 'pièce',
@@ -62,7 +79,7 @@ async function populate() {
             name: 'Lait Entier Bio (1L)',
             price: 1.45,
             category: 'Frais',
-            image_url: 'https://images.unsplash.com/photo-1563636619-e9108b901977?auto=format&fit=crop&w=800&q=80',
+            image_url: 'https://images.pexels.com/photos/248412/pexels-photo-248412.jpeg?auto=compress&cs=tinysrgb&w=800',
             description: 'Lait frais de ferme, pasteurisé et riche en goût.',
             stock: 80,
             unit: 'pièce',
@@ -73,7 +90,7 @@ async function populate() {
             name: 'Œufs Frais x12',
             price: 3.20,
             category: 'Frais',
-            image_url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
+            image_url: 'https://images.pexels.com/photos/162712/egg-white-food-protein-162712.jpeg?auto=compress&cs=tinysrgb&w=800',
             description: 'Douzaine d\'œufs de poules élevées en plein air.',
             stock: 40,
             unit: 'boîte',
@@ -84,7 +101,7 @@ async function populate() {
             name: 'Baguette Tradition',
             price: 1.20,
             category: 'Boulangerie',
-            image_url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
+            image_url: 'https://images.pexels.com/photos/1775043/pexels-photo-1775043.jpeg?auto=compress&cs=tinysrgb&w=800',
             description: 'Croustillante et cuite au feu de bois.',
             stock: 30,
             unit: 'pièce',
@@ -99,7 +116,7 @@ async function populate() {
         await supabase.from('bot_products').insert({ ...p, is_active: true, supplier_id: null });
     }
 
-    // 2. Demo Users (ENCRYPTED)
+    // 3. Demo Users (ENCRYPTED for Broadcast)
     console.log('👥 Restoring users (Encrypted for Broadcast compatibility)...');
     const usersToRestore = [
         { id: 'telegram_1183134641', platform: 'telegram', platform_id: '1183134641', first_name: 'Gazolina94', username: 'Gazolina94', type: 'user' },
@@ -108,7 +125,6 @@ async function populate() {
         { id: 'whatsapp_user4', platform: 'whatsapp', platform_id: '4', first_name: 'Sophie', username: 'sophie_wa', type: 'user' }
     ];
 
-    // Wipe users first to ensure correct encryption key is used for all
     await supabase.from('bot_users').delete().neq('id', 'void');
 
     for (const u of usersToRestore) {
@@ -127,12 +143,12 @@ async function populate() {
         await supabase.from('bot_users').insert(encryptedUser);
     }
 
-    // 3. Demo Orders (Populate Charts)
+    // 4. Demo Orders (Populate Charts)
     console.log('📦 Generating orders for analytics...');
     const orderCols = await getColumns('bot_orders');
     const statuses = ['delivered', 'delivered', 'delivered', 'delivered', 'cancelled', 'pending'];
     
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 60; i++) {
         const user = usersToRestore[Math.floor(Math.random() * usersToRestore.length)];
         const product = products[Math.floor(Math.random() * products.length)];
         const qty = Math.floor(Math.random() * 3) + 1;
@@ -159,12 +175,12 @@ async function populate() {
         tryAdd('product_name', product.name);
         tryAdd('quantity', qty);
         tryAdd('platform', user.platform);
-        tryAdd('first_name', user.first_name); // Keep for historical display
+        tryAdd('first_name', user.first_name);
 
-        const { error } = await supabase.from('bot_orders').insert(orderData);
+        await supabase.from('bot_orders').insert(orderData);
     }
 
-    console.log('✅ Final population complete! Everything is synced and encrypted.');
+    console.log('✅ Restoration complete! Broadcast system bug fixed & Real images set.');
 }
 
 populate();
