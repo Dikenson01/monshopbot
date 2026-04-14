@@ -21,36 +21,20 @@ const randomDate = (start, end) => {
 };
 
 async function populate() {
-    console.log('🚀 Final restoration of demo data for monshopbot (Stable Images & Encrypted Users)...');
-
-    // Helper to get columns
-    const getColumns = async (table) => {
-        try {
-            const { data, error } = await supabase.from(table).select('*').limit(1);
-            if (error || !data || data.length === 0) return [];
-            return Object.keys(data[0]);
-        } catch (e) { return []; }
-    };
+    console.log('🚀 Finalizing monshopbot demo data (Full schema compliance)...');
 
     // 1. Rebranding Settings
     console.log('⚙️ Updating settings...');
-    const settingsCols = await getColumns('bot_settings');
-    const settingsData = {
+    await supabase.from('bot_settings').upsert({
         id: 'default',
         bot_name: 'monshopbot',
         dashboard_title: 'monshopbot',
         welcome_message: 'Bienvenue sur monshopbot ! 🚀 Votre service de livraison express.',
         admin_password: process.env.ADMIN_PASSWORD || 'admin0123456789'
-    };
-    
-    const finalSettings = {};
-    Object.keys(settingsData).forEach(k => {
-        if (settingsCols.includes(k) || settingsCols.length === 0) finalSettings[k] = settingsData[k];
     });
-    await supabase.from('bot_settings').upsert(finalSettings);
 
     // 2. Demo Products (Legal & Stable Pexels Images)
-    console.log('🍎 Adding products (Stable Pexels URLs)...');
+    console.log('🍎 Adding products (compliant with latest schema)...');
     const products = [
         {
             id: 'prod_banana',
@@ -61,7 +45,9 @@ async function populate() {
             description: 'Bananes fraîches et biologiques, parfaites pour vos smoothies.',
             stock: 100,
             unit: 'kg',
-            priority: 1
+            priority: 1,
+            is_active: true,
+            bundle_config: []
         },
         {
             id: 'prod_flour',
@@ -72,7 +58,9 @@ async function populate() {
             description: 'Farine de qualité supérieure pour toutes vos pâtisseries.',
             stock: 50,
             unit: 'pièce',
-            priority: 2
+            priority: 2,
+            is_active: true,
+            bundle_config: []
         },
         {
             id: 'prod_milk',
@@ -83,7 +71,9 @@ async function populate() {
             description: 'Lait frais de ferme, pasteurisé et riche en goût.',
             stock: 80,
             unit: 'pièce',
-            priority: 3
+            priority: 3,
+            is_active: true,
+            bundle_config: []
         },
         {
             id: 'prod_eggs',
@@ -94,7 +84,9 @@ async function populate() {
             description: 'Douzaine d\'œufs de poules élevées en plein air.',
             stock: 40,
             unit: 'boîte',
-            priority: 4
+            priority: 4,
+            is_active: true,
+            bundle_config: []
         },
         {
             id: 'prod_bread',
@@ -105,7 +97,9 @@ async function populate() {
             description: 'Croustillante et cuite au feu de bois.',
             stock: 30,
             unit: 'pièce',
-            priority: 5
+            priority: 5,
+            is_active: true,
+            bundle_config: []
         }
     ];
 
@@ -113,11 +107,18 @@ async function populate() {
     await supabase.from('bot_products').delete().neq('id', 'void');
 
     for (const p of products) {
-        await supabase.from('bot_products').insert({ ...p, is_active: true, supplier_id: null });
+        // We use a safe upsert approach to avoid errors on missing columns if migration hasn't run yet
+        const { error } = await supabase.from('bot_products').insert(p);
+        if (error) {
+            console.warn(`[DB-WARN] Failed to insert ${p.name}: ${error.message}. Retrying without bundle_config...`);
+            const fallback = { ...p };
+            delete fallback.bundle_config;
+            await supabase.from('bot_products').insert(fallback);
+        }
     }
 
-    // 3. Demo Users (ENCRYPTED for Broadcast)
-    console.log('👥 Restoring users (Encrypted for Broadcast compatibility)...');
+    // 3. Demo Users (ENCRYPTED)
+    console.log('👥 Restoring users (Encrypted)...');
     const usersToRestore = [
         { id: 'telegram_1183134641', platform: 'telegram', platform_id: '1183134641', first_name: 'Gazolina94', username: 'Gazolina94', type: 'user' },
         { id: 'telegram_user1', platform: 'telegram', platform_id: '1', first_name: 'Jean', username: 'jean_demo', type: 'user' },
@@ -144,11 +145,10 @@ async function populate() {
     }
 
     // 4. Demo Orders (Populate Charts)
-    console.log('📦 Generating orders for analytics...');
-    const orderCols = await getColumns('bot_orders');
+    console.log('📦 Generating orders...');
     const statuses = ['delivered', 'delivered', 'delivered', 'delivered', 'cancelled', 'pending'];
     
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 40; i++) {
         const user = usersToRestore[Math.floor(Math.random() * usersToRestore.length)];
         const product = products[Math.floor(Math.random() * products.length)];
         const qty = Math.floor(Math.random() * 3) + 1;
@@ -161,26 +161,18 @@ async function populate() {
             user_id: user.id,
             total_price: total,
             status: status,
-            created_at: date
+            created_at: date,
+            is_priority: Math.random() > 0.8,
+            livreur_name: 'Thomas (Livreur Demo)',
+            cart: JSON.stringify([{ id: product.id, name: product.name, price: product.price, qty }]),
+            product_name: product.name,
+            quantity: qty,
+            platform: user.platform
         };
-
-        const tryAdd = (key, val) => {
-            if (orderCols.length === 0 || orderCols.includes(key) || ['delivered_at', 'is_priority', 'livreur_name', 'cart', 'product_name', 'quantity', 'platform', 'first_name'].includes(key)) orderData[key] = val;
-        };
-
-        if (status === 'delivered') tryAdd('delivered_at', new Date(new Date(date).getTime() + 3600000).toISOString());
-        tryAdd('is_priority', Math.random() > 0.8);
-        tryAdd('livreur_name', 'Thomas (Livreur Demo)');
-        tryAdd('cart', JSON.stringify([{ id: product.id, name: product.name, price: product.price, qty }]));
-        tryAdd('product_name', product.name);
-        tryAdd('quantity', qty);
-        tryAdd('platform', user.platform);
-        tryAdd('first_name', user.first_name);
-
         await supabase.from('bot_orders').insert(orderData);
     }
 
-    console.log('✅ Restoration complete! Broadcast system bug fixed & Real images set.');
+    console.log('✅ Restoration complete! Schema is being handled.');
 }
 
 populate();

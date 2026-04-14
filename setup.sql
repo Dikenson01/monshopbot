@@ -300,15 +300,17 @@ CREATE TABLE IF NOT EXISTS supplier_marketplace (
     name TEXT,
     price FLOAT,
     stock INT DEFAULT 0,
+    stock INTEGER DEFAULT 100,
     category TEXT,
     description TEXT,
     image_url TEXT,
     is_available BOOLEAN DEFAULT TRUE,
     is_validated BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE,
-    unit TEXT DEFAULT 'Pièce',
-    unit_value TEXT DEFAULT '1',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+    unit VARCHAR(20) DEFAULT 'unit',
+    priority INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    bundle_config JSONB DEFAULT '[]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
