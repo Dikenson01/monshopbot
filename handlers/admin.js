@@ -89,7 +89,7 @@ async function isModerator(ctx) {
 
     // Check by DB status
     const user = ctx.state?.user || ctx.user;
-    return !!(user && (user.is_moderator || user.data?.is_moderator));
+    return !!(user && (user.is_moderateur || user.is_moderator || user.data?.is_moderateur || user.data?.is_moderator));
 }
 
 async function isStaff(ctx) {

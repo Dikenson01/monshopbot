@@ -986,15 +986,19 @@ function createServer() {
             const { getAppSettings, updateAppSettings, updateUserField } = require('./services/database');
             const settings = await getAppSettings();
             
+            // Resolve correct IDs: docId for DB update, platformId for legacy sync
+            const docId = platformId.includes('_') ? platformId : `telegram_${platformId}`;
+            const rawPlatformId = platformId.includes('_') ? platformId.split('_')[1] : platformId;
+
             if (role === 'moderator') {
                 // Consistency: update bot_users record AND global settings (for bot logic if needed)
-                await updateUserField(platformId, 'is_moderateur', action === 'add');
+                await updateUserField(docId, 'is_moderateur', action === 'add');
                 
                 let currentIds = String(settings.list_moderators || '').split(/[\s,]+/).map(id => id.trim()).filter(id => id.length > 0);
                 if (action === 'add') {
-                    if (!currentIds.includes(String(platformId))) currentIds.push(String(platformId));
+                    if (!currentIds.includes(String(rawPlatformId))) currentIds.push(String(rawPlatformId));
                 } else {
-                    currentIds = currentIds.filter(id => id !== String(platformId));
+                    currentIds = currentIds.filter(id => id !== String(rawPlatformId));
                 }
                 try {
                     await updateAppSettings({ list_moderators: currentIds.join(', ') });
