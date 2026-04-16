@@ -2,7 +2,7 @@ require('dotenv').config();
 const axios = require('axios');
 
 async function resetBot() {
-    const token = process.env.TELEGRAM_TOKEN || '8680853121:AAEwhgDRHuK7kdsoTzGCdGpdAxc4lQHwbHA';
+    const token = process.env.BOT_TOKEN || process.env.TELEGRAM_TOKEN || '8680231152:AAHSySFoQF5Ifv0X7QLiAnbOy6qvlVo4a_g';
     console.log(`🧹 Tentative de nettoyage pour le bot...`);
     
     try {
