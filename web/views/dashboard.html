@@ -7946,7 +7946,10 @@
             updateStatus('Démarrage...');
             try {
                 initCustomTimers();
-                const initSection = location.hash.replace('#', '') || 'overview';
+                const validSections = ['overview', 'users', 'products', 'broadcast', 'logistique', 'moderation', 'settings', 'insights'];
+                let rawHash = location.hash.replace('#', '');
+                if (rawHash.includes('tgWebApp')) rawHash = ''; // Prevent Telegram auth injection logic clash
+                const initSection = validSections.includes(rawHash) ? rawHash : 'overview';
                 
                 updateStatus('Chargement des paramètres...');
                 const [settings, stats] = await Promise.all([
