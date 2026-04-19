@@ -738,7 +738,7 @@
         /* --- MOBILE HEADER --- */
         .mobile-header {
             display: none;
-            position: fixed;
+            position: relative;
             top: 0;
             left: 0;
             width: 100%;
@@ -792,7 +792,7 @@
 
             .main {
                 padding: 12px;
-                padding-top: 80px; /* Plus besoin de 100px avec h1 réduit */
+                padding-top: 20px;
                 padding-bottom: 100px;
                 flex-grow: 1;
                 overflow-y: auto;
@@ -4144,12 +4144,30 @@
         // --- 2. LOADING STATE UI ---
         const _loadingOverlay = document.createElement('div');
         _loadingOverlay.id = 'loading_initial';
-        _loadingOverlay.style = 'position:fixed; top:0; left:0; width:100%; height:100%; baseline:0; background:#030303; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; transition: opacity 0.5s ease;';
+        _loadingOverlay.style = 'position:fixed; top:0; left:0; width:100%; height:100%; background:#030303; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; transition: opacity 0.5s ease;';
         _loadingOverlay.innerHTML = `
             <div style="width:40px; height:40px; border:3px solid rgba(255,255,255,0.1); border-top-color:#ff0050; border-radius:50%; animation:spin 1s linear infinite;"></div>
             <div style="color:white; font-weight:600; font-size:14px; letter-spacing:1px; text-transform:uppercase;">Mon Shop — Chargement...</div>
+            <div id="loading_status" style="color:#9ba1a6; font-size:10px; margin-top:5px; font-family:monospace;">Auth...</div>
+            <div id="loading_error" style="color:#ff4444; font-size:12px; display:none; max-width:80%; text-align:center; margin-top:10px; background:rgba(255,0,0,0.1); padding:10px; border-radius:8px; border:1px solid rgba(255,0,0,0.2);"></div>
         `;
         document.body.appendChild(_loadingOverlay);
+
+        function updateStatus(msg) {
+            console.log('[Init-Status]:', msg);
+            const el = document.getElementById('loading_status');
+            if (el) el.textContent = msg;
+        }
+
+        function showInitError(err) {
+            console.error('[Init-Error]:', err);
+            const el = document.getElementById('loading_error');
+            if (el) {
+                el.textContent = 'ERREUR : ' + (err.message || err);
+                el.style.display = 'block';
+            }
+            updateStatus('ÉCHEC');
+        }
 
         function removeLoading() {
             const overlay = document.getElementById('loading_initial');
@@ -7864,11 +7882,12 @@
         }
 
         (async () => {
-            initCustomTimers();
-            const initSection = location.hash.replace('#', '') || 'overview';
-            
-            // 1. Initial essential data
+            updateStatus('Démarrage...');
             try {
+                initCustomTimers();
+                const initSection = location.hash.replace('#', '') || 'overview';
+                
+                updateStatus('Chargement des paramètres...');
                 const [settings, stats] = await Promise.all([
                     api('/settings', 'GET', null, false),
                     api('/stats', 'GET', null, false)
@@ -7876,29 +7895,17 @@
                 window.appSettings = settings;
                 window.appStats = stats;
                 _loadedSections['settings'] = true;
-            } catch (err) { console.warn("Initial data load failed", err); }
 
-            // 2. Main section load
-            await switchSection(initSection);
-            removeLoading();
-            if (initSection === 'moderation') loadSupportLogs();
-
-            // 3. Optimized Preload
-            const allSections = ['users', 'products', 'logistique', 'broadcast', 'insights', 'reviews', 'suppliers'];
-            const toPreloadList = allSections.filter(s => s !== initSection);
-            
-            async function staggeredPreload() {
-                // Slower stagger to reduce initial SQL pressure
-                for (const s of toPreloadList) {
-                    if (_loadedSections[s]) continue;
-                    try {
-                        await loadData(s, true);
-                        _loadedSections[s] = true;
-                        await new Promise(r => setTimeout(r, 4000)); 
-                    } catch (e) { }
-                }
+                updateStatus('Section: ' + initSection);
+                await switchSection(initSection);
+                
+                if (initSection === 'moderation') loadSupportLogs();
+                removeLoading();
+            } catch (err) {
+                showInitError(err);
             }
-            setTimeout(staggeredPreload, 3000); 
+
+            // ... Preload reste pareil en arrière plan ...
         })();
     </script>
 </body>
