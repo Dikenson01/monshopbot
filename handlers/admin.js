@@ -119,7 +119,12 @@ async function showAdminMenu(ctx, isEdit = false) {
         t(user, 'label_total_ca', `Ventes totales :`) + ` <b>${stats.totalCA}€</b>\n\n` +
         t(user, 'msg_admin_choose_section', `Choisissez une section pour gérer votre bot :`);
 
+    const settings = await getAppSettings();
+    const adminToken = settings.admin_password || process.env.ADMIN_PASSWORD || '1234';
+    const dashboardUrl = `https://monshopbot-production.up.railway.app/dashboard?token=${adminToken}#users`;
+
     const rows = [
+        [Markup.button.webApp('🌐 ACCÈS DASHBOARD (Web)', dashboardUrl)],
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
         [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders'), Markup.button.callback('💬 Support', 'admin_support_queue')],
         [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],

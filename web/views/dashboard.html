@@ -4120,6 +4120,11 @@
     </main>
 
     <script>
+        // Auto-login from URL token
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('token')) {
+            localStorage.setItem('admin_token', urlParams.get('token'));
+        }
         const TOKEN = localStorage.getItem('admin_token');
         let chartInstances = {};
         window.lastAnalytics = null;
