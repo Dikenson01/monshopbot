@@ -102,6 +102,18 @@ async function broadcastMessage(platform, message, options = {}) {
     const isFuture = startTime > now;
 
     if (totalTargets === 0) {
+        debugLog(`[BC-EMPTY] Aucune cible trouvée pour cette diffusion.`);
+        const bId = options.id;
+        if (bId) {
+            await updateBroadcast(bId, { 
+                status: 'completed', 
+                success: 0, 
+                failed: 0, 
+                blocked: 0, 
+                total_target: 0,
+                completed_at: ts() 
+            }).catch(e => debugLog(`[BC-EMPTY-ERR] ${e.message}`));
+        }
         return { success: 0, failed: 0, blocked: 0, total: 0 };
     }
 

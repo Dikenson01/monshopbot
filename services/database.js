@@ -365,9 +365,18 @@ async function getAllUsersForBroadcast(platform = null, type = null) {
     } else if (type) {
         q = q.eq('type', type);
     }
-    const { data } = await q;
+    const { data, error } = await q;
+    if (error) {
+        console.error(`[DB-ERROR] getAllUsersForBroadcast:`, error);
+        return [];
+    }
     const list = data || [];
     console.log(`[DB] getAllUsersForBroadcast(platform=${platform}, type=${type}) -> ${list.length} trouvés (dont bloqués)`);
+    if (list.length === 0) {
+        // Diagnostic: Check if table even has data
+        const { count, error: countErr } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true });
+        console.log(`[DB-DIAGNOSTIC] Total users in ${COL_USERS} table:`, countErr ? `Error: ${countErr.message}` : count);
+    }
     return list.map(d => decryptUser(d));
 }
 /**
