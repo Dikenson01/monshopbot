@@ -463,7 +463,6 @@ function createServer() {
         try {
             const users = await getAllActiveUsers();
             const csvRows = users.map(u => {
-                const dec = decryptUser(u);
                 const platform_id = u.platform_id || (u.id ? u.id.split('_')[1] : '');
                 
                 let phone = u.phone || '';
@@ -474,9 +473,9 @@ function createServer() {
                 return {
                     PLATFORM_ID: platform_id,
                     PLATFORM: u.platform || 'telegram',
-                    FIRST_NAME: dec.first_name || '',
-                    LAST_NAME: dec.last_name || '',
-                    USERNAME: dec.username || '',
+                    FIRST_NAME: u.first_name || '',
+                    LAST_NAME: u.last_name || '',
+                    USERNAME: u.username || '',
                     PHONE: phone
                 };
             });

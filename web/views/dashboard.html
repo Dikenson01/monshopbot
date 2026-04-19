@@ -2531,7 +2531,7 @@
                         style="background:rgba(37,211,102,0.1); color:#25D366; padding:4px 12px; border-radius:10px; font-size:13px; font-weight:700; border:1px solid rgba(37,211,102,0.3);">WA: -</span>
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn btn-sm btn-outline" onclick="window.location.href='/api/users/export'" style="border-radius:10px; border-color: #0088cc; color: #0088cc;">📥 Exporter (CSV)</button>
+                    <button class="btn btn-sm btn-outline" onclick="window.location.href='/api/users/export?token=' + localStorage.getItem('admin_token')" style="border-radius:10px; border-color: #0088cc; color: #0088cc;">📥 Exporter (CSV)</button>
                     <button class="btn btn-sm btn-outline" onclick="openImportModal()" style="border-radius:10px; border-color: #25D366; color: #25D366;">📤 Importer (CSV)</button>
                 </div>
             </div>
