@@ -1262,6 +1262,15 @@ function createServer() {
                 finalMsg += `|||MEDIA_URLS|||${JSON.stringify(allMedia)}`;
             }
 
+            let pollData = null;
+            if (req.body.poll_options || req.body.poll_allow_free) {
+                pollData = {
+                    options: req.body.poll_options ? req.body.poll_options.split('|') : null,
+                    poll_allow_free: req.body.poll_allow_free === 'true',
+                    poll_type: req.body.poll_type || 'interactive'
+                };
+            }
+
             // Sauvegarder en DB (sera récupéré par le worker sur Replica 0)
             const broadcastId = await saveBroadcast({
                 message: finalMsg,
@@ -1270,7 +1279,8 @@ function createServer() {
                 start_at: req.body.start_at || new Date().toISOString(),
                 media_count: allMedia.length,
                 total_target: 0, // Sera calculé par le worker
-                badge: req.body.badge || null
+                badge: req.body.badge || null,
+                poll_data: pollData
             });
 
             debugLog(`[API-BC-QUEUED] Diffusion #${broadcastId} ajoutée (${allMedia.length} médias)`);

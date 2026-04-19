@@ -373,10 +373,11 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
         ? options.poll_options.split('|') 
         : null;
     const poll_allow_free = options.poll_allow_free || false;
+    const poll_type = options.poll_type || 'interactive'; // 'interactive' or 'native'
     const broadcastId = options.broadcastId;
 
     let keyboard = null;
-    if (poll_options && poll_options.length > 0) {
+    if (poll_type === 'interactive' && poll_options && poll_options.length > 0) {
         const btns = poll_options.map((opt, idx) => [Markup.button.callback(opt, `poll_vote_${broadcastId}_${idx}`)]);
         if (poll_allow_free) {
             btns.push([Markup.button.callback('🖊 Réponse libre', `poll_free_${broadcastId}`)]);
@@ -390,6 +391,17 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
     // Captions are limited to 1024 chars in Telegram
     const maxCaption = 1020;
     const caption = message ? (message.length > maxCaption ? message.substring(0, maxCaption - 3) + '...' : message) : '';
+
+    // Helper for sending Native Poll
+    const sendNativePoll = async () => {
+        if (!poll_options || poll_options.length < 2) return null;
+        debugLog(`[BC-SEND] Native Poll -> ${chatId}`);
+        return await _bot.telegram.sendPoll(chatId, message || "Sondage", poll_options, {
+            is_anonymous: false, // On veut savoir qui vote
+            allows_multiple_answers: false,
+            ...(_protect ? { protect_content: true } : {})
+        });
+    };
 
     // Helper function for safe send with fallback and TOUGH TIMEOUT
     const safeSend = async (method, ...args) => {
@@ -411,8 +423,40 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
 
         return await Promise.race([execute(), timeout(TELEGRAM_TIMEOUT_MS)]);
     };
+
     try {
-        if (unifiedMediaList.length > 1) {
+        const hasPoll = (poll_options && poll_options.length > 0);
+        const isMultiMedia = unifiedMediaList.length > 1;
+
+        // --- CAS PARTICULIER: MULTI-MEDIA + POLL ---
+        // Telegram ne permet pas de joindre des boutons ou un sondage à un MediaGroup.
+        // On envoie donc les médias d'abord, puis le sondage/boutons séparément.
+        if (isMultiMedia && hasPoll) {
+            debugLog(`[BC-SPLIT] MultiMedia + Poll detected for ${chatId}. Sending split.`);
+            
+            // 1. Envoi du Media Group (sans le texte s'il y a un sondage, pour que le texte soit avec le sondage)
+            const mediaGroup = unifiedMediaList.slice(0, 10).map((m, i) => ({
+                type: m.type,
+                media: m.file_id || (m.source ? { source: m.source, filename: m.filename } : m.url),
+                ...(m.type === 'video' ? { supports_streaming: true } : {})
+            }));
+            await _bot.telegram.sendMediaGroup(chatId, mediaGroup, _protect ? { protect_content: true } : {});
+            
+            // 2. Envoi du sondage ou des boutons juste après
+            if (poll_type === 'native') {
+                await sendNativePoll();
+            } else {
+                await _bot.telegram.sendMessage(chatId, message, { 
+                    parse_mode: 'HTML', 
+                    ...(_protect ? { protect_content: true } : {}), 
+                    ...(keyboard ? keyboard : {}) 
+                });
+            }
+            return { success: true };
+        }
+
+        // --- CAS STANDARD ---
+        if (isMultiMedia) {
             const mediaGroup = unifiedMediaList.slice(0, 10).map((m, i) => {
                 let mediaObj = m.file_id;
                 if (!mediaObj) {
@@ -446,21 +490,12 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
                 } else throw err;
             }
 
-            // Cache file_ids & Tracking
+            // Cache file_ids...
             if (msgs && Array.isArray(msgs)) {
                 const { addMessageToTrack } = require('./database');
                 for (const msg of msgs) {
                     await addMessageToTrack(user.id || user.doc_id, msg.message_id, false).catch(() => { });
                 }
-
-                msgs.forEach((msg, i) => {
-                    if (!unifiedMediaList[i].file_id) {
-                        let fId = null;
-                        if (msg.photo && msg.photo.length > 0) fId = msg.photo[msg.photo.length - 1].file_id;
-                        else if (msg.video) fId = msg.video.file_id;
-                        if (fId) unifiedMediaList[i].file_id = fId;
-                    }
-                });
             }
         } else if (unifiedMediaList.length === 1) {
             const mData = unifiedMediaList[0];
@@ -474,37 +509,29 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
             let msg;
             if (mData.type === 'video') {
                 msg = await safeSend('sendVideo', mediaObj, { caption: caption, supports_streaming: true, ...(_protect ? { protect_content: true } : {}), ...(keyboard ? keyboard : {}) });
-                if (msg.video && !mData.file_id) mData.file_id = msg.video.file_id;
             } else {
                 msg = await safeSend('sendPhoto', mediaObj, { caption: caption, ...(_protect ? { protect_content: true } : {}), ...(keyboard ? keyboard : {}) });
-                if (msg.photo && !mData.file_id) mData.file_id = msg.photo[msg.photo.length - 1].file_id;
             }
             if (msg && (user.id || user.doc_id)) {
                 const { addMessageToTrack } = require('./database');
                 await addMessageToTrack(user.id || user.doc_id, msg.message_id, false).catch(() => { });
             }
         } else {
-            // Texte uniquement
-            debugLog(`[BC-SEND] Texte -> ${chatId}`);
-            if (!message || message.trim() === '') {
-                debugLog(`[BC-SKIP] Message vide pour ${chatId}`);
-                return { success: true }; // On skip les messages vides sans erreur
-            }
-            try {
+            // Texte uniquement ou NATIVE POLL
+            if (poll_type === 'native' && hasPoll) {
+                const msg = await sendNativePoll();
+                if (msg && (user.id || user.doc_id)) {
+                    const { addMessageToTrack } = require('./database');
+                    await addMessageToTrack(user.id || user.doc_id, msg.message_id, false).catch(() => { });
+                }
+            } else {
+                debugLog(`[BC-SEND] Texte -> ${chatId}`);
+                if (!message || message.trim() === '') return { success: true };
                 const msg = await _bot.telegram.sendMessage(chatId, message, { parse_mode: 'HTML', ...(_protect ? { protect_content: true } : {}), ...(keyboard ? keyboard : {}) });
                 if (msg && (user.id || user.doc_id)) {
                     const { addMessageToTrack } = require('./database');
                     await addMessageToTrack(user.id || user.doc_id, msg.message_id, false).catch(() => { });
                 }
-            } catch (err) {
-                if (err.description?.includes('can\'t parse entities')) {
-                    debugLog(`[BC-RETRY] Plain text fallback for: ${chatId}`);
-                    const msg = await _bot.telegram.sendMessage(chatId, message, { ...(_protect ? { protect_content: true } : {}), ...(keyboard ? keyboard : {}) });
-                    if (msg && (user.id || user.doc_id)) {
-                        const { addMessageToTrack } = require('./database');
-                        await addMessageToTrack(user.id || user.doc_id, msg.message_id, false).catch(() => { });
-                    }
-                } else throw err;
             }
         }
         return { success: true };
@@ -558,11 +585,15 @@ async function processPendingBroadcasts() {
             debugLog(`[BC-WORKER] Diffusion ${bc.id} réclamée avec succès.`);
 
             const pollOpts = bc.poll_data?.options ? bc.poll_data.options.join('|') : null;
+            const pollType = bc.poll_data?.poll_type || 'interactive';
+            const pollAllowFree = bc.poll_data?.poll_allow_free || false;
             // On lance la diffusion
             await broadcastMessage(bc.target_platform, bc.message || "", { 
                 id: bc.id,
                 start_at: bc.start_at,
-                poll_options: pollOpts
+                poll_options: pollOpts,
+                poll_type: pollType,
+                poll_allow_free: pollAllowFree
             });
         }
     } catch (e) {

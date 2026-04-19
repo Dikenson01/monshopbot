@@ -3021,6 +3021,12 @@
                         <label style="font-weight:bold; margin-bottom:8px; display:block;">Question du sondage</label>
                         <textarea id="bcPollQuestion" placeholder="Ex: Quel produit préférez-vous ?"
                             style="width:100%; height:80px; margin-bottom:15px; border-radius:8px; border:1px solid var(--border); background:var(--hover); color:var(--text-main); padding:10px;"></textarea>
+
+                        <label style="font-weight:bold; margin-bottom:8px; display:block;">Type de sondage</label>
+                        <select id="bcPollType" onchange="togglePollTypeOptions()" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text-main); margin-bottom:15px;">
+                            <option value="interactive">💬 Interactif (Boutons sous le message + Avis libre possible)</option>
+                            <option value="native">📊 Natif (Sondage officiel Telegram avec statistiques)</option>
+                        </select>
                         
                         <label style="font-weight:bold; margin-bottom:10px; display:block;">Options du sondage</label>
                         <div id="poll_options_container" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
@@ -3035,7 +3041,7 @@
                         </div>
                         <button class="btn btn-sm btn-outline" onclick="addPollOptionRow()" style="margin-bottom:20px;">+ Ajouter une option</button>
 
-                        <div style="display:flex; align-items:center; gap:15px; padding:15px; background:rgba(255,255,255,0.05); border-radius:12px;">
+                        <div id="poll_free_container" style="display:flex; align-items:center; gap:15px; padding:15px; background:rgba(255,255,255,0.05); border-radius:12px;">
                             <label class="toggle-switch">
                                 <input type="checkbox" id="bcPollFree">
                                 <span class="switch-slider"></span>
@@ -3045,10 +3051,36 @@
                                 <small style="color:var(--text-muted);">Les clients pourront écrire leur propre avis.</small>
                             </div>
                         </div>
+                        
+                        <div id="poll_split_warning" style="display:none; margin-top:15px; padding:10px; background:rgba(0,150,255,0.1); border-left:3px solid #0096ff; border-radius:6px; font-size:12px;">
+                            ℹ️ <b>Note sur les médias :</b> Si vous ajoutez plusieurs photos/vidéos avec un sondage, Telegram enverra les médias d'abord, puis le sondage juste après pour s'assurer que tout s'affiche correctement.
+                        </div>
                         <small style="display:block; margin-top:10px; color:var(--text-muted); font-style:italic;">Max 10 options. Chaque client ne peut voter qu'une seule fois.</small>
                     </div>
                 </div>
 
+                <script>
+                    function togglePollTypeOptions() {
+                        const isNative = document.getElementById('bcPollType').value === 'native';
+                        const freeContainer = document.getElementById('poll_free_container');
+                        if (isNative) {
+                            freeContainer.style.display = 'none';
+                            document.getElementById('bcPollFree').checked = false;
+                        } else {
+                            freeContainer.style.display = 'flex';
+                        }
+                    }
+
+                    // On surveille les modifications de médias pour afficher l'avertissement de split
+                    setInterval(() => {
+                        const splitWarning = document.getElementById('poll_split_warning');
+                        if (splitWarning) {
+                            const isPoll = document.getElementById('bcType')?.value === 'poll';
+                            const multiMedia = document.querySelectorAll('#bc_media_grid .media-item').length > 1;
+                            splitWarning.style.display = (isPoll && multiMedia) ? 'block' : 'none';
+                        }
+                    }, 1000);
+                </script>
 
                 <div id="bc_media_grid"
                     style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px,1fr)); gap:10px; margin-bottom:15px;">
@@ -5609,6 +5641,10 @@
                 if (end_at) formData.append('end_at', new Date(end_at).toISOString());
 
                 // Poll properties
+                if (bcType === 'poll') {
+                    const pollTypeVal = document.getElementById('bcPollType').value;
+                    formData.append('poll_type', pollTypeVal);
+                }
                 if (pollOptions) formData.append('poll_options', pollOptions);
                 formData.append('poll_allow_free', pollAllowFree);
 
