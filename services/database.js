@@ -355,28 +355,39 @@ async function getAllActiveUsers(platform = null, type = null) {
 // Nouvelle fonction pour le broadcast : inclut TOUS les utilisateurs (même bloqués)
 async function getAllUsersForBroadcast(platform = null, type = null) {
     let q = supabase.from(COL_USERS).select('id, platform, platform_id, type, username, first_name, last_name, order_count, wallet_balance, points, date_inscription, is_livreur, is_available, is_blocked, current_city, data');
-    if (platform && platform !== 'all') q = q.eq('platform', platform);
+    
+    // Robust type filtering
     if (type === 'livreurs') {
         q = q.eq('is_livreur', true);
-    } else if (type === 'user') {
+    } else if (type === 'user' || !type) {
+        // En Supabase, si on veut filter par "user" ou NULL
         q = q.or('type.is.null,type.eq.user');
     } else if (type === 'group') {
         q = q.eq('type', 'group');
-    } else if (type) {
+    } else if (type && type !== 'all') {
         q = q.eq('type', type);
     }
+
     const { data, error } = await q;
     if (error) {
-        console.error(`[DB-ERROR] getAllUsersForBroadcast:`, error);
+        console.error(`[DB-ERROR] getAllUsersForBroadcast:`, error.message);
+        // Fallback: Tentative sans filtre de type pour voir s'il y a au moins des gens sur la plateforme
+        const { data: fallbackData } = await supabase.from(COL_USERS).select('id, platform_id').eq('platform', platform || 'telegram').limit(5);
+        console.log(`[DB-FALLBACK] Problème de filtre? Top 5 users sur ${platform}:`, fallbackData?.length || 0);
         return [];
     }
+
     const list = data || [];
-    console.log(`[DB] getAllUsersForBroadcast(platform=${platform}, type=${type}) -> ${list.length} trouvés (dont bloqués)`);
+    console.log(`[DB] getAllUsersForBroadcast(platform=${platform}, type=${type}) -> ${list.length} trouvés`);
+
     if (list.length === 0) {
-        // Diagnostic: Check if table even has data
-        const { count, error: countErr } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true });
-        console.log(`[DB-DIAGNOSTIC] Total users in ${COL_USERS} table:`, countErr ? `Error: ${countErr.message}` : count);
+        // Diagnostic profond
+        const { count } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true });
+        const { data: sample } = await supabase.from(COL_USERS).select('id, platform, type, is_livreur').limit(3);
+        console.log(`[DB-DIAGNOSTIC] Total table ${COL_USERS}: ${count || 0} lignes.`);
+        console.log(`[DB-DIAGNOSTIC] Échantillon data (type check):`, JSON.stringify(sample));
     }
+
     return list.map(d => decryptUser(d));
 }
 /**
@@ -2421,12 +2432,17 @@ async function claimBroadcast(broadcastId) {
     // OU si elle est 'in_progress' mais "stuck" (plus de 10 mins d'inactivité)
     const { data, error } = await supabase
         .from(COL_BROADCASTS)
-        .update({ status: 'in_progress', updated_at: ts() })
+        .update({ status: 'in_progress' })
         .eq('id', broadcastId)
         .or(`status.eq.pending,and(status.eq.in_progress,created_at.lt.${rescueTime})`)
         .select();
 
-    if (error || !data || data.length === 0) {
+    if (error) {
+        console.error(`[DB-ERROR] claimBroadcast(id=${broadcastId}):`, error.message);
+        return false;
+    }
+
+    if (!data || data.length === 0) {
         return false;
     }
     return true;

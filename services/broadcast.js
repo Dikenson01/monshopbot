@@ -551,7 +551,11 @@ async function processPendingBroadcasts() {
         for (const bc of pendings) {
             // Marquage ATOMIQUE en DB pour éviter TOUT doublon entre instances
             const claimed = await claimBroadcast(bc.id);
-            if (!claimed) continue;
+            if (!claimed) {
+                // Si la réclamation échoue, cela peut être dû à un autre replica ou à une erreur DB
+                continue;
+            }
+            debugLog(`[BC-WORKER] Diffusion ${bc.id} réclamée avec succès.`);
 
             const pollOpts = bc.poll_data?.options ? bc.poll_data.options.join('|') : null;
             // On lance la diffusion
