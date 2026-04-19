@@ -795,6 +795,8 @@
                 padding-top: 20px;
                 padding-bottom: 100px;
                 flex-grow: 1;
+                flex-basis: 0;
+                min-height: 0;
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
             }
@@ -2240,6 +2242,13 @@
         <!-- OVERVIEW -->
         <section class="section active" id="section-overview">
             <div class="stats-grid">
+                <div class="stat-card stat-users">
+                    <div class="icon">👥</div>
+                    <div>
+                        <div class="stat-label">Total Utilisateurs</div>
+                        <div class="stat-value" id="ovStatUsers">-</div>
+                    </div>
+                </div>
                 <div class="stat-card stat-users">
                     <div class="icon">👥</div>
                     <div>
@@ -4360,8 +4369,17 @@
                 if (s) { s.value = ''; s.setAttribute('readonly', 'true'); }
             }
 
-            // Scroll en haut de la page
-            document.querySelector('.main').scrollTo(0, 0);
+            // Scroll en haut de la page de façon sécurisée
+            try {
+                const mainEl = document.querySelector('.main');
+                if (mainEl && typeof mainEl.scrollTo === 'function') {
+                    mainEl.scrollTo(0, 0);
+                } else if (mainEl) {
+                    mainEl.scrollTop = 0;
+                }
+            } catch (e) {
+                console.warn('[Scroll] Ignoring scroll error:', e);
+            }
 
             // Mémoriser la section dans l'URL
             location.hash = sectionId;
@@ -5987,8 +6005,7 @@
             rows.forEach(r => r.style.display = isHidden ? 'table-row' : 'none');
         }
 
-        function exportAnalyticsCSV() {
-
+        async function exportAnalyticsCSV() {
             const platform = document.getElementById('insights-platform-filter')?.value || 'all';
             let data = window.currentAnalyticsRaw || [];
             
@@ -5996,24 +6013,32 @@
                 data = data.filter(d => d.platform === platform);
             }
 
-            if (!data || data.length === 0) return showToast('Aucune donnée à exporter.', 'info');
+            if (!data || data.length === 0) return showToast('Aucune donnée à exporter. Générez un rapport analytique d\'abord.', 'info');
 
-            const headers = ["ID", "Date", "Plateforme", "Client", "Produit", "Quantité", "Prix total (€)", "Ville", "Livreur"];
+            const headers = ["ID", "Date", "Plateforme", "Client", "Produit", "Quantite", "Prix total (EUR)", "Ville", "Livreur"];
             const rows = data.map(o => [
                 o.id, o.date, o.platform || 'tg', o.client, o.product, o.qty, o.price, o.city, o.livreur
             ]);
 
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF" // Added BOM for Excel UTF-8
+            let csvContent = "\uFEFF" // BOM
                 + headers.join(",") + "\n"
                 + rows.map(r => r.map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : v).join(",")).join("\n");
 
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `analytics_leplugidf_${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            try {
+                // Essai d'envoi Backend pour Telegram
+                showToast('Génération du CSV en cours...', 'info');
+                await api('/export', 'POST', { csvData: csvContent, filename: 'analytics.csv' }, true);
+                showToast('Fichier CSV envoyé dans votre conversation Telegram !', 'success');
+            } catch (err) {
+                // Fallback classique
+                const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `analytics_monshop_${new Date().toISOString().split('T')[0]}.csv`);
+                document.body.appendChild(link);
+                try { link.click(); } catch(e){}
+                document.body.removeChild(link);
+            }
         }
 
         /* LOGIC FUNCTIONS */
@@ -6529,18 +6554,18 @@
             else if (filter === 'whatsapp') stats = data.platforms?.whatsapp || data;
 
             // Overview Section IDs
-            if (document.getElementById('ovStatUsers')) document.getElementById('ovStatUsers').innerText = data.totalUsers || 0;
-            if (document.getElementById('ovStatActive')) document.getElementById('ovStatActive').innerText = data.activeUsers || 0;
-            if (document.getElementById('ovStatOrders')) document.getElementById('ovStatOrders').innerText = data.totalOrders || 0;
+            if (document.getElementById('ovStatUsers')) document.getElementById('ovStatUsers').innerText = data.totalUsers ?? 0;
+            if (document.getElementById('ovStatActive')) document.getElementById('ovStatActive').innerText = data.activeUsers ?? 0;
+            if (document.getElementById('ovStatOrders')) document.getElementById('ovStatOrders').innerText = data.totalOrders ?? 0;
             if (document.getElementById('ovStatCA')) document.getElementById('ovStatCA').innerText = Number(data.totalCA || 0).toFixed(2) + ' €';
-            if (document.getElementById('ovStatLivreurs')) document.getElementById('ovStatLivreurs').innerText = data.activeLivreurs || 0;
+            if (document.getElementById('ovStatLivreurs')) document.getElementById('ovStatLivreurs').innerText = data.activeLivreurs ?? 0;
 
             // Insights Section IDs
-            if (document.getElementById('statUsers')) document.getElementById('statUsers').innerText = stats.totalUsers || 0;
-            if (document.getElementById('statActive')) document.getElementById('statActive').innerText = stats.activeUsers || 0;
-            if (document.getElementById('statOrders')) document.getElementById('statOrders').innerText = stats.totalOrders || 0;
+            if (document.getElementById('statUsers')) document.getElementById('statUsers').innerText = stats.totalUsers ?? 0;
+            if (document.getElementById('statActive')) document.getElementById('statActive').innerText = stats.activeUsers ?? 0;
+            if (document.getElementById('statOrders')) document.getElementById('statOrders').innerText = stats.totalOrders ?? 0;
             if (document.getElementById('statCA')) document.getElementById('statCA').innerText = Number(stats.totalCA || 0).toFixed(2) + ' €';
-            if (document.getElementById('statLivreurs')) document.getElementById('statLivreurs').innerText = stats.activeLivreurs || 0;
+            if (document.getElementById('statLivreurs')) document.getElementById('statLivreurs').innerText = stats.activeLivreurs ?? 0;
         }
 
         function renderUsersTable(users) {

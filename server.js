@@ -1208,6 +1208,26 @@ function createServer() {
     });
 
     /**
+     * CSV Export via Telegram
+     */
+    app.post('/api/export', authMiddleware, async (req, res) => {
+        try {
+            const { csvData, filename } = req.body;
+            let tgId = process.env.ADMIN_TELEGRAM_ID;
+            if (!tgId && window.appSettings) tgId = window.appSettings.admin_telegram_id;
+            
+            if (!tgId) return res.status(400).json({error: "Telegram ID de l'administrateur non défini"});
+            
+            const buffer = Buffer.from(csvData, 'utf-8');
+            await bot.telegram.sendDocument(tgId, { source: buffer, filename: filename || 'export.csv' });
+            res.json({success: true});
+        } catch (e) {
+            console.error('[API-EXPORT-ERROR]', e);
+            res.status(500).json({ error: e.message || 'Erreur serveur' });
+        }
+    });
+
+    /**
      * Broadcast - accepte FormData avec fichiers médias
      */
     app.post('/api/broadcast', authMiddleware, async (req, res) => {
