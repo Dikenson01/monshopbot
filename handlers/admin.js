@@ -113,7 +113,7 @@ async function showAdminMenu(ctx, isEdit = false) {
     const user = await require('../services/database').getUser(userId);
     const stats = await getStatsOverview();
 
-    const text = t(user, 'label_admin_console', `🛠 <b>LE PLUG IDF</b>`) + `\n\n` +
+    const text = t(user, 'label_admin_console', `🛠 <b>Mon Shop</b>`) + `\n\n` +
         t(user, 'msg_admin_welcome', `Bienvenue dans votre gestionnaire intégré.`) + `\n` +
         t(user, 'label_total_users', `Utilisateurs :`) + ` <b>${stats.totalUsers}</b>\n` +
         t(user, 'label_total_ca', `Ventes totales :`) + ` <b>${stats.totalCA}€</b>\n\n` +
@@ -124,7 +124,7 @@ async function showAdminMenu(ctx, isEdit = false) {
     const dashboardUrl = `https://monshopbot-production.up.railway.app/dashboard?token=${adminToken}#users`;
 
     const rows = [
-        [Markup.button.webApp('🌐 ACCÈS DASHBOARD (Web)', dashboardUrl)],
+        [Markup.button.webApp('🌐 ACCÈS MON SHOP (Web)', dashboardUrl)],
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
         [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders'), Markup.button.callback('💬 Support', 'admin_support_queue')],
         [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],
@@ -966,7 +966,7 @@ function setupAdminHandlers(bot) {
             [Markup.button.callback(s.welcome_message_enabled !== false ? '👋 Désactiver Bienvenue' : '👋 Activer Bienvenue', 'admin_toggle_welcome')],
             [Markup.button.callback('📢 Changer Lien Canal', 'admin_set_channel')],
             [Markup.button.callback('📱 Changer Contact Admin', 'admin_set_contact')],
-            [Markup.button.url('🌐 LE PLUG IDF', s.dashboard_url || 'https://google.com')],
+            [Markup.button.url('🌐 Mon Shop', s.dashboard_url || 'https://google.com')],
             [Markup.button.callback('◀️ Retour', 'admin_menu')]
         ]));
     });
@@ -1197,14 +1197,14 @@ function setupAdminHandlers(bot) {
             `• Envoyer un message à tous les utilisateurs non bloqués en 1 clic\n` +
             `• Supporte texte + médias (photos, vidéos) en pièces jointes\n` +
             `• Envoi par lots pour respecter les limites Telegram\n\n` +
-            `<b>Depuis LE PLUG IDF :</b>\n` +
+            `<b>Depuis Mon Shop :</b>\n` +
             `• Onglet "Diffusion" : rédiger le message, joindre des médias, envoyer\n` +
             `• Historique des diffusions (succès, échecs, bloqués)\n\n` +
             `<b>Depuis le Bot :</b>\n` +
-            `• "Diffusion Message" dans le menu admin → redirige vers LE PLUG IDF\n\n` +
+            `• "Diffusion Message" dans le menu admin → redirige vers Mon Shop\n\n` +
             `<b>Message Automatique :</b>\n` +
             `• Un message configurable est envoyé automatiquement toutes les 6h\n` +
-            `• Configurable dans les paramètres de LE PLUG IDF (champ "Message auto timer")`,
+            `• Configurable dans les paramètres de Mon Shop (champ "Message auto timer")`,
             Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour Fonctionnalités', 'admin_features')]])
         );
     });
@@ -1221,7 +1221,7 @@ function setupAdminHandlers(bot) {
             `• CA par jour, semaine, mois\n` +
             `• Top produits vendus\n` +
             `• Temps moyen de livraison\n\n` +
-            `<b>LE PLUG IDF :</b>\n` +
+            `<b>Mon Shop :</b>\n` +
             `• Vue d'ensemble avec compteurs en temps réel\n` +
             `• Onglet Commandes : liste, filtres, détails\n` +
             `• Onglet Utilisateurs : recherche, profils, bannissement\n` +
@@ -1241,7 +1241,7 @@ function setupAdminHandlers(bot) {
             `• "Gestion Utilisateurs" : rechercher un utilisateur par nom ou ID\n` +
             `• Voir le profil complet (commandes, points, wallet)\n` +
             `• Bloquer / Débloquer un utilisateur\n\n` +
-            `<b>Depuis LE PLUG IDF :</b>\n` +
+            `<b>Depuis Mon Shop :</b>\n` +
             `• Liste complète avec recherche\n` +
             `• Modifier le solde, les points, le statut livreur\n` +
             `• Voir l'historique des commandes par utilisateur\n\n` +
@@ -1272,8 +1272,8 @@ function setupAdminHandlers(bot) {
             `• Description du bot (carte de partage Telegram)\n\n` +
             `<b>Accès :</b>\n` +
             `• ID Telegram de l'admin (notifications)\n` +
-            `• Mot de passe de LE PLUG IDF\n` +
-            `• Tous les paramètres sont modifiables en temps réel depuis LE PLUG IDF`,
+            `• Mot de passe de Mon Shop\n` +
+            `• Tous les paramètres sont modifiables en temps réel depuis Mon Shop`,
             Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour Fonctionnalités', 'admin_features')]])
         );
     });

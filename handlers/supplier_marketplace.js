@@ -1424,11 +1424,11 @@ function setupMarketplaceHandlers(bot) {
                     `🏪 Fournisseur : <b>${esc(data.supplierName || 'Inconnu')}</b>\n` +
                     `📦 Produit : <b>${esc(data.name)}</b>\n` +
                     `💰 Prix : <b>${data.price}€</b>\n\n` +
-                    `<i>Ce produit est masqué (is_available=false) dans le catalogue client jusqu'à votre validation DNS LE PLUG IDF.</i>`;
+                    `<i>Ce produit est masqué (is_available=false) dans le catalogue client jusqu'à votre validation DNS Mon Shop.</i>`;
 
                 await notifyAdmins(bot, adminMsg, {
                     reply_markup: {
-                        inline_keyboard: [[{ text: '⚙️ Gérer dans LE PLUG IDF', url: process.env.DASHBOARD_URL || 'https://dashboard.example.com' }]]
+                        inline_keyboard: [[{ text: '⚙️ Gérer dans Mon Shop', url: process.env.DASHBOARD_URL || 'https://dashboard.example.com' }]]
                     }
                 });
 

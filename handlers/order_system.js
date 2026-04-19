@@ -1197,7 +1197,7 @@ function setupOrderSystem(bot) {
             (async () => {
                 // Notif Nouveau Client
                 if (isFirstOrder) {
-                    const adminContact = dbSettings.private_contact_url || 'https://t.me/leplugidf75';
+                    const adminContact = dbSettings.private_contact_url || 'https://t.me/admin_boutique';
                     ctx.reply(t(user, 'msg_first_order_welcome', `👋 <b>Première commande !</b>\nContactez l'admin pour valider : {contact}`, { contact: adminContact }), { parse_mode: 'HTML' }).catch(() => {});
                 }
 

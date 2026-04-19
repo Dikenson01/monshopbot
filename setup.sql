@@ -372,7 +372,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Default Settings (Partial insertion, app will auto-repair missing fields)
 INSERT INTO bot_settings (id, bot_name, dashboard_title, admin_password, admin_telegram_id) 
-VALUES ('default', 'LE PLUG IDF', 'LE PLUG IDF', 'admin0123456789', '8211371507')
+VALUES ('default', 'Mon Shop', 'Mon Shop', 'admin0123456789', '8211371507')
 ON CONFLICT (id) DO NOTHING;
 
 -- Storage Bucket (Must be done via UI or SQL if supported)

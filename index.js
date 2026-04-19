@@ -70,8 +70,8 @@ async function main() {
 
             // 2. Check if maintenance mode is enabled
             if (settings && (settings.maintenance_mode === true || settings.maintenance_mode === 'true')) {
-                const adminContact = settings.maintenance_contact || 'https://t.me/leplugidf_contact';
-                const maintenanceMessage = settings.maintenance_message || '🔧 <b>Le bot est actuellement en maintenance.</b>\n\nNous revenons bientôt !\n\nContactez l\'admin : @leplugidf_contact';
+                const adminContact = settings.maintenance_contact || 'https://t.me/admin_boutique';
+                const maintenanceMessage = settings.maintenance_message || '🔧 <b>Le bot est actuellement en maintenance.</b>\n\nNous revenons bientôt !\n\nContactez l\'admin : @admin_boutique';
 
                 if (ctx.callbackQuery) {
                     await ctx.answerCbQuery(maintenanceMessage, { show_alert: true }).catch(() => { });
