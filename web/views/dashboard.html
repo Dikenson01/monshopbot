@@ -1734,9 +1734,12 @@
             }
 
             /* --- Hide desktop tables on mobile --- */
-            .card > table,
-            .card > .responsive-table,
+            .card > table:not(#bcHistoryTable),
+            .card > .responsive-table:not(#bcHistoryTable),
             #orderTable { display: none !important; }
+
+            /* --- Permettre le scroll horizontal pour l'historique --- */
+            #bcHistoryTable { display: block !important; width: 100%; overflow-x: auto; white-space: nowrap; }
 
             /* --- Search boxes full width --- */
             .search-box, .search-container { width: 100% !important; }
@@ -4166,6 +4169,7 @@
             localStorage.setItem('admin_token', urlToken);
         }
 
+        window.chartInstances = {};
         const TOKEN = localStorage.getItem('admin_token');
         if (!TOKEN) {
             console.warn('[Auth] No token found, redirecting to login');
