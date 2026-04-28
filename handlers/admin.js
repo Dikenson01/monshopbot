@@ -130,6 +130,7 @@ async function showAdminMenu(ctx, isEdit = false) {
         [Markup.button.callback('📥 Contact', 'admin_tickets')],
         [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],
         [Markup.button.callback(t(user, 'btn_admin_marketplace', '🏪 Marketplace'), 'mp_browse'), Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
+        [Markup.button.callback('📢 Diffusion Migration (Admins Only)', 'admin_broadcast_migration')],
         [Markup.button.callback(t(user, 'btn_admin_features', '✨ Guide Bot'), 'admin_features')],
         [Markup.button.callback(t(user, 'btn_quit_console', '◀️ Quitter la console'), 'main_menu')]
     ];
@@ -1572,6 +1573,56 @@ function setupAdminHandlers(bot) {
         await cleanupUserChat(ctx);
         return showAdminMenu(ctx);
     });
+
+    bot.action('admin_broadcast_migration', async (ctx) => {
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé.');
+        
+        await ctx.answerCbQuery();
+        const settings = ctx.state?.settings || await require('../services/database').getAppSettings();
+        const rootAdminIds = String(settings.admin_telegram_id || '').match(/\d+/g) || [];
+        
+        const { supabase } = require('../services/database');
+        const { sendMessageToUser } = require('../services/notifications');
+
+        await ctx.reply('⏳ <b>Initialisation de la diffusion Admin...</b>', { parse_mode: 'HTML' });
+
+        // 1. Récupérer tous les admins de la DB
+        const { data: dbAdmins, error } = await supabase.from('bot_users').select('id, platform').eq('is_admin', true);
+        if (error) return ctx.reply(`❌ Erreur DB: ${error.message}`);
+
+        const targetIds = new Set();
+        dbAdmins.forEach(u => targetIds.add(u.id.replace('telegram_', '')));
+        rootAdminIds.forEach(id => targetIds.add(id));
+
+        const message = `Bonjour, j’espère que tu vas bien.
+
+Pour tout besoin relatif au bot ou si tu souhaites le faire tester à quelqu’un, rends-toi sur ce bot Telegram : @Bottelegramt_bot.
+
+Pour que tes amis puissent tester, ils doivent cliquer sur 👉🏻 « J’aimerais en savoir plus ».
+
+Si tu rencontres le moindre problème, clique sur 👉🏻 « Je suis déjà client ». Tu recevras une réponse dans la journée ainsi qu’une résolution de ton problème sous un maximum de 48 heures après réception de ton paiement.
+
+Les paiements se font désormais uniquement par virement bancaire, en cryptomonnaie ou par tout autre moyen de paiement qui te conviendra, à l’exception des espèces.
+
+Merci. Ce message n’est visible que par toi et sera le seul qui te sera envoyé, sauf si ce bot disparaît, auquel cas je te communiquerai le lien du nouveau bot.
+
+Merci pour ta confiance, et j’espère pouvoir continuer à développer tes projets présents et futurs.
+
+Le Devellopeur.`;
+
+        let successCount = 0;
+        for (const id of targetIds) {
+            try {
+                const res = await sendMessageToUser(id, message, { parse_mode: 'HTML' });
+                if (res && (res.message_id || res.success)) successCount++;
+            } catch (e) {
+                console.error(`[Migration-BC] Error for ${id}:`, e.message);
+            }
+        }
+
+        return ctx.reply(`✅ <b>Diffusion terminée !</b>\n\nEnvoyé à <b>${successCount}</b> administrateurs.\n(Ce message n'a pas été envoyé aux clients et n'apparaît pas dans l'historique public)`, { parse_mode: 'HTML' });
+    });
+
 }
 
 module.exports = { 
