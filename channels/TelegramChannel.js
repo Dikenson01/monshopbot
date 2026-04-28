@@ -114,56 +114,39 @@ class TelegramChannel extends Channel {
         
         const launch = async (retryCount = 0) => {
             try {
-                console.log(`[TG] [Essai ${retryCount + 1}] Début de la séquence de launch...`);
+                console.log(`[TG] [Essai ${retryCount + 1}] Reset de la connexion...`);
                 
-                // Vérification manuelle du token via Axios (plus rapide pour diagnostiquer les erreurs réseau/token)
-                const axios = require('axios');
-                console.log(`[TG] Vérification du token auprès de Telegram...`);
-                try {
-                    const checkRes = await axios.get(`https://api.telegram.org/bot${this.token}/getMe`, { timeout: 10000 });
-                    console.log(`[TG] ✅ Token valide : @${checkRes.data.result.username}`);
-                } catch (checkErr) {
-                    console.error(`[TG] ❌ Échec de la vérification du token:`, checkErr.message);
-                    if (checkErr.response?.status === 401) {
-                        console.error(`[TG] 🛑 LE TOKEN EST INVALIDE (401). Vérifiez vos variables d'environnement Railway.`);
-                        return;
-                    }
-                    console.warn(`[TG] ⚠️ Problème réseau ou API (non critique pour le moment, on tente le launch...)`);
-                }
+                // 1. Suppression du webhook avec drop_pending_updates
+                await this.bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(e => console.warn(`[TG] deleteWebhook error: ${e.message}`));
+                
+                // 2. Test getMe via Telegraf pour valider la liaison Telegraf <-> API
+                const me = await this.bot.telegram.getMe();
+                console.log(`[TG] Telegraf validé pour @${me.username}`);
 
-                // Timeout pour deleteWebhook pour ne pas rester bloqué
-                console.log(`[TG] Suppression du webhook éventuel...`);
-                const deleteWebhookPromise = this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_DELETE_WEBHOOK')), 10000));
-                
-                await Promise.race([deleteWebhookPromise, timeoutPromise])
-                    .then(() => console.log(`[TG] ✅ Webhook supprimé ou inexistant.`))
-                    .catch(err => console.warn(`[TG] ⚠️ Attention deleteWebhook: ${err.message}`));
-                
-                console.log(`[TG] Appel à startPolling()...`);
+                // 3. Lancement avec polling explicite et timeout court
+                console.log(`[TG] Lancement du polling (launch)...`);
                 this.bot.launch({
                     dropPendingUpdates: true,
-                    allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post']
+                    allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post'],
+                    polling: {
+                        timeout: 30,
+                        limit: 100
+                    }
                 }).then(() => {
-                    console.log('✅ [TG] BOT TELEGRAM CONNECTÉ ET OPÉRATIONNEL !');
+                    console.log('✅ [TG] BOT TELEGRAM EN LIGNE (Polling actif)');
                     this.isActive = true;
                 }).catch(err => {
-                    console.error('❌ [TG] Erreur lors du launch:', err.message);
+                    console.error('❌ [TG] Erreur fatale polling:', err.message);
+                    if (err.message.includes('409')) {
+                        console.warn(`⚠️ [TG] Conflit 409 détecté. Nouvelle tentative dans 10s...`);
+                        setTimeout(() => launch(retryCount + 1), 10000);
+                    }
                 });
-                
-                // On n'attend pas le launch car il peut durer indéfiniment en polling
-                return;
+
+                console.log(`[TG] Séquence de lancement terminée, écoute en cours...`);
             } catch (err) {
-                console.error('❌ [TG] Erreur critique lors du launch:', err.message);
-                if (err.message.includes('409') && retryCount < 15) {
-                    console.warn(`⚠️ [TG] Conflit 409 (une autre instance tourne). Retry dans 15s...`);
-                    setTimeout(() => launch(retryCount + 1), 15000);
-                } else if (err.message.includes('401')) {
-                    console.error('❌ [TG] TOKEN INVALIDE (401 Unauthorized) - Vérifiez vos variables Railway !');
-                } else {
-                    console.error('❌ [TG] Erreur fatale non gérée:', err);
-                    setTimeout(() => launch(retryCount + 1), 30000);
-                }
+                console.error('❌ [TG] Erreur critique initialisation:', err.message);
+                setTimeout(() => launch(retryCount + 1), 20000);
             }
         };
 
