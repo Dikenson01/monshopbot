@@ -332,25 +332,25 @@ function setupAdminHandlers(bot) {
             const parsed = JSON.parse(ticket.message);
             reason = parsed.reason || ticket.message;
             status = parsed.status || 'open';
-            price = parsed.price ? \`\${parsed.price}€\` : 'Non défini';
+            price = parsed.price ? `${parsed.price}€` : 'Non défini';
         } catch (e) { reason = ticket.message; }
 
-        const uKey = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? ticket.user_id : \`telegram_\${ticket.user_id}\`;
+        const uKey = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? ticket.user_id : `telegram_${ticket.user_id}`;
         const u = await getUser(uKey);
-        const userName = u ? \`\${u.first_name} (@\${u.username})\` : 'Inconnu';
+        const userName = u ? `${u.first_name} (@${u.username})` : 'Inconnu';
 
         const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
         
-        const text = \`📄 <b>Détails de la demande</b>\n\n\` +
-            \`👤 Utilisateur : <b>\${userName}</b>\n\` +
-            \`🆔 ID : <code>\${ticket.user_id}</code>\n\n\` +
-            \`📝 <b>Raison du contact :</b>\n<i>\${reason}</i>\n\n\` +
-            \`💰 <b>Prix indiqué :</b> \${price}\n\n\` +
-            \`Que souhaitez-vous faire ?\`;
+        const text = `📄 <b>Détails de la demande</b>\n\n` +
+            `👤 Utilisateur : <b>${userName}</b>\n` +
+            `🆔 ID : <code>${ticket.user_id}</code>\n\n` +
+            `📝 <b>Raison du contact :</b>\n<i>${reason}</i>\n\n` +
+            `💰 <b>Prix indiqué :</b> ${price}\n\n` +
+            `Que souhaitez-vous faire ?`;
 
         const buttons = [
-            [Markup.button.callback('💬 Répondre / Démarrer discussion', \`admin_chat_user_\${platformPrefix}\${ticket.user_id}\`)],
-            [Markup.button.callback('💰 Indiquer un prix (Facturer)', \`admin_ticket_price_\${ticketId}\`)],
+            [Markup.button.callback('💬 Répondre / Démarrer discussion', `admin_chat_user_${platformPrefix}${ticket.user_id}`)],
+            [Markup.button.callback('💰 Indiquer un prix (Facturer)', `admin_ticket_price_${ticketId}`)],
             [Markup.button.callback('◀️ Retour', 'admin_tickets_refresh')]
         ];
 
@@ -394,9 +394,9 @@ function setupAdminHandlers(bot) {
                 // On peut envoyer un message au client pour l'informer du prix
                 const { sendTelegramMessage } = require('../services/notifications');
                 const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
-                await sendTelegramMessage(\`\${platformPrefix}\${ticket.user_id}\`, \`📝 <b>Devis pour votre demande</b>\n\nSuite à votre demande ("\${parsed.reason}"), notre équipe technique vous propose un tarif de <b>\${price}€</b>.\n\nUn administrateur va vous contacter pour les détails de paiement.\`);
+                await sendTelegramMessage(`${platformPrefix}${ticket.user_id}`, `📝 <b>Devis pour votre demande</b>\n\nSuite à votre demande ("${parsed.reason}"), notre équipe technique vous propose un tarif de <b>${price}€</b>.\n\nUn administrateur va vous contacter pour les détails de paiement.`);
                 
-                return ctx.reply(\`✅ Prix de \${price}€ enregistré pour le ticket. Le client a été notifié.\`);
+                return ctx.reply(`✅ Prix de ${price}€ enregistré pour le ticket. Le client a été notifié.`);
             }
         }
         return next();
