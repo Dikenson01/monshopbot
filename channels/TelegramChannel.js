@@ -108,36 +108,57 @@ class TelegramChannel extends Channel {
         
         const launch = async (retryCount = 0) => {
             try {
-                console.log(`[TG] Tentative de launch polling (Essai ${retryCount + 1})...`);
-                // Nettoyage explicite du webhook avant de lancer le polling pour éviter les conflits
-                await this.bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
+                console.log(`[TG] [Essai ${retryCount + 1}] Début de la séquence de launch...`);
                 
+                // Vérification manuelle du token via Axios (plus rapide pour diagnostiquer les erreurs réseau/token)
+                const axios = require('axios');
+                console.log(`[TG] Vérification du token auprès de Telegram...`);
+                try {
+                    const checkRes = await axios.get(`https://api.telegram.org/bot${this.token}/getMe`, { timeout: 10000 });
+                    console.log(`[TG] ✅ Token valide : @${checkRes.data.result.username}`);
+                } catch (checkErr) {
+                    console.error(`[TG] ❌ Échec de la vérification du token:`, checkErr.message);
+                    if (checkErr.response?.status === 401) {
+                        console.error(`[TG] 🛑 LE TOKEN EST INVALIDE (401). Vérifiez vos variables d'environnement Railway.`);
+                        return;
+                    }
+                    console.warn(`[TG] ⚠️ Problème réseau ou API (non critique pour le moment, on tente le launch...)`);
+                }
+
+                // Timeout pour deleteWebhook pour ne pas rester bloqué
+                console.log(`[TG] Suppression du webhook éventuel...`);
+                const deleteWebhookPromise = this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_DELETE_WEBHOOK')), 10000));
+                
+                await Promise.race([deleteWebhookPromise, timeoutPromise])
+                    .then(() => console.log(`[TG] ✅ Webhook supprimé ou inexistant.`))
+                    .catch(err => console.warn(`[TG] ⚠️ Attention deleteWebhook: ${err.message}`));
+                
+                console.log(`[TG] Appel à this.bot.launch()...`);
                 await this.bot.launch({
                     dropPendingUpdates: true,
                     allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post']
                 });
                 
-                console.log('✅ [TG] BOT TELEGRAM CONNECTÉ ET OPÉRATIONNEL !');
+                const me = await this.bot.telegram.getMe();
+                console.log(`✅ [TG] BOT TELEGRAM CONNECTÉ ET OPÉRATIONNEL : @${me.username}`);
                 this.isActive = true;
             } catch (err) {
-                console.error('❌ [TG] Erreur lors du launch:', err.message);
-                if (err.message.includes('409') && retryCount < 10) {
-                    console.warn(`⚠️ [TG] Conflit 409 (une autre instance tourne encore). Nouveau test dans 10s...`);
-                    setTimeout(() => launch(retryCount + 1), 10000);
+                console.error('❌ [TG] Erreur critique lors du launch:', err.message);
+                if (err.message.includes('409') && retryCount < 15) {
+                    console.warn(`⚠️ [TG] Conflit 409 (une autre instance tourne). Retry dans 15s...`);
+                    setTimeout(() => launch(retryCount + 1), 15000);
                 } else if (err.message.includes('401')) {
-                    console.error('❌ [TG] TOKEN INVALIDE (401 Unauthorized)');
+                    console.error('❌ [TG] TOKEN INVALIDE (401 Unauthorized) - Vérifiez vos variables Railway !');
                 } else {
-                    console.error('❌ [TG] Erreur inconnue:', err);
-                    // On réessaye quand même après 30s en cas de coupure réseau
+                    console.error('❌ [TG] Erreur fatale non gérée:', err);
                     setTimeout(() => launch(retryCount + 1), 30000);
                 }
             }
         };
 
         launch();
-        // On marque isActive true temporairement pour le registry, 
-        // ou on laisse le launch s'en occuper. Ici on dit qu'il est "initialisé".
-        console.log('  Telegram channel initialized and launching in background...');
+        console.log('  Telegram channel initialization requested...');
     }
 
     async stop() {
