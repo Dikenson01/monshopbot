@@ -122,6 +122,8 @@ async function main() {
     setupStartHandler(dispatcher);
     setupOrderSystem(dispatcher);
     setupAdminHandlers(dispatcher);
+    const { setupHotlineHandlers } = require('./handlers/hotline');
+    setupHotlineHandlers(dispatcher);
     
     // Marketplace handlers capture
     const mpHandlers = setupMarketplaceHandlers(dispatcher);

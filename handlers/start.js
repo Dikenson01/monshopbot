@@ -238,7 +238,7 @@ function setupStartHandler(bot) {
             const isFournisseur = !!supplier;
             const isLivreur = registeredUser.is_livreur;
 
-            const keyboard = isLivreur ? await getLivreurMenuKeyboard(ctx, settings, registeredUser, hasActive, isAdminUser) : await getMainMenuKeyboard(ctx, settings, registeredUser, isFournisseur, isAdminUser);
+            const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
             await safeEdit(ctx, welcomeText, {
                 photo: settings.welcome_photo || null,
                 ...keyboard
@@ -272,6 +272,18 @@ function setupStartHandler(bot) {
     bot.action('main_menu', async (ctx) => {
         if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
         return showMainMenu(ctx);
+    });
+
+    bot.action('start_welcome', async (ctx) => {
+        if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+        const settings = ctx.state?.settings || await getAppSettings();
+        const user = ctx.state?.user;
+        const welcomeText = `👋 <b>Bienvenue sur notre bot !</b>\n\nQue souhaitez-vous faire ?`;
+        const keyboard = await getWelcomeKeyboard(ctx, settings, user);
+        return safeEdit(ctx, welcomeText, {
+            photo: settings.welcome_photo || null,
+            ...keyboard
+        });
     });
 
     bot.action('user_settings', async (ctx) => {
@@ -466,6 +478,9 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     if (!settings) settings = ctx.state?.settings || await getAppSettings();
     const buttons = [];
 
+    // Ligne 0 : Pricing (Nouveau bouton)
+    buttons.push([Markup.button.callback(`💡 Je suis intéressé par le bot, je souhaite en savoir plus`, 'show_pricing')]);
+
     // Ligne 1 : Commander (Gros bouton principal)
     buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '👟'} ${t(user, 'btn_catalog', settings.label_catalog || 'Passer une commande')}`, 'view_catalog')]);
     
@@ -538,4 +553,11 @@ async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = fal
     return Markup.inlineKeyboard(buttons);
 }
 
-module.exports = { setupStartHandler, initStartState, getLivreurMenuKeyboard, getMainMenuKeyboard };
+async function getWelcomeKeyboard(ctx, settings, user) {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('Je suis déjà client', 'hotline_menu')],
+        [Markup.button.callback('J\'aimerais en savoir plus', 'sales_menu_start')]
+    ]);
+}
+
+module.exports = { setupStartHandler, initStartState, getLivreurMenuKeyboard, getMainMenuKeyboard, getWelcomeKeyboard, showMainMenu };

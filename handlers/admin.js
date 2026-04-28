@@ -127,6 +127,7 @@ async function showAdminMenu(ctx, isEdit = false) {
         [Markup.button.webApp('🌐 ACCÈS MON SHOP (Web)', dashboardUrl)],
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
         [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders'), Markup.button.callback('💬 Support', 'admin_support_queue')],
+        [Markup.button.callback('📥 Demandes (Contact)', 'admin_tickets')],
         [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],
         [Markup.button.callback(t(user, 'btn_admin_marketplace', '🏪 Marketplace'), 'mp_browse'), Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
         [Markup.button.callback(t(user, 'btn_admin_features', '✨ Guide Bot'), 'admin_features')],
@@ -238,9 +239,27 @@ function setupAdminHandlers(bot) {
         return ctx.reply('🆕 <b>RÉINITIALISATION MOT DE PASSE</b>\n\nVeuillez envoyer le nouveau mot de passe d\'administration souhaité :', { parse_mode: 'HTML' });
     });
 
+    bot.action('admin_tickets', async (ctx) => {
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Auth requise');
+        pendingAdminLogins.add(`tickets_${ctx.from.id}`);
+        await ctx.answerCbQuery();
+        return ctx.reply('🔐 <b>Zone de Contact</b>\n\nVeuillez entrer le mot de passe de cette section :', { parse_mode: 'HTML' });
+    });
+
     // Handler texte (Pass et recherche)
     bot.on('text', async (ctx, next) => {
-        const userId = String(ctx.from.id).match(/\d+/g)?.[0] || String(ctx.from.id);
+        const userId = String(ctx.from.id).match(/\\d+/g)?.[0] || String(ctx.from.id);
+        const ticketLoginId = `tickets_${userId}`;
+
+        if (pendingAdminLogins.has(ticketLoginId)) {
+            pendingAdminLogins.delete(ticketLoginId);
+            const pass = ctx.message.text.trim();
+            if (pass !== '2442') {
+                return ctx.reply('❌ Mot de passe incorrect pour la zone contact.');
+            }
+            return showAdminTickets(ctx);
+        }
+
         if (pendingAdminLogins.has(userId)) {
             pendingAdminLogins.delete(userId);
             return handleAdminLogin(ctx, ctx.message.text.trim());
@@ -261,6 +280,123 @@ function setupAdminHandlers(bot) {
             } catch (e) {
                 console.error('Reset pwd error:', e);
                 return ctx.reply('❌ Erreur lors de la mise à jour.');
+            }
+        }
+        return next();
+    });
+
+    async function showAdminTickets(ctx) {
+        const { supabase } = require('../services/database');
+        const { data: tickets, error } = await supabase.from('bot_support_logs')
+            .select('*')
+            .eq('type', 'ticket')
+            .eq('direction', 'in')
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        if (error || !tickets || tickets.length === 0) {
+            return ctx.reply('📭 Aucun ticket récent.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_menu')]]));
+        }
+
+        const buttons = tickets.map(t => {
+            let reason = 'Inconnu';
+            try {
+                const parsed = JSON.parse(t.message);
+                reason = parsed.reason || t.message;
+            } catch (e) { reason = t.message; }
+            return [Markup.button.callback(`📩 ${t.user_id} - ${reason.slice(0, 20)}...`, `admin_ticket_view_${t.id}`)];
+        });
+        buttons.push([Markup.button.callback('◀️ Retour', 'admin_menu')]);
+        
+        const text = `📥 <b>Section Contact (Hotline)</b>\n\nSélectionnez une demande :`;
+        if (ctx.callbackQuery) {
+            return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+        } else {
+            return ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+        }
+    }
+
+    bot.action(/^admin_ticket_view_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const ticketId = ctx.match[1];
+        const { supabase, getUser } = require('../services/database');
+        
+        const { data: ticketArray } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId);
+        const ticket = ticketArray?.[0];
+        if (!ticket) return ctx.answerCbQuery('❌ Ticket introuvable');
+        
+        let reason = 'Inconnu';
+        let status = 'open';
+        let price = 'Non défini';
+        try {
+            const parsed = JSON.parse(ticket.message);
+            reason = parsed.reason || ticket.message;
+            status = parsed.status || 'open';
+            price = parsed.price ? \`\${parsed.price}€\` : 'Non défini';
+        } catch (e) { reason = ticket.message; }
+
+        const uKey = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? ticket.user_id : \`telegram_\${ticket.user_id}\`;
+        const u = await getUser(uKey);
+        const userName = u ? \`\${u.first_name} (@\${u.username})\` : 'Inconnu';
+
+        const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+        
+        const text = \`📄 <b>Détails de la demande</b>\n\n\` +
+            \`👤 Utilisateur : <b>\${userName}</b>\n\` +
+            \`🆔 ID : <code>\${ticket.user_id}</code>\n\n\` +
+            \`📝 <b>Raison du contact :</b>\n<i>\${reason}</i>\n\n\` +
+            \`💰 <b>Prix indiqué :</b> \${price}\n\n\` +
+            \`Que souhaitez-vous faire ?\`;
+
+        const buttons = [
+            [Markup.button.callback('💬 Répondre / Démarrer discussion', \`admin_chat_user_\${platformPrefix}\${ticket.user_id}\`)],
+            [Markup.button.callback('💰 Indiquer un prix (Facturer)', \`admin_ticket_price_\${ticketId}\`)],
+            [Markup.button.callback('◀️ Retour', 'admin_tickets_refresh')]
+        ];
+
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+    });
+
+    bot.action('admin_tickets_refresh', async (ctx) => {
+        await ctx.answerCbQuery();
+        return showAdminTickets(ctx);
+    });
+
+    const pendingTicketPrice = new Map();
+    bot.action(/^admin_ticket_price_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const ticketId = ctx.match[1];
+        pendingTicketPrice.set(String(ctx.from.id), ticketId);
+        await ctx.answerCbQuery();
+        return ctx.reply('💰 <b>Indiquer un prix</b>\n\nEntrez le montant à facturer au client pour cette demande (ex: 100) :');
+    });
+
+    bot.on('text', async (ctx, next) => {
+        const adminId = String(ctx.from.id);
+        if (pendingTicketPrice.has(adminId)) {
+            const ticketId = pendingTicketPrice.get(adminId);
+            pendingTicketPrice.delete(adminId);
+            
+            const price = parseFloat(ctx.message.text.trim());
+            if (isNaN(price)) return ctx.reply('❌ Prix invalide.');
+
+            const { supabase } = require('../services/database');
+            const { data: ticketArray } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId);
+            const ticket = ticketArray?.[0];
+            if (ticket) {
+                let parsed = {};
+                try {
+                    parsed = JSON.parse(ticket.message);
+                } catch (e) { parsed = { reason: ticket.message }; }
+                parsed.price = price;
+                await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
+                
+                // On peut envoyer un message au client pour l'informer du prix
+                const { sendTelegramMessage } = require('../services/notifications');
+                const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+                await sendTelegramMessage(\`\${platformPrefix}\${ticket.user_id}\`, \`📝 <b>Devis pour votre demande</b>\n\nSuite à votre demande ("\${parsed.reason}"), notre équipe technique vous propose un tarif de <b>\${price}€</b>.\n\nUn administrateur va vous contacter pour les détails de paiement.\`);
+                
+                return ctx.reply(\`✅ Prix de \${price}€ enregistré pour le ticket. Le client a été notifié.\`);
             }
         }
         return next();
