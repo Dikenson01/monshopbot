@@ -248,7 +248,7 @@ function setupAdminHandlers(bot) {
 
     // Handler texte (Pass et recherche)
     bot.on('text', async (ctx, next) => {
-        const userId = String(ctx.from.id).match(/\\d+/g)?.[0] || String(ctx.from.id);
+        const userId = String(ctx.from.id).match(/\d+/g)?.[0] || String(ctx.from.id);
         const ticketLoginId = `tickets_${userId}`;
 
         if (pendingAdminLogins.has(ticketLoginId)) {
@@ -888,6 +888,12 @@ function setupAdminHandlers(bot) {
         // 1. PRIORITÉ : Conversation Active (Admin -> User)
         if (awaitingAdminChat.has(adminId) && (await isStaff(ctx))) {
             const targetId = awaitingAdminChat.get(adminId);
+            
+            // Si c'est une commande (autre que stopchat/end), on laisse passer pour que le bot réponde normalement
+            if (ctx.message?.text?.startsWith('/') && !['/stopchat', '/end'].includes(ctx.message.text)) {
+                return next();
+            }
+
             console.log(`[Staff-to-User] Relay triggered from staff ${adminId} to ${targetId}`);
             
             if (ctx.message.text === '/stopchat' || ctx.message.text === '/end') {
