@@ -56,6 +56,7 @@ async function main() {
 
     // Middleware de maintenance et tracking
     dispatcher.use(async (ctx, next) => {
+        console.log(`[Middleware] Entry for user ${ctx.from.id} on ${ctx.platform}`);
         try {
             const settings = ctx.state.settings;
 

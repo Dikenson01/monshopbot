@@ -140,15 +140,19 @@ class TelegramChannel extends Channel {
                     .then(() => console.log(`[TG] ✅ Webhook supprimé ou inexistant.`))
                     .catch(err => console.warn(`[TG] ⚠️ Attention deleteWebhook: ${err.message}`));
                 
-                console.log(`[TG] Appel à this.bot.launch()...`);
-                await this.bot.launch({
+                console.log(`[TG] Appel à startPolling()...`);
+                this.bot.launch({
                     dropPendingUpdates: true,
                     allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post']
+                }).then(() => {
+                    console.log('✅ [TG] BOT TELEGRAM CONNECTÉ ET OPÉRATIONNEL !');
+                    this.isActive = true;
+                }).catch(err => {
+                    console.error('❌ [TG] Erreur lors du launch:', err.message);
                 });
                 
-                const me = await this.bot.telegram.getMe();
-                console.log(`✅ [TG] BOT TELEGRAM CONNECTÉ ET OPÉRATIONNEL : @${me.username}`);
-                this.isActive = true;
+                // On n'attend pas le launch car il peut durer indéfiniment en polling
+                return;
             } catch (err) {
                 console.error('❌ [TG] Erreur critique lors du launch:', err.message);
                 if (err.message.includes('409') && retryCount < 15) {
