@@ -104,19 +104,32 @@ class TelegramChannel extends Channel {
         }, 60000);
 
         console.log(`[TG-LOCK] Telegram lock claimed by ${instanceId}`);
-        console.log(`[TG] Lancement du bot (${this.token.substring(0, 4)}****...)...`);
+        console.log(`[TG] Préparation du lancement (${this.token.substring(0, 6)}****)...`);
         
         const launch = async (retryCount = 0) => {
             try {
-                await this.bot.launch();
-                console.log('✅ [TG] Bot lancé avec succès !');
+                console.log(`[TG] Tentative de launch polling (Essai ${retryCount + 1})...`);
+                // Nettoyage explicite du webhook avant de lancer le polling pour éviter les conflits
+                await this.bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
+                
+                await this.bot.launch({
+                    dropPendingUpdates: true,
+                    allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post']
+                });
+                
+                console.log('✅ [TG] BOT TELEGRAM CONNECTÉ ET OPÉRATIONNEL !');
                 this.isActive = true;
             } catch (err) {
-                if (err.message.includes('409') && retryCount < 5) {
-                    console.warn(`⚠️ [TG] Conflit 409 (déjà une instance). Tentative ${retryCount + 1}/5 dans 15s...`);
-                    setTimeout(() => launch(retryCount + 1), 15000);
+                console.error('❌ [TG] Erreur lors du launch:', err.message);
+                if (err.message.includes('409') && retryCount < 10) {
+                    console.warn(`⚠️ [TG] Conflit 409 (une autre instance tourne encore). Nouveau test dans 10s...`);
+                    setTimeout(() => launch(retryCount + 1), 10000);
+                } else if (err.message.includes('401')) {
+                    console.error('❌ [TG] TOKEN INVALIDE (401 Unauthorized)');
                 } else {
-                    console.error('❌ [TG] Erreur fatale au lancement:', err.message);
+                    console.error('❌ [TG] Erreur inconnue:', err);
+                    // On réessaye quand même après 30s en cas de coupure réseau
+                    setTimeout(() => launch(retryCount + 1), 30000);
                 }
             }
         };
