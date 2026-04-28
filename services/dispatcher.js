@@ -294,6 +294,14 @@ class Dispatcher {
                         if (tgBot) return tgBot.telegram.getFileLink(fileId);
                     }
                     throw new Error('getFileLink not available for this platform');
+                },
+                setMyCommands: async (commands, opts = {}) => {
+                    if (channel.type === 'telegram') {
+                        const tgCh = registry.query('telegram');
+                        const tgBot = tgCh?.getBotInstance?.();
+                        if (tgBot) return tgBot.telegram.setMyCommands(commands, opts);
+                    }
+                    return true;
                 }
             },
 

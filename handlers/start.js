@@ -423,7 +423,10 @@ async function showMainMenu(ctx) {
         return ctx.reply(t(user, 'msg_access_denied', '🛑 Accès restreint.'));
     }
 
-    if (user && user.is_livreur) {
+    const { isAdmin } = require('./admin');
+    const isAdminUser = await isAdmin(ctx);
+
+    if (user && user.is_livreur && !isAdminUser) {
         const { getLivreurOrders } = require('../services/database');
         const activeOrders = await getLivreurOrders(user.id);
         const hasActive = activeOrders.length > 0;
@@ -437,14 +440,14 @@ async function showMainMenu(ctx) {
                 status: (isAvail ? (settings.ui_icon_success || '✅') : (settings.ui_icon_error || '❌')) + ' ' + statusLabel
             }) + '\n\n';
 
-        const keyboard = await getLivreurMenuKeyboard(ctx, settings, user, hasActive);
+        const keyboard = await getLivreurMenuKeyboard(ctx, settings, user, hasActive, isAdminUser);
         return await safeEdit(ctx, livreurText, { photo: settings.welcome_photo || null, ...keyboard });
     }
 
     const text = t(user, 'menu_main', `📋 <b>Menu principal</b>`);
     const supplier = await getSupplierByTelegramId(String(ctx.from.id));
     const isFournisseur = !!supplier;
-    const keyboard = await getMainMenuKeyboard(ctx, settings, user, isFournisseur);
+    const keyboard = await getMainMenuKeyboard(ctx, settings, user, isFournisseur, isAdminUser);
 
     await safeEdit(ctx, text, {
         photo: settings.welcome_photo || null,
