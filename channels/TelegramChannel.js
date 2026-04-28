@@ -45,6 +45,12 @@ class TelegramChannel extends Channel {
         });
 
         // Relayer tout vers le dispatcher
+        this.bot.on('update', (update) => {
+            if (update.message || update.callback_query) {
+                console.log(`[TG-RAW] Update reçu ID=${update.update_id} de ${update.message?.from?.id || update.callback_query?.from?.id}`);
+            }
+        });
+
         this.bot.on('message', async (ctx) => {
             console.log(`[TG-DEBUG] Message reçu de ${ctx.from.id}: "${ctx.message.text ||'NO_TEXT'}"`);
             if (this.messageHandler) {

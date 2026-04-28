@@ -121,7 +121,9 @@ class Dispatcher {
         }
 
         // Uniformisation du contexte
+        console.log(`[Dispatcher] Context building for ${userId}...`);
         const ctx = await this._createUnifiedContext(channel, msg, userId);
+        console.log(`[Dispatcher] Context created. Running middlewares (${this.middleware.length})...`);
         
         try {
             // 1. Exécuter les middlewares
@@ -129,8 +131,10 @@ class Dispatcher {
             const next = async () => {
                 index++;
                 if (index < this.middleware.length) {
+                    console.log(`[Dispatcher] Middleware ${index} starting...`);
                     await this.middleware[index](ctx, next);
                 } else {
+                    console.log(`[Dispatcher] Routing update...`);
                     // 3. Gestion des approbations (STRICT)
                     const registeredUser = ctx.state.user;
                     const isApproved = registeredUser?.is_approved !== false || registeredUser?.is_livreur === true || (await require('../handlers/admin').isAdmin(ctx));
