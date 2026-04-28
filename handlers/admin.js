@@ -127,7 +127,7 @@ async function showAdminMenu(ctx, isEdit = false) {
         [Markup.button.webApp('🌐 ACCÈS MON SHOP (Web)', dashboardUrl)],
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
         [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders'), Markup.button.callback('💬 Support', 'admin_support_queue')],
-        [Markup.button.callback('📥 Demandes (Contact)', 'admin_tickets')],
+        [Markup.button.callback('📥 Contact', 'admin_tickets')],
         [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],
         [Markup.button.callback(t(user, 'btn_admin_marketplace', '🏪 Marketplace'), 'mp_browse'), Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
         [Markup.button.callback(t(user, 'btn_admin_features', '✨ Guide Bot'), 'admin_features')],
@@ -889,8 +889,11 @@ function setupAdminHandlers(bot) {
         if (awaitingAdminChat.has(adminId) && (await isStaff(ctx))) {
             const targetId = awaitingAdminChat.get(adminId);
             
-            // Si c'est une commande (autre que stopchat/end), on laisse passer pour que le bot réponde normalement
-            if (ctx.message?.text?.startsWith('/') && !['/stopchat', '/end'].includes(ctx.message.text)) {
+            // Si c'est une commande OU un mot de passe d'admin en attente, on laisse passer
+            const isCommand = ctx.message?.text?.startsWith('/') && !['/stopchat', '/end'].includes(ctx.message.text);
+            const isPendingLogin = pendingAdminLogins.has(adminId) || pendingAdminLogins.has(`tickets_${adminId}`);
+            
+            if (isCommand || isPendingLogin) {
                 return next();
             }
 
