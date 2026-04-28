@@ -184,72 +184,50 @@ function setupStartHandler(bot) {
                 notifyAdmins(bot, newMsg).catch(() => {});
             }
 
-            let hasActive = false;
-            if (registeredUser.is_livreur) {
-                const { getLivreurOrders } = require('../services/database');
-                const activeOrders = await getLivreurOrders(registeredUser.id);
-                hasActive = activeOrders.length > 0;
-
-                const city = registeredUser.current_city || registeredUser.data?.current_city || 'Non défini';
-                const isAvail = registeredUser.is_available || registeredUser.data?.is_available;
-
-                welcomeText = `${settings.ui_icon_livreur} <b>Bienvenue, ${user.first_name} !</b>\n\n` +
-                    `📍 Secteur : <b>${city.toUpperCase()}</b>\n` +
-                    `🔘 Statut : <b>${isAvail ? (settings.ui_icon_success || '✅') + ' DISPONIBLE' : (settings.ui_icon_error || '❌') + ' INDISPONIBLE'}</b>\n\n`;
-
-                if (hasActive) {
-                    welcomeText += `🚀 <b>VOUS AVEZ ${activeOrders.length} COMMANDE(S) EN COURS !</b>\n\n` +
-                        activeOrders.map(o => `📦 #${o.id.slice(-5)} - ${o.address || '?'}`).join('\n') +
-                        `\n\n<i>Cliquez sur "Mes livraisons en cours" pour les gérer.</i>`;
-                }
-            } else {
-                const paymentLine = settings.payment_modes
-                    ? `\n🚨 <b>Le paiement s'effectue en : ${settings.payment_modes}</b>‼️\n`
-                    : '';
-                
-                // --- TOGGLE WELCOME MESSAGE ---
-                const useWelcome = settings.welcome_message_enabled !== false;
-                
-                if (isNew && useWelcome) {
-                    welcomeText = t(ctx, 'msg_welcome', `✨ <b>Bienvenue sur {bot_name}, {first_name} !</b>`, {
-                        bot_name: settings.bot_name,
-                        first_name: user.first_name
-                    }) + '\n\n' +
-                        `${settings.welcome_message || ''}\n${paymentLine}\n` +
-                        `📍 <i>En utilisant ce service, vous acceptez d'être localisé tacitement.</i>\n\n` +
-                        `🔗 <b>Votre lien de parrainage :</b>\n` +
-                        `<code>https://t.me/${ctx.botInfo?.username || 'bot'}?start=${registeredUser.referral_code}</code>`;
-                    if (!referrerId) pendingReferralInput.set(docId, true);
-                } else {
-                    const defaultText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`);
-                    welcomeText = t(ctx, 'msg_welcome_back', defaultText, {
-                        first_name: user.first_name,
-                        bot_name: settings.bot_name,
-                        payment_line: paymentLine
-                    });
-                }
-            }
-            
-            // Lookups optimisés (Admin + Fournisseur)
+            // --- BIFURCATION HOTLINE (EXISTING VS NEW) ---
             const [isAdminUser, supplier] = await Promise.all([
                 isAdmin(ctx),
                 getSupplierByTelegramId(String(ctx.from.id))
             ]);
-            const isFournisseur = !!supplier;
-            const isLivreur = registeredUser.is_livreur;
+            
+            console.log(`[START-DEBUG] User: ${user.id} | isNew: ${isNew} | isAdmin: ${isAdminUser}`);
 
-            const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
-            await safeEdit(ctx, welcomeText, {
-                photo: settings.welcome_photo || null,
-                ...keyboard
-            });
+            if (isAdminUser) {
+                // Les admins voient le menu normal immédiatement
+                const welcomeBackText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`)
+                    .replace('{first_name}', user.first_name);
+                
+                const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
+                await safeEdit(ctx, welcomeBackText, {
+                    photo: settings.welcome_photo || null,
+                    ...keyboard
+                });
+            } else {
+                // Bifurcation pour les clients
+                const text = `👋 <b>Bienvenue dans notre service</b>\n\nQue souhaitez-vous faire ?`;
+                const keyboard = Markup.inlineKeyboard([
+                    [Markup.button.callback('🎧 Je suis déjà client (Hotline)', 'hotline_menu')],
+                    [Markup.button.callback('💎 J\'aimerais en savoir plus (Ventes)', 'show_pricing')],
+                    [Markup.button.callback('🔍 Consulter le catalogue', 'start_welcome')]
+                ]);
+                await safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+            }
 
             if (ctx.telegram) {
+                console.log(`[TG-DEBUG] Setting commands for ${ctx.from.id}`);
+                ctx.telegram.setMyCommands([
+                    { command: 'start', description: '🏠 Lancer le bot / Accueil' },
+                    { command: 'menu', description: '🛒 Voir le catalogue' },
+                    { command: 'orders', description: '📦 Mes commandes' },
+                    { command: 'admin', description: '🔐 Console Admin' },
+                    { command: 'help', description: '❓ Aide et support' }
+                ]).catch(e => console.error('[TG-DEBUG] setMyCommands error:', e.message));
+                
                 ctx.telegram.setChatMenuButton(ctx.chat.id, { type: 'commands' }).catch(() => { });
             }
 
         } catch (error) {
-            console.error('❌ Erreur /start:', error);
+            console.error('❌ Erreur fatale /start:', error.message, error.stack);
         }
     });
 
