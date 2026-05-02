@@ -353,6 +353,7 @@ function setupAdminHandlers(bot) {
         const buttons = [
             [Markup.button.callback('💬 Répondre / Démarrer discussion', `admin_chat_user_${platformPrefix}${ticket.user_id}`)],
             [Markup.button.callback('💰 Indiquer un prix (Facturer)', `admin_ticket_price_${ticketId}`)],
+            [Markup.button.callback('✅ CLÔTURER LE TICKET', `admin_ticket_close_${ticketId}`)],
             [Markup.button.callback('◀️ Retour', 'admin_tickets_refresh')]
         ];
 
@@ -371,6 +372,36 @@ function setupAdminHandlers(bot) {
         pendingTicketPrice.set(String(ctx.from.id), ticketId);
         await ctx.answerCbQuery();
         return ctx.reply('💰 <b>Indiquer un prix</b>\n\nEntrez le montant à facturer au client pour cette demande (ex: 100) :');
+    });
+
+    bot.action(/^admin_ticket_close_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const ticketId = ctx.match[1];
+        const { supabase } = require('../services/database');
+        
+        try {
+            const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
+            if (!ticket) return ctx.answerCbQuery("⚠️ Ticket introuvable.");
+
+            let parsed = {};
+            try { parsed = JSON.parse(ticket.message); } catch (e) { parsed = { reason: ticket.message }; }
+            
+            parsed.status = 'closed';
+            parsed.closed_at = new Date().toISOString();
+
+            await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
+
+            // Notifier le client
+            const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+            const { sendTelegramMessage } = require('../services/notifications');
+            await sendTelegramMessage(`${platformPrefix}${ticket.user_id}`, `✅ <b>Votre demande a été traitée et le ticket est maintenant clôturé.</b>\n\nMerci de votre confiance !`);
+
+            await ctx.answerCbQuery("✅ Ticket clôturé.");
+            return showAdminTickets(ctx);
+        } catch (e) {
+            console.error('[CloseTicket] Error:', e);
+            await ctx.answerCbQuery("⚠️ Erreur lors de la clôture.");
+        }
     });
 
     bot.on('text', async (ctx, next) => {
@@ -641,12 +672,11 @@ function setupAdminHandlers(bot) {
         
         const displayId = (mod && !adm) ? 'HIDDEN' : targetIdString;
 
-        return ctx.reply(`💬 <b>CONVERSATION ACTIVE</b>\n\n👤 Client : <b>${name}</b> (${platform})\n🆔 ID : <code>${displayId}</code>\n\nTous vos prochains messages (texte, photo, vidéo) lui seront transmis.\n\nCliquez sur le bouton ci-dessous pour <b>TERMINER</b> et reprendre le comportement normal.`,
+        return ctx.reply(`💬 <b>CONVERSATION ACTIVE</b>\n\n👤 Client : <b>${name}</b> (${platform})\n🆔 ID : <code>${displayId}</code>\n\nTous vos prochains messages (texte, photo, vidéo) lui seront transmis.\n\nCliquez sur le bouton ci-dessous pour <b>TERMINER</b> la session ou <b>CLÔTURER</b> le ticket définitivement.`,
             Markup.inlineKeyboard([
-                [Markup.button.callback('🛑 TERMINER LA CONVERSATION', `admin_chat_end_${targetIdString}`)],
-                [Markup.button.callback('◀️ Retour au Menu / File', 'admin_menu')]
-            ])
-        );
+                [Markup.button.callback('🛑 Terminer la session', `admin_chat_end_${targetIdString}`)],
+                [Markup.button.callback('✅ Clôturer le Ticket (Résolu)', `admin_ticket_close_by_session_${targetIdString}`)]
+            ], { parse_mode: 'HTML' }));
     });
 
     bot.action(/^admin_chat_end_(.+)$/, async (ctx) => {
@@ -673,6 +703,53 @@ function setupAdminHandlers(bot) {
         
         await cleanupUserChat(ctx); // Cleanup before returning to menu
         return showAdminMenu(ctx, true);
+    });
+
+    bot.action(/^admin_ticket_close_by_session_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const targetIdString = ctx.match[1];
+        const adminId = String(ctx.from.id);
+        
+        // Nettoyer la session
+        awaitingAdminChat.delete(adminId);
+        activeAdminSessions.delete(adminId);
+        pendingSupportRequests.delete(targetIdString);
+        activeUserSessions.delete(targetIdString);
+        awaitingUserSupportReply.delete(targetIdString);
+
+        // Trouver le ticket correspondant pour le clôturer en DB
+        const { supabase } = require('../services/database');
+        const userId = targetIdString.replace('telegram_', '');
+        
+        try {
+            const { data: ticket } = await supabase
+                .from('bot_support_logs')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('type', 'ticket')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (ticket) {
+                let parsed = {};
+                try { parsed = JSON.parse(ticket.message); } catch (e) { parsed = { reason: ticket.message }; }
+                parsed.status = 'closed';
+                parsed.closed_at = new Date().toISOString();
+                await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticket.id);
+                
+                // Notifier le client
+                const { sendTelegramMessage } = require('../services/notifications');
+                await sendTelegramMessage(targetIdString, `✅ <b>Votre demande a été traitée et le ticket est maintenant clôturé.</b>\n\nMerci de votre confiance !`);
+            }
+
+            await ctx.answerCbQuery('Ticket clôturé.');
+            await cleanupUserChat(ctx);
+            return showAdminTickets(ctx);
+        } catch (e) {
+            console.error('[CloseBySession] Error:', e);
+            await ctx.answerCbQuery("⚠️ Erreur lors de la clôture.");
+        }
     });
 
     bot.action('user_chat_reply_admin', async (ctx) => {
@@ -1029,6 +1106,7 @@ function setupAdminHandlers(bot) {
                 .then(() => console.log(`[LOG-DB-DONE] Incoming success for ${uKey}`))
                 .catch(e => console.error(`[LOG-DB-FAIL-IN] ${uKey}:`, e.message));
 
+            console.log(`[AdminChat] New message from ${uKey}. Current session: ${activeUserSessions.has(uKey)}`);
             const reportMsg = `👤 <b>MESSAGE DE ${ctx.from.first_name || 'Client'}</b> (@${ctx.from.username || '?'})\nID: <code>${uKey}</code>\n\n${text ? `<i>"${text}"</i>` : '<i>(Fichier média seul)</i>'}`;
             
             const options = { 

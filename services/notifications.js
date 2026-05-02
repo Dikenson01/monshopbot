@@ -288,7 +288,14 @@ async function sendMessageToUser(userId, message, options = {}, providedBot = nu
 }
 
 async function sendTelegramMessage(userId, message, options = {}) {
-    return sendMessageToUser(userId, message, options);
+    console.log(`[MSG-OUT] Attempting to send message to ${userId}...`);
+    const res = await sendMessageToUser(userId, message, options);
+    if (res) {
+        console.log(`[MSG-OUT] SUCCESS: Message sent to ${userId}`);
+    } else {
+        console.error(`[MSG-OUT] FAILED: Message not sent to ${userId}`);
+    }
+    return res;
 }
 
 module.exports = { notifyAdmins, notifyLivreurs, notifySuppliers, sendTelegramMessage, sendMessageToUser };
