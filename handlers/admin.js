@@ -302,15 +302,19 @@ function setupAdminHandlers(bot) {
 
         const buttons = tickets.map(t => {
             let reason = 'Inconnu';
+            let status = 'open';
             try {
                 const parsed = JSON.parse(t.message);
                 reason = parsed.reason || t.message;
+                status = parsed.status || 'open';
             } catch (e) { reason = t.message; }
-            return [Markup.button.callback(`📩 ${t.user_id} - ${reason.slice(0, 20)}...`, `admin_ticket_view_${t.id}`)];
+            
+            const statusEmoji = status === 'closed' ? '✅' : '🟢';
+            return [Markup.button.callback(`${statusEmoji} ${t.user_id} - ${reason.slice(0, 20)}...`, `admin_ticket_view_${t.id}`)];
         });
         buttons.push([Markup.button.callback('◀️ Retour', 'admin_menu')]);
         
-        const text = `📥 <b>Section Contact (Hotline)</b>\n\nSélectionnez une demande :`;
+        const text = `📥 <b>Section Contact (Hotline)</b>\n\n🟢 = Ouvert | ✅ = Clôturé\nSélectionnez une demande :`;
         if (ctx.callbackQuery) {
             return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
         } else {
@@ -345,17 +349,24 @@ function setupAdminHandlers(bot) {
         
         const text = `📄 <b>Détails de la demande</b>\n\n` +
             `👤 Utilisateur : <b>${userName}</b>\n` +
-            `🆔 ID : <code>${ticket.user_id}</code>\n\n` +
+            `🆔 ID : <code>${ticket.user_id}</code>\n` +
+            `📊 Statut : <b>${status === 'closed' ? '✅ CLÔTURÉ' : '🟢 OUVERT'}</b>\n\n` +
             `📝 <b>Raison du contact :</b>\n<i>${reason}</i>\n\n` +
             `💰 <b>Prix indiqué :</b> ${price}\n\n` +
             `Que souhaitez-vous faire ?`;
 
         const buttons = [
             [Markup.button.callback('💬 Répondre / Démarrer discussion', `admin_chat_user_${platformPrefix}${ticket.user_id}`)],
-            [Markup.button.callback('💰 Indiquer un prix (Facturer)', `admin_ticket_price_${ticketId}`)],
-            [Markup.button.callback('✅ CLÔTURER LE TICKET', `admin_ticket_close_${ticketId}`)],
-            [Markup.button.callback('◀️ Retour', 'admin_tickets_refresh')]
+            [Markup.button.callback('💰 Indiquer un prix (Facturer)', `admin_ticket_price_${ticketId}`)]
         ];
+
+        if (status === 'closed') {
+            buttons.push([Markup.button.callback('🔓 RÉOUVRIR LE TICKET', `admin_ticket_open_${ticketId}`)]);
+        } else {
+            buttons.push([Markup.button.callback('✅ CLÔTURER LE TICKET', `admin_ticket_close_${ticketId}`)]);
+        }
+
+        buttons.push([Markup.button.callback('◀️ Retour', 'admin_tickets_refresh')]);
 
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
     });
@@ -376,7 +387,47 @@ function setupAdminHandlers(bot) {
 
     bot.action(/^admin_ticket_close_(.+)$/, async (ctx) => {
         if (!(await isAdmin(ctx))) return;
-        const ticketId = ctx.match[1];
+        const ticketId = parseInt(ctx.match[1]);
+        const { supabase } = require('../services/database');
+        
+        try {
+            console.log(`[Admin-Ticket] Closing ticket ${ticketId}...`);
+            const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
+            if (!ticket) return ctx.answerCbQuery("⚠️ Ticket introuvable.");
+
+            let parsed = {};
+            try { 
+                parsed = JSON.parse(ticket.message); 
+                if (typeof parsed !== 'object') throw new Error('Not an object');
+            } catch (e) { 
+                parsed = { reason: ticket.message }; 
+            }
+            
+            parsed.status = 'closed';
+            parsed.closed_at = new Date().toISOString();
+
+            const { error: updateError } = await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
+            if (updateError) throw updateError;
+
+            // Notifier le client
+            const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+            const { sendTelegramMessage } = require('../services/notifications');
+            const targetId = `${platformPrefix}${ticket.user_id}`;
+            
+            console.log(`[Admin-Ticket] Notifying client ${targetId} of closure...`);
+            await sendTelegramMessage(targetId, `✅ <b>Votre demande a été traitée et le ticket est maintenant clôturé.</b>\n\nMerci de votre confiance !`);
+
+            await ctx.answerCbQuery("✅ Ticket clôturé.");
+            return showAdminTickets(ctx);
+        } catch (e) {
+            console.error('[CloseTicket] Error:', e);
+            await ctx.answerCbQuery(`⚠️ Erreur: ${e.message}`, { show_alert: true });
+        }
+    });
+
+    bot.action(/^admin_ticket_open_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const ticketId = parseInt(ctx.match[1]);
         const { supabase } = require('../services/database');
         
         try {
@@ -386,21 +437,16 @@ function setupAdminHandlers(bot) {
             let parsed = {};
             try { parsed = JSON.parse(ticket.message); } catch (e) { parsed = { reason: ticket.message }; }
             
-            parsed.status = 'closed';
-            parsed.closed_at = new Date().toISOString();
+            parsed.status = 'open';
+            delete parsed.closed_at;
 
             await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
 
-            // Notifier le client
-            const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
-            const { sendTelegramMessage } = require('../services/notifications');
-            await sendTelegramMessage(`${platformPrefix}${ticket.user_id}`, `✅ <b>Votre demande a été traitée et le ticket est maintenant clôturé.</b>\n\nMerci de votre confiance !`);
-
-            await ctx.answerCbQuery("✅ Ticket clôturé.");
+            await ctx.answerCbQuery("🔓 Ticket réouvert.");
             return showAdminTickets(ctx);
         } catch (e) {
-            console.error('[CloseTicket] Error:', e);
-            await ctx.answerCbQuery("⚠️ Erreur lors de la clôture.");
+            console.error('[OpenTicket] Error:', e);
+            await ctx.answerCbQuery("⚠️ Erreur lors de la réouverture.");
         }
     });
 
@@ -733,10 +779,19 @@ function setupAdminHandlers(bot) {
 
             if (ticket) {
                 let parsed = {};
-                try { parsed = JSON.parse(ticket.message); } catch (e) { parsed = { reason: ticket.message }; }
+                try { 
+                    parsed = JSON.parse(ticket.message); 
+                    if (typeof parsed !== 'object') throw new Error('Not an object');
+                } catch (e) { 
+                    parsed = { reason: ticket.message }; 
+                }
+                
                 parsed.status = 'closed';
                 parsed.closed_at = new Date().toISOString();
-                await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticket.id);
+                
+                console.log(`[Admin-Session-Close] Closing ticket ${ticket.id} for user ${userId}`);
+                const { error: updateError } = await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticket.id);
+                if (updateError) console.error('[Admin-Session-Close] DB Error:', updateError.message);
                 
                 // Notifier le client
                 const { sendTelegramMessage } = require('../services/notifications');
