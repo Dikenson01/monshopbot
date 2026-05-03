@@ -81,9 +81,9 @@ function setupHotlineHandlers(bot) {
         await ctx.answerCbQuery().catch(() => {});
         
         const text = `🚀 <b>VOTRE BOT SUR-MESURE</b>\n\n` +
-            `Démarrez avec notre base ultra-performante **Le Plug IDF** et ajoutez les modules nécessaires à votre croissance.\n\n` +
+            `Démarrez avec notre base ultra-performante **ShopTonBot** et ajoutez les modules nécessaires à votre croissance.\n\n` +
             `💰 <b>Tarification :</b>\n` +
-            `• <b>Pack Base (Le Plug) : 450€</b>\n` +
+            `• <b>Pack Base (Standard) : 450€</b>\n` +
             `• Supplément : 200€ / fonctionnalité\n` +
             `• <b>PACK PREMIUM (Tout inclus) : 650€</b> ✨\n\n` +
             `👇 <i>Personnalisez votre projet ci-dessous :</i>`;
@@ -198,11 +198,16 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         else selections.add(featureId);
 
         await ctx.answerCbQuery(`${selections.has(featureId) ? 'Ajouté' : 'Retiré'}`);
+        
+        const cat = categories.find(c => c.id === catId);
+        const features = featureCatalog[catId] || [];
+
         return ctx.callbackQuery.message.reply_markup ? ctx.editMessageReplyMarkup(
             Markup.inlineKeyboard([
-                ...featureCatalog[catId].map(f => {
-                    const isSelected = selections.has(f.id);
-                    return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}`, `config_toggle_${catId}_${f.id}`)];
+                ...features.map(f => {
+                    const isBase = BASE_FEATURES.includes(f.id);
+                    const isSelected = selections.has(f.id) || isBase;
+                    return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}${isBase ? ' (Inclus)' : ''}`, isBase ? 'none' : `config_toggle_${catId}_${f.id}`)];
                 }),
                 [Markup.button.callback('◀️ Retour aux catégories', 'config_start')]
             ]).reply_markup
@@ -227,9 +232,10 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             isBundle = true;
         }
 
+        let text = `🛒 <b>RÉSUMÉ DE VOTRE CONFIGURATION</b>\n\n`;
         const allFeatures = Object.values(featureCatalog).flat();
         
-        text += `🟢 <b>Base Incluse (Le Plug IDF) :</b>\n`;
+        text += `🟢 <b>Base Incluse (Standard) :</b>\n`;
         BASE_FEATURES.forEach(id => {
             const f = allFeatures.find(item => item.id === id);
             text += `• ${f?.name || id}\n`;
@@ -250,10 +256,10 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         }
 
         const buttons = [];
-        if (selections.size > 0) {
-            buttons.push([Markup.button.callback('✅ Valider et passer au Processus PDF', 'config_confirm')]);
+        if (supplements.length > 0 || isBundle) {
+            buttons.push([Markup.button.callback('✅ Valider ma configuration', 'config_confirm')]);
         }
-        buttons.push([Markup.button.callback('➕ Ajouter d\'autres options', 'config_start')]);
+        buttons.push([Markup.button.callback('➕ Continuer mes achats', 'config_start')]);
         buttons.push([Markup.button.callback('🗑 Vider le panier', 'config_clear')]);
 
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
@@ -299,6 +305,27 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('💎 Voir les Tarifs', 'show_pricing')],
+            [Markup.button.callback('◀️ Retour', 'sales_menu_start')]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action('show_comparison', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const text = `📊 <b>COMPARATIF DES SOLUTIONS</b>\n\n` +
+            `🔹 <b>PACK STANDARD (450€)</b>\n` +
+            `• Base ultra-stable (Telegram)\n` +
+            `• Catalogue & Gestion des stocks\n` +
+            `• Paiements Cash & Preuves\n\n` +
+            `🔸 <b>PACK PREMIUM (650€)</b>\n` +
+            `• <b>TOUTES</b> les fonctionnalités incluses\n` +
+            `• WhatsApp + Telegram synchronisés\n` +
+            `• Marketplace Fournisseurs & Livreur Pro\n` +
+            `• Fidélité, Parrainage & Gamification\n\n` +
+            `💡 <i>Le Pack Premium est rentabilisé dès l'ajout de 2 options à la carte.</i>`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('🏗 Lancer le Configurateur', 'config_start')],
             [Markup.button.callback('◀️ Retour', 'sales_menu_start')]
         ]);
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
