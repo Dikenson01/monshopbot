@@ -256,7 +256,10 @@ function setupStartHandler(bot) {
         if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
         const settings = ctx.state?.settings || await getAppSettings();
         const user = ctx.state?.user;
-        const welcomeText = `👋 <b>Bienvenue sur notre bot !</b>\n\nQue souhaitez-vous faire ?`;
+        const welcomeText = `🛰 <b>BIENVENUE SUR NOTRE PLATEFORME</b>\n\n` +
+            `Découvrez le bot de vente le plus avancé du marché.\n` +
+            `Que vous soyez un client fidèle ou un futur partenaire, nous avons la solution qu'il vous faut.\n\n` +
+            `👇 <b>Faites votre choix :</b>`;
         const keyboard = await getWelcomeKeyboard(ctx, settings, user);
         return safeEdit(ctx, welcomeText, {
             photo: settings.welcome_photo || null,
@@ -444,10 +447,10 @@ async function showMainMenu(ctx) {
         return await safeEdit(ctx, livreurText, { photo: settings.welcome_photo || null, ...keyboard });
     }
 
-    const text = t(user, 'menu_main', `📋 <b>Menu principal</b>`);
+    const text = t(freshUser, 'menu_main', `⚡️ <b>CONSOLE DE COMMANDE</b>\n\nExplorez notre catalogue et testez la fluidité de notre système.\n\n👇 <i>Utilisez les boutons ci-dessous pour naviguer :</i>`);
     const supplier = await getSupplierByTelegramId(String(ctx.from.id));
     const isFournisseur = !!supplier;
-    const keyboard = await getMainMenuKeyboard(ctx, settings, user, isFournisseur, isAdminUser);
+    const keyboard = await getMainMenuKeyboard(ctx, settings, freshUser, isFournisseur, isAdminUser);
 
     await safeEdit(ctx, text, {
         photo: settings.welcome_photo || null,
@@ -459,8 +462,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     if (!settings) settings = ctx.state?.settings || await getAppSettings();
     const buttons = [];
 
-    // Ligne 0 : Pricing (Nouveau bouton)
-    buttons.push([Markup.button.callback(`💡 Je suis intéressé par le bot, je souhaite en savoir plus`, 'show_pricing')]);
+    // Ligne 0 : Pricing (Nouveau bouton ultra-visible)
+    buttons.push([Markup.button.callback(`💎 JE VEUX CE BOT POUR MON BUSINESS 💎`, 'show_pricing')]);
 
     // Ligne 1 : Commander (Gros bouton principal)
     buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '👟'} ${t(user, 'btn_catalog', settings.label_catalog || 'Passer une commande')}`, 'view_catalog')]);
@@ -536,8 +539,9 @@ async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = fal
 
 async function getWelcomeKeyboard(ctx, settings, user) {
     return Markup.inlineKeyboard([
-        [Markup.button.callback('Je suis déjà client', 'hotline_menu')],
-        [Markup.button.callback('J\'aimerais en savoir plus', 'sales_menu_start')]
+        [Markup.button.callback('🚀 CRÉER MON PROPRE BOT', 'sales_menu_start')],
+        [Markup.button.callback('🛒 TESTER LE CATALOGUE (DÉMO)', 'main_menu')],
+        [Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')]
     ]);
 }
 
