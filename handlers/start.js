@@ -14,6 +14,28 @@ async function initStartState() {
 }
 
 /**
+ * Génère un message d'accueil dynamique et professionnel
+ */
+function getDynamicWelcomeMessage(ctx, user) {
+    const name = user.first_name || 'Partenaire';
+    const hour = new Date().getHours();
+    
+    let greeting = "Bonjour";
+    if (hour >= 18 || hour < 5) greeting = "Bonsoir";
+
+    const variations = [
+        `🚀 <b>${greeting} ${name}, prêt à révolutionner votre business ?</b>\n\nBienvenue chez <b>SHOPTONBOT</b>, l'excellence de l'automatisation à votre service.`,
+        `✨ <b>${greeting} ${name}, l'efficacité n'attend pas.</b>\n\nBienvenue chez <b>SHOPTONBOT</b>. Nous transformons vos processus complexes en flux automatisés et rentables.`,
+        `💎 <b>${greeting} ${name}, entrez dans l'ère de la performance.</b>\n\nBienvenue chez <b>SHOPTONBOT</b>. Découvrez nos solutions d'automatisation Telegram & WhatsApp conçues pour durer.`,
+        `⚙️ <b>${greeting} ${name}, automatisez, encaissez, répétez.</b>\n\nBienvenue chez <b>SHOPTONBOT</b>. Votre partenaire stratégique pour une croissance sans friction.`
+    ];
+
+    // On choisit une variation basée sur l'ID utilisateur pour que ce soit "stable" mais différent entre clients
+    const index = parseInt(String(user.id).slice(-1)) % variations.length;
+    return variations[index];
+}
+
+/**
  * Vérifie si l'utilisateur est abonné au canal requis
  */
 async function checkSubscription(bot, ctx, settings) {
@@ -190,13 +212,12 @@ function setupStartHandler(bot) {
                 getSupplierByTelegramId(String(ctx.from.id))
             ]);
             
-            console.log(`[START-DEBUG] User: ${user.id} | isNew: ${isNew} | isAdmin: ${isAdminUser}`);
-
             if (isAdminUser) {
                 // Les admins voient le menu normal immédiatement
                 const welcomeBackText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`)
                     .replace('{first_name}', user.first_name);
                 
+                const { getWelcomeKeyboard } = require('./admin');
                 const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
                 await safeEdit(ctx, welcomeBackText, {
                     photo: settings.welcome_photo || null,
@@ -204,11 +225,13 @@ function setupStartHandler(bot) {
                 });
             } else {
                 // Bifurcation pour les clients
-                const text = `👋 <b>Bienvenue dans notre service</b>\n\nQue souhaitez-vous faire ?`;
+                const dynamicText = getDynamicWelcomeMessage(ctx, user);
+                const text = `${dynamicText}\n\nQue souhaitez-vous faire pour propulser votre activité ?`;
                 const keyboard = Markup.inlineKeyboard([
-                    [Markup.button.callback('🎧 Je suis déjà client (Hotline)', 'hotline_menu')],
-                    [Markup.button.callback('💎 J\'aimerais en savoir plus (Ventes)', 'show_pricing')],
-                    [Markup.button.callback('🔍 Consulter le catalogue', 'start_welcome')]
+                    [Markup.button.callback('📂 Mon Projet & Abonnements', 'view_my_project')],
+                    [Markup.button.callback('🏗 Créer mon propre Bot', 'config_start')],
+                    [Markup.button.callback('💎 Découvrir nos Offres', 'show_pricing')],
+                    [Markup.button.callback('🆘 Support & Hotline', 'hotline_menu')]
                 ]);
                 await safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
             }
