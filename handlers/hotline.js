@@ -166,6 +166,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         
         const buttons = categories.map(cat => [Markup.button.callback(`${cat.icon} ${cat.name}`, `config_cat_${cat.id}`)]);
         buttons.push([Markup.button.callback('🛒 Voir mon Panier / Résumé', 'config_summary')]);
+        buttons.push([Markup.button.callback('🗣 Projet spécifique / Sur mesure', 'hotline_issue_feature')]);
         buttons.push([Markup.button.callback('◀️ Retour', 'sales_menu_start')]);
 
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
@@ -268,6 +269,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             buttons.push([Markup.button.callback('✅ Valider ma configuration', 'config_confirm')]);
         }
         buttons.push([Markup.button.callback('➕ Continuer mes achats', 'config_start')]);
+        buttons.push([Markup.button.callback('🗣 Projet spécifique / Sur mesure', 'hotline_issue_feature')]);
         buttons.push([Markup.button.callback('🗑 Vider le panier', 'config_clear')]);
 
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
