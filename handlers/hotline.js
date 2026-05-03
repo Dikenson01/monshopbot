@@ -46,16 +46,27 @@ function setupHotlineHandlers(bot) {
         const reason = issueMap[issueKey] || 'Problème inconnu';
         pendingTicketInfo.set(ctx.from.id, { reason, type: 'hotline', priority: 'normal' });
 
-        const text = `🎧 Vous avez sélectionné : <b>${reason}</b>\n\n` +
-            `🔴 <b>Niveau d'urgence :</b>\n` +
-            `Si votre problème bloque totalement vos ventes, choisissez <b>URGENT</b>.`;
-            
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('⚡️ URGENT (Blocage total)', `hotline_priority_urgent`)],
-            [Markup.button.callback('🟢 Normal (Demande standard)', `hotline_priority_normal`)],
-            [Markup.button.callback('◀️ Annuler', 'hotline_menu')]
-        ]);
-        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+        if (issueKey === 'feature') {
+            const text = `💡 Vous avez sélectionné : <b>${reason}</b>\n\n` +
+                `Notre équipe commerciale est à votre disposition pour concevoir votre solution sur-mesure.\n\n` +
+                `⚠️ <b>Pour être recontacté rapidement :</b> Veuillez envoyer votre <b>@username Telegram</b> ci-dessous :`;
+                
+            const keyboard = Markup.inlineKeyboard([
+                [Markup.button.callback('◀️ Annuler', 'hotline_menu')]
+            ]);
+            return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+        } else {
+            const text = `🎧 Vous avez sélectionné : <b>${reason}</b>\n\n` +
+                `🔴 <b>Niveau d'urgence :</b>\n` +
+                `Si votre problème bloque totalement vos ventes, choisissez <b>URGENT</b>.`;
+                
+            const keyboard = Markup.inlineKeyboard([
+                [Markup.button.callback('⚡️ URGENT (Blocage total)', `hotline_priority_urgent`)],
+                [Markup.button.callback('🟢 Normal (Demande standard)', `hotline_priority_normal`)],
+                [Markup.button.callback('◀️ Annuler', 'hotline_menu')]
+            ]);
+            return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+        }
     });
 
     // Handle priority selection
