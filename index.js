@@ -107,6 +107,44 @@ async function main() {
                 }
             }
 
+            // 3. Force Channel Join (Telegram only)
+            if (ctx.platform === 'telegram' && !ctx.callbackQuery?.data?.startsWith('check_sub')) {
+                const requiredChannelId = settings.required_channel_id || '-1001880590480'; // Id du canal t.me/+PsQMCG9p36o0Njhk
+                const channelLink = settings.required_channel_link || 'https://t.me/+PsQMCG9p36o0Njhk';
+
+                // Skip check for admins
+                const { isAdmin } = require('./handlers/admin');
+                const isPrivileged = await isAdmin(ctx);
+
+                if (!isPrivileged) {
+                    try {
+                        const tgCh = registry.query('telegram');
+                        const tgBot = tgCh?.getBotInstance?.();
+                        if (tgBot) {
+                            const member = await tgBot.telegram.getChatMember(requiredChannelId, ctx.from.id);
+                            const allowed = ['member', 'administrator', 'creator'].includes(member.status);
+                            
+                            if (!allowed) {
+                                const text = `👋 <b>ACCÈS RÉSERVÉ</b>\n\nPour accéder au bot, vous devez rejoindre notre canal officiel :\n\n👉 <a href="${channelLink}">REJOINDRE LE CANAL</a>\n\n<i>Une fois rejoint, cliquez sur le bouton ci-dessous pour continuer.</i>`;
+                                const keyboard = Markup.inlineKeyboard([
+                                    [Markup.button.url('📢 Rejoindre le canal', channelLink)],
+                                    [Markup.button.callback('✅ C\'est fait, j\'ai rejoint !', 'check_sub')]
+                                ]);
+
+                                if (ctx.callbackQuery) {
+                                    await ctx.answerCbQuery("⚠️ Vous devez rejoindre le canal d'abord !").catch(() => {});
+                                    return ctx.editMessageText(text, { parse_mode: 'HTML', ...keyboard }).catch(() => {});
+                                }
+                                return ctx.reply(text, { parse_mode: 'HTML', ...keyboard }).catch(() => {});
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[Force-Join-Error]', e.message);
+                        // En cas d'erreur API (bot pas admin du canal), on laisse passer pour ne pas bloquer le bot
+                    }
+                }
+            }
+
             await next();
 
             // Nettoyage messages telegram
@@ -142,6 +180,32 @@ async function main() {
         initMarketplaceState()
     ]);
     console.log('✅ Tous les états persistants sont chargés');
+
+    // Gestion des demandes d'adhésion (Auto-Approbation)
+    dispatcher.on('chat_join_request', async (ctx) => {
+        try {
+            console.log(`[Auto-Approve] Approbation de ${ctx.from.id}...`);
+            const tgCh = registry.query('telegram');
+            const tgBot = tgCh?.getBotInstance?.();
+            if (tgBot) {
+                await tgBot.telegram.approveChatJoinRequest(ctx.chat.id, ctx.from.id);
+                // Optionnel: Envoyer un message de bienvenue en privé
+                await tgBot.telegram.sendMessage(ctx.from.id, "✅ <b>Votre demande a été approuvée !</b>\n\nVous pouvez maintenant utiliser le bot.", { parse_mode: 'HTML' }).catch(() => {});
+            }
+        } catch (e) {
+            console.error('[Auto-Approve-Error]', e.message);
+        }
+    });
+
+    // Action de vérification de l'abonnement
+    dispatcher.action('check_sub', async (ctx) => {
+        await ctx.answerCbQuery("Vérification en cours...").catch(() => {});
+        // Le middleware repassera au prochain update, on renvoie juste vers /start
+        if (setupStartHandler) {
+            return setupStartHandler(dispatcher).handleStart(ctx);
+        }
+        await ctx.reply("🔄 Chargement...");
+    });
 
     // Sondages (Actions & Messages)
     dispatcher.action(/^poll_free_([\w-]+)(?:_(\d+))?$/, async (ctx) => {

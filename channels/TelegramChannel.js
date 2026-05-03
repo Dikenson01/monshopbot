@@ -82,6 +82,19 @@ class TelegramChannel extends Channel {
                 console.error('[TG-CB] ERREUR: Pas de messageHandler !');
             }
         });
+
+        this.bot.on('chat_join_request', async (ctx) => {
+            console.log(`[TG-JOIN] Demande de join de ${ctx.from.id} pour le chat ${ctx.chat.id}`);
+            if (this.messageHandler) {
+                await this.messageHandler({
+                    from: ctx.from.id,
+                    name: ctx.from.first_name,
+                    text: 'chat_join_request',
+                    type: 'chat_join_request',
+                    ctx: ctx
+                });
+            }
+        });
     }
 
     async start() {
@@ -127,7 +140,7 @@ class TelegramChannel extends Channel {
                 console.log(`[TG] Lancement du polling (launch)...`);
                 this.bot.launch({
                     dropPendingUpdates: true,
-                    allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post'],
+                    allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post', 'chat_join_request'],
                     polling: {
                         timeout: 30,
                         limit: 100

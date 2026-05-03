@@ -5,7 +5,8 @@ const pendingTicketInfo = new Map();
 
 function setupHotlineHandlers(bot) {
 
-    // Hotline main menu
+    bot.action('hotline_menu', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
         const text = `🎧 <b>ESPACE CLIENT & HOTLINE</b>\n\nBienvenue dans votre espace dédié. Que souhaitez-vous faire ?`;
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('📂 Mon Projet & Abonnements', 'view_my_project')],

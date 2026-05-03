@@ -574,6 +574,7 @@ class Dispatcher {
             else if (h.type === 'message') match = true;
             else if (h.type === 'location' && ctx.message.location) match = true;
             else if (h.type === 'callback_query' && ctx.callbackQuery) match = true;
+            else if (h.type === 'chat_join_request' && ctx.updateType === 'chat_join_request') match = true;
 
             if (match) {
                 await h.fn(ctx, runHandlers);
