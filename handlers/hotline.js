@@ -91,7 +91,8 @@ function setupHotlineHandlers(bot) {
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('🥉 Pack Standard (450€)', 'pack_select_standard')],
             [Markup.button.callback('🥈 Pack WhatsApp Plus (550€)', 'pack_select_wa')],
-            [Markup.button.callback('🥇 Pack Premium All-In (650€)', 'pack_select_premium')],
+            [Markup.button.callback('🥇 Pack Premium (650€)', 'pack_select_premium')],
+            [Markup.button.callback('🚀 Pack Enterprise (950€)', 'pack_select_enterprise')],
             [Markup.button.callback('🏗 À la carte (Sur mesure)', 'config_start')],
             [Markup.button.callback('📊 Comparer les solutions', 'show_comparison')],
             [Markup.button.callback('◀️ Retour', 'start_welcome')]
@@ -124,13 +125,17 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             { id: 'catalogue_pro', name: 'Catalogue Multi-Médias (Photo/Vidéo)' },
             { id: 'stock_mgmt', name: 'Gestion des Stocks Intelligente' },
             { id: 'bundle_system', name: 'Système de Bundles (Ex: 1 acheté = 1 offert)' },
-            { id: 'price_tiers', name: 'Grilles de Tarifs Dégressifs' }
+            { id: 'price_tiers', name: 'Grilles de Tarifs Dégressifs' },
+            { id: 'express_reorder', name: 'Bouton Achat Express (One-Click)' }
         ],
         'cat_admin': [
             { id: 'dashboard_pro', name: 'Dashboard Admin (Stats & Analytics)' },
             { id: 'chat_admin_client', name: 'Chat Direct Admin/Client' },
             { id: 'broadcast_system', name: 'Système de Diffusion (Broadcast)' },
-            { id: 'supplier_mp', name: 'Espace Marketplace (Fournisseurs)' }
+            { id: 'supplier_mp', name: 'Espace Marketplace (Fournisseurs)' },
+            { id: 'low_stock_alerts', name: 'Alertes Stocks Critiques (Push)' },
+            { id: 'data_export_csv', name: 'Exports Comptables (CSV/Excel)' },
+            { id: 'multi_admin_roles', name: 'Gestion Rôles Multi-Admin' }
         ],
         'cat_pay': [
             { id: 'crypto_pay_manual', name: 'Paiements Crypto (Wallet)' },
@@ -141,18 +146,22 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         'cat_log': [
             { id: 'livreur_system', name: 'Console Livreur Web/Bot' },
             { id: 'geo_tracking', name: 'Géolocalisation & ETA Livraison' },
-            { id: 'assign_auto', name: 'Assignation Auto des Commandes' }
+            { id: 'assign_auto', name: 'Assignation Auto des Commandes' },
+            { id: 'live_tracking_webapp', name: 'Suivi Livreur Visuel (WebApp)' }
         ],
         'cat_growth': [
             { id: 'referral_system', name: 'Système de Parrainage (Bonus)' },
             { id: 'promo_codes', name: 'Gestion des Codes Promos' },
             { id: 'force_join', name: 'Force Join (Gating Canal)' },
-            { id: 'auto_approve', name: 'Auto-Approve (Nouveaux Membres)' }
+            { id: 'auto_approve', name: 'Auto-Approve (Nouveaux Membres)' },
+            { id: 'abandoned_cart_recovery', name: 'Relance Paniers Abandonnés' },
+            { id: 'vip_tier_system', name: 'Programme VIP Évolutif (Bronze/Gold)' }
         ],
         'cat_support': [
             { id: 'hotline_support', name: 'Hotline & Système de Tickets' },
             { id: 'review_system', name: 'Système d\'Avis & Notes Clients' },
-            { id: 'multi_lang', name: 'Interface Multi-Langues' }
+            { id: 'multi_lang', name: 'Interface Multi-Langues' },
+            { id: 'public_social_proof', name: 'Avis Publics Intégrés (Catalogue)' }
         ]
     };
 
@@ -235,10 +244,16 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         let totalPrice = basePrice + (supplements.length * 200);
         let finalPrice = totalPrice;
         let isBundle = false;
+        let bundleName = '';
 
-        if (supplements.length >= 2 || finalPrice >= 650) {
+        if (supplements.length >= 4 || finalPrice >= 950) {
+            finalPrice = 950;
+            isBundle = true;
+            bundleName = 'Pack Enterprise 🚀';
+        } else if (supplements.length >= 2 || finalPrice >= 650) {
             finalPrice = 650;
             isBundle = true;
+            bundleName = 'Pack Premium ✨';
         }
 
         let text = `🛒 <b>RÉSUMÉ DE VOTRE CONFIGURATION</b>\n\n`;
@@ -258,10 +273,12 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             });
         }
 
-        text += `\n💰 Estimation : <b>${finalPrice}€</b>` + (isBundle ? ` (Pack Premium ✨)` : ` (Pack Base + Suppléments 🍽)`);
+        text += `\n💰 Estimation : <b>${finalPrice}€</b>` + (isBundle ? ` (${bundleName})` : ` (Pack Base + Suppléments 🍽)`);
         
         if (!isBundle) {
-            text += `\n\n💡 <b>CONSEIL :</b> Le Pack Premium à <b>650€</b> inclut TOUTES les fonctionnalités (même les futures mises à jour) !`;
+            text += `\n\n💡 <b>CONSEIL :</b> Ajoutez 2 suppléments pour débloquer le <b>Pack Premium (650€)</b>, ou optez pour le <b>Pack Enterprise (950€)</b> pour avoir TOUTES les nouveautés SaaS !`;
+        } else if (finalPrice === 650) {
+            text += `\n\n💡 <b>UPGRADE :</b> Passez au <b>Pack Enterprise (950€)</b> pour débloquer les WebApps de suivi, l'auto-retargeting et l'export comptable !`;
         }
 
         const buttons = [];
@@ -327,7 +344,8 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         const packs = {
             'standard': { name: 'Standard (Telegram)', price: 450 },
             'wa': { name: 'WhatsApp Plus', price: 550 },
-            'premium': { name: 'Premium All-In', price: 650 }
+            'premium': { name: 'Premium (Fonctions Avancées)', price: 650 },
+            'enterprise': { name: 'Enterprise (SaaS Intégral)', price: 950 }
         };
         
         const pack = packs[packId];
@@ -351,11 +369,15 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             `• Catalogue & Gestion des stocks\n` +
             `• Paiements Cash & Preuves\n\n` +
             `🔸 <b>PACK PREMIUM (650€)</b>\n` +
-            `• <b>TOUTES</b> les fonctionnalités incluses\n` +
             `• WhatsApp + Telegram synchronisés\n` +
             `• Marketplace Fournisseurs & Livreur Pro\n` +
-            `• Fidélité, Parrainage & Gamification\n\n` +
-            `💡 <i>Le Pack Premium est rentabilisé dès l'ajout de 2 options à la carte.</i>`;
+            `• Fidélité & Parrainage\n\n` +
+            `🚀 <b>PACK ENTERPRISE (950€)</b>\n` +
+            `• <b>TOUTES</b> les nouveautés SaaS incluses\n` +
+            `• Relance de paniers abandonnés (Auto-Retargeting)\n` +
+            `• Suivi Livreur WebApp en direct\n` +
+            `• Exports comptables CSV & Alertes Stock\n\n` +
+            `💡 <i>Le Pack Enterprise maximise votre rentabilité et automatise votre comptabilité.</i>`;
 
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('🏗 Lancer le Configurateur', 'config_start')],
