@@ -535,7 +535,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             `• <b>2 Nouvelles fonctionnalités / mois incluses</b> (Valeur 200€)\n` +
             `• Support VIP Prioritaire 24h/7j\n` +
             `• Maintenance & Sécurité complète incluse\n\n` +
-            `💸 <i>Hors abonnement : 100€ par mise à jour de fonctionnalité.</i>`;
+            `💸 <i>Hors abonnement : 85€ par ajout de fonctionnalité.</i>`;
 
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('S\'abonner au Pack Maintenance', 'sub_request_maintenance')],
