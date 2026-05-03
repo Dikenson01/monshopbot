@@ -118,9 +118,9 @@ function setupHotlineHandlers(bot) {
             { id: 'marketplace', name: 'Espace Fournisseur' }
         ],
         'cat_pay': [
-            { id: 'crypto_pay', name: 'Paiements Crypto Auto' },
-            { id: 'lydia_pay', name: 'Paiement Lydia' },
-            { id: 'cb_stripe', name: 'Paiement CB (Stripe)' }
+            { id: 'crypto_pay_manual', name: 'Paiements Crypto (Wallet)' },
+            { id: 'transfer_manual', name: 'Virement Bancaire (RIB)' },
+            { id: 'payment_proof_system', name: 'Système de Preuve (Screenshot)' }
         ],
         'cat_log': [
             { id: 'livreur_system', name: 'Système Livreur Pro' },
@@ -261,7 +261,7 @@ function setupHotlineHandlers(bot) {
         const text = `🚀 <b>FONCTIONNALITÉS INCLUSES</b>\n\n` +
             `Nos bots sont conçus pour offrir la meilleure expérience utilisateur possible :\n\n` +
             `🛒 <b>Catalogue Dynamique</b> : Gestion illimitée de produits avec photos et vidéos.\n` +
-            `💳 <b>Paiements Multiples</b> : Lydia, Crypto, Cash, Apple Pay, CB.\n` +
+            `💳 <b>Paiements Sécurisés</b> : Crypto, Virement, Cash (Validation par preuve).\n` +
             `🎁 <b>Fidélisation</b> : Système de parrainage et codes promos intégrés.\n` +
             `🚴 <b>Système Livreur</b> : Console dédiée pour vos livreurs avec géolocalisation.\n` +
             `📊 <b>Dashboard Admin</b> : Statistiques de ventes en temps réel et gestion totale.\n` +
