@@ -81,11 +81,12 @@ function setupHotlineHandlers(bot) {
         await ctx.answerCbQuery().catch(() => {});
         
         const text = `🚀 <b>VOTRE BOT SUR-MESURE</b>\n\n` +
-            `Configurez votre bot selon vos besoins. Choisissez vos fonctionnalités à la carte ou profitez de nos packs.\n\n` +
+            `Démarrez avec notre base ultra-performante **Le Plug IDF** et ajoutez les modules nécessaires à votre croissance.\n\n` +
             `💰 <b>Tarification :</b>\n` +
-            `• À l'unité : 100€ / fonctionnalité\n` +
-            `• <b>PACK BUNDLE (10 options) : 550€</b> 🔥\n\n` +
-            `👇 <i>Commencez la configuration ci-dessous :</i>`;
+            `• <b>Pack Base (Le Plug) : 450€</b>\n` +
+            `• Supplément : 200€ / fonctionnalité\n` +
+            `• <b>PACK PREMIUM (Tout inclus) : 650€</b> ✨\n\n` +
+            `👇 <i>Personnalisez votre projet ci-dessous :</i>`;
         
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('🏗 Lancer le Configurateur', 'config_start')],
@@ -108,32 +109,47 @@ function setupHotlineHandlers(bot) {
         { id: 'cat_pay', name: '💳 Paiement & Finance', icon: '💳' },
         { id: 'cat_log', name: '🚴 Logistique', icon: '🚴' },
         { id: 'cat_mkt', name: '📣 Marketing', icon: '📣' },
-        { id: 'cat_adm', name: '⚙️ Gestion Admin', icon: '⚙️' }
+        { id: 'cat_admin', name: '⚙️ Gestion Admin', icon: '⚙️' },
+        { id: 'cat_growth', name: '📈 Croissance', icon: '📈' },
+        { id: 'cat_support', name: '🎧 Support', icon: '🎧' }
     ];
+
+const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_support', 'price_tiers'];
 
     const featureCatalog = {
         'cat_core': [
-            { id: 'catalog_tg', name: 'Catalogue Telegram' },
-            { id: 'catalog_wa', name: 'Catalogue WhatsApp' },
-            { id: 'marketplace', name: 'Espace Fournisseur' }
+            { id: 'catalogue_pro', name: 'Catalogue Multi-Médias (Photo/Vidéo)' },
+            { id: 'stock_mgmt', name: 'Gestion des Stocks Intelligente' },
+            { id: 'bundle_system', name: 'Système de Bundles (Ex: 1 acheté = 1 offert)' },
+            { id: 'price_tiers', name: 'Grilles de Tarifs Dégressifs' }
+        ],
+        'cat_admin': [
+            { id: 'dashboard_pro', name: 'Dashboard Admin (Stats & Analytics)' },
+            { id: 'chat_admin_client', name: 'Chat Direct Admin/Client' },
+            { id: 'broadcast_system', name: 'Système de Diffusion (Broadcast)' },
+            { id: 'supplier_mp', name: 'Espace Marketplace (Fournisseurs)' }
         ],
         'cat_pay': [
             { id: 'crypto_pay_manual', name: 'Paiements Crypto (Wallet)' },
             { id: 'transfer_manual', name: 'Virement Bancaire (RIB)' },
-            { id: 'payment_proof_system', name: 'Système de Preuve (Screenshot)' }
+            { id: 'payment_proof_system', name: 'Validation par Preuve (Screenshot)' },
+            { id: 'fidelity_wallet', name: 'Portefeuille Client & Points' }
         ],
         'cat_log': [
-            { id: 'livreur_system', name: 'Système Livreur Pro' },
-            { id: 'order_tracking', name: 'Suivi de Commande' }
+            { id: 'livreur_system', name: 'Console Livreur Web/Bot' },
+            { id: 'geo_tracking', name: 'Géolocalisation & ETA Livraison' },
+            { id: 'assign_auto', name: 'Assignation Auto des Commandes' }
         ],
-        'cat_mkt': [
-            { id: 'referral', name: 'Système Parrainage' },
-            { id: 'promo_codes', name: 'Codes Promos' },
-            { id: 'broadcast', name: 'Diffusion Annonces' }
+        'cat_growth': [
+            { id: 'referral_system', name: 'Système de Parrainage (Bonus)' },
+            { id: 'promo_codes', name: 'Gestion des Codes Promos' },
+            { id: 'force_join', name: 'Force Join (Gating Canal)' },
+            { id: 'auto_approve', name: 'Auto-Approve (Nouveaux Membres)' }
         ],
-        'cat_adm': [
-            { id: 'advanced_stats', name: 'Dashboard Stats' },
-            { id: 'ticket_system', name: 'Gestion Tickets Pro' }
+        'cat_support': [
+            { id: 'hotline_support', name: 'Hotline & Système de Tickets' },
+            { id: 'review_system', name: 'Système d\'Avis & Notes Clients' },
+            { id: 'multi_lang', name: 'Interface Multi-Langues' }
         ]
     };
 
@@ -163,8 +179,9 @@ function setupHotlineHandlers(bot) {
         let text = `${cat.icon} <b>CATÉGORIE : ${cat.name}</b>\n\nCliquez sur une option pour l'ajouter ou la retirer :`;
         
         const buttons = features.map(f => {
-            const isSelected = selections.has(f.id);
-            return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}`, `config_toggle_${catId}_${f.id}`)];
+            const isBase = BASE_FEATURES.includes(f.id);
+            const isSelected = selections.has(f.id) || isBase;
+            return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}${isBase ? ' (Inclus)' : ''}`, isBase ? 'none' : `config_toggle_${catId}_${f.id}`)];
         });
         buttons.push([Markup.button.callback('◀️ Retour aux catégories', 'config_start')]);
 
@@ -197,28 +214,39 @@ function setupHotlineHandlers(bot) {
         const userId = ctx.from.id;
         const selections = userSelections.get(userId) || new Set();
         
-        let totalPrice = selections.size * 200;
+        // On ne compte que les suppléments (hors base)
+        const supplements = Array.from(selections).filter(id => !BASE_FEATURES.includes(id));
+        
+        let basePrice = 450;
+        let totalPrice = basePrice + (supplements.length * 200);
         let finalPrice = totalPrice;
         let isBundle = false;
 
-        if (selections.size >= 10) {
+        if (supplements.length >= 2 || finalPrice >= 650) {
             finalPrice = 650;
             isBundle = true;
         }
 
-        let text = `🛒 <b>RÉSUMÉ DE VOTRE CONFIGURATION</b>\n\n`;
-        if (selections.size === 0) {
-            text += `<i>Votre panier est vide.</i>`;
-        } else {
-            const allFeatures = Object.values(featureCatalog).flat();
-            selections.forEach(id => {
+        const allFeatures = Object.values(featureCatalog).flat();
+        
+        text += `🟢 <b>Base Incluse (Le Plug IDF) :</b>\n`;
+        BASE_FEATURES.forEach(id => {
+            const f = allFeatures.find(item => item.id === id);
+            text += `• ${f?.name || id}\n`;
+        });
+
+        if (supplements.length > 0) {
+            text += `\n➕ <b>Suppléments sélectionnés :</b>\n`;
+            supplements.forEach(id => {
                 const f = allFeatures.find(item => item.id === id);
                 text += `• ${f?.name || id}\n`;
             });
-            text += `\n💰 Prix total : <b>${finalPrice}€</b>` + (isBundle ? ` (Economie réalisée !)` : ``);
-            if (!isBundle && selections.size > 0) {
-                text += `\n\n💡 <i>Astuce : Ajoutez encore ${10 - selections.size} options pour débloquer le PACK BUNDLE à 650€ !</i>`;
-            }
+        }
+
+        text += `\n💰 Estimation : <b>${finalPrice}€</b>` + (isBundle ? ` (Pack Premium ✨)` : ` (Pack Base + Suppléments 🍽)`);
+        
+        if (!isBundle) {
+            text += `\n\n💡 <b>CONSEIL :</b> Le Pack Premium à <b>650€</b> inclut TOUTES les fonctionnalités (même les futures mises à jour) !`;
         }
 
         const buttons = [];
@@ -415,17 +443,17 @@ function setupHotlineHandlers(bot) {
 
     bot.action('view_sub_plans', async (ctx) => {
         await ctx.answerCbQuery().catch(() => {});
-        const text = `💎 <b>NOS FORMULES D'ABONNEMENT</b>\n\n` +
-            `Optimisez vos coûts et garantissez la stabilité de votre business :\n\n` +
-            `🛠 <b>Pack Maintenance - 50€/mois</b>\n` +
-            `• Remise en ligne prioritaire si le bot saute\n` +
-            `• Mises à jour de sécurité constantes\n` +
-            `• Backup quotidien de votre base de données\n\n` +
-            `🚀 <b>Pack Évolution - 100€/mois</b>\n` +
-            `• <b>2 Nouvelles fonctionnalités / mois incluses</b> (valeur 200€)\n` +
-            `• Support VIP 24h/24\n` +
-            `• Maintenance & Sécurité incluse\n\n` +
-            `💸 <i>Sans abonnement : 100€ / fonctionnalité supplémentaire.</i>`;
+        const text = `💎 <b>NOS SOLUTIONS D'ACCOMPAGNEMENT</b>\n\n` +
+            `Garantissez la pérennité et l'évolution constante de votre infrastructure :\n\n` +
+            `🛠 <b>Pack Maintenance & Sécurité - 50€/mois</b>\n` +
+            `• Remise en ligne prioritaire (SLA 99.9%)\n` +
+            `• Mises à jour critiques de sécurité incluses\n` +
+            `• Sauvegardes quotidiennes externalisées\n\n` +
+            `🚀 <b>Pack Évolution Business - 100€/mois</b>\n` +
+            `• <b>2 Nouvelles fonctionnalités / mois incluses</b> (Valeur 200€)\n` +
+            `• Support VIP Prioritaire 24h/7j\n` +
+            `• Maintenance & Sécurité complète incluse\n\n` +
+            `💸 <i>Hors abonnement : 100€ par mise à jour de fonctionnalité.</i>`;
 
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('S\'abonner au Pack Maintenance', 'sub_request_maintenance')],
