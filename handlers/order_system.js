@@ -700,7 +700,6 @@ function setupOrderSystem(bot) {
         }
 
         if (!ctx.message.text && !ctx.message.photo && !ctx.message.video) return next();
-        const userId = `${ctx.platform}_${ctx.from.id}`;
         
 
 
