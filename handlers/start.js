@@ -217,7 +217,6 @@ function setupStartHandler(bot) {
                 const welcomeBackText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`)
                     .replace('{first_name}', user.first_name);
                 
-                const { getWelcomeKeyboard } = require('./admin');
                 const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
                 await safeEdit(ctx, welcomeBackText, {
                     photo: settings.welcome_photo || null,
