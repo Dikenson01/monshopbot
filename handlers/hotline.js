@@ -79,20 +79,16 @@ function setupHotlineHandlers(bot) {
     bot.action('sales_menu_start', async (ctx) => {
         await ctx.answerCbQuery().catch(() => {});
         
-        const text = `🚀 <b>VOTRE BUSINESS MÉRITE LE MEILLEUR</b>\n\n` +
-            `Ne vous contentez pas d'un simple bot. Offrez à votre boutique une <b>infrastructure de vente complète</b>.\n\n` +
-            `🏆 <b>Pourquoi sommes-nous numéro 1 ?</b>\n` +
-            `• ⚡️ <b>Vitesse Record</b> : Traitement des commandes en moins de 3 secondes.\n` +
-            `• 💳 <b>Paiements Illimités</b> : Crypto, Lydia, Apple Pay, PayPal, CB.\n` +
-            `• 📦 <b>Logistique Intégrée</b> : Console livreur et suivi en temps réel.\n` +
-            `• 🔒 <b>Sécurité Bancaire</b> : Données cryptées et protection anti-spam.\n\n` +
-            `🥇 <i>Plus rentable, plus rapide, plus sûr. Éteignez la concurrence dès aujourd'hui.</i>`;
+        const text = `🚀 <b>VOTRE BOT SUR-MESURE</b>\n\n` +
+            `Configurez votre bot selon vos besoins. Choisissez vos fonctionnalités à la carte ou profitez de nos packs.\n\n` +
+            `💰 <b>Tarification :</b>\n` +
+            `• À l'unité : 100€ / fonctionnalité\n` +
+            `• <b>PACK BUNDLE (10 options) : 550€</b> 🔥\n\n` +
+            `👇 <i>Commencez la configuration ci-dessous :</i>`;
         
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('💎 Découvrir nos Offres', 'show_pricing')],
-            [Markup.button.callback('📊 Comparer avec la concurrence', 'show_comparison')],
-            [Markup.button.callback('🚀 Liste des Fonctionnalités', 'show_features')],
-            [Markup.button.callback('🔍 Tester la Démo Live', 'main_menu')],
+            [Markup.button.callback('🏗 Lancer le Configurateur', 'config_start')],
+            [Markup.button.callback('📊 Comparer les solutions', 'show_comparison')],
             [Markup.button.callback('◀️ Retour', 'start_welcome')]
         ]);
         
@@ -103,27 +99,158 @@ function setupHotlineHandlers(bot) {
         });
     });
 
-    // Comparison View
-    bot.action('show_comparison', async (ctx) => {
-        await ctx.answerCbQuery().catch(() => {});
-        const text = `📊 <b>NOTRE SOLUTION vs LA CONCURRENCE</b>\n\n` +
-            `❌ <b>Bots Classiques :</b>\n` +
-            `• Lent et instable\n` +
-            `• Un seul mode de paiement\n` +
-            `• Pas de gestion livreur\n` +
-            `• Design basique et peu rassurant\n\n` +
-            `✅ <b>Notre Solution Premium :</b>\n` +
-            `• <b>Fluidité absolue</b> (Hébergement Pro)\n` +
-            `• <b>Multitude de paiements</b> (Crypto & CB)\n` +
-            `• <b>Console Livreur</b> ultra-performante\n` +
-            `• <b>Design UX/UI</b> qui donne envie d'acheter\n` +
-            `• <b>Support VIP</b> réactif 24/7\n\n` +
-            `👉 <i>Le choix de la rentabilité est évident.</i>`;
+    // Configurateur State Management
+    const userSelections = new Map();
 
+    const categories = [
+        { id: 'cat_core', name: '🛒 Vente & Catalogue', icon: '🛒' },
+        { id: 'cat_pay', name: '💳 Paiement & Finance', icon: '💳' },
+        { id: 'cat_log', name: '🚴 Logistique', icon: '🚴' },
+        { id: 'cat_mkt', name: '📣 Marketing', icon: '📣' },
+        { id: 'cat_adm', name: '⚙️ Gestion Admin', icon: '⚙️' }
+    ];
+
+    const featureCatalog = {
+        'cat_core': [
+            { id: 'catalog_tg', name: 'Catalogue Telegram' },
+            { id: 'catalog_wa', name: 'Catalogue WhatsApp' },
+            { id: 'marketplace', name: 'Espace Fournisseur' }
+        ],
+        'cat_pay': [
+            { id: 'crypto_pay', name: 'Paiements Crypto Auto' },
+            { id: 'lydia_pay', name: 'Paiement Lydia' },
+            { id: 'cb_stripe', name: 'Paiement CB (Stripe)' }
+        ],
+        'cat_log': [
+            { id: 'livreur_system', name: 'Système Livreur Pro' },
+            { id: 'order_tracking', name: 'Suivi de Commande' }
+        ],
+        'cat_mkt': [
+            { id: 'referral', name: 'Système Parrainage' },
+            { id: 'promo_codes', name: 'Codes Promos' },
+            { id: 'broadcast', name: 'Diffusion Annonces' }
+        ],
+        'cat_adm': [
+            { id: 'advanced_stats', name: 'Dashboard Stats' },
+            { id: 'ticket_system', name: 'Gestion Tickets Pro' }
+        ]
+    };
+
+    bot.action('config_start', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        if (!userSelections.has(userId)) userSelections.set(userId, new Set());
+
+        const text = `🏗 <b>CONFIGURATEUR DE BOT</b>\n\n` +
+            `Choisissez une catégorie pour ajouter des fonctionnalités à votre futur bot :`;
+        
+        const buttons = categories.map(cat => [Markup.button.callback(`${cat.icon} ${cat.name}`, `config_cat_${cat.id}`)]);
+        buttons.push([Markup.button.callback('🛒 Voir mon Panier / Résumé', 'config_summary')]);
+        buttons.push([Markup.button.callback('◀️ Retour', 'sales_menu_start')]);
+
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+    });
+
+    bot.action(/^config_cat_(.+)$/, async (ctx) => {
+        const catId = ctx.match[1];
+        await ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const selections = userSelections.get(userId) || new Set();
+        const cat = categories.find(c => c.id === catId);
+        const features = featureCatalog[catId] || [];
+
+        let text = `${cat.icon} <b>CATÉGORIE : ${cat.name}</b>\n\nCliquez sur une option pour l'ajouter ou la retirer :`;
+        
+        const buttons = features.map(f => {
+            const isSelected = selections.has(f.id);
+            return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}`, `config_toggle_${catId}_${f.id}`)];
+        });
+        buttons.push([Markup.button.callback('◀️ Retour aux catégories', 'config_start')]);
+
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+    });
+
+    bot.action(/^config_toggle_(.+)_(.+)$/, async (ctx) => {
+        const catId = ctx.match[1];
+        const featureId = ctx.match[2];
+        const userId = ctx.from.id;
+        const selections = userSelections.get(userId);
+        
+        if (selections.has(featureId)) selections.delete(featureId);
+        else selections.add(featureId);
+
+        await ctx.answerCbQuery(`${selections.has(featureId) ? 'Ajouté' : 'Retiré'}`);
+        return ctx.callbackQuery.message.reply_markup ? ctx.editMessageReplyMarkup(
+            Markup.inlineKeyboard([
+                ...featureCatalog[catId].map(f => {
+                    const isSelected = selections.has(f.id);
+                    return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}`, `config_toggle_${catId}_${f.id}`)];
+                }),
+                [Markup.button.callback('◀️ Retour aux catégories', 'config_start')]
+            ]).reply_markup
+        ).catch(() => {}) : null;
+    });
+
+    bot.action('config_summary', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const selections = userSelections.get(userId) || new Set();
+        
+        let totalPrice = selections.size * 100;
+        let finalPrice = totalPrice;
+        let isBundle = false;
+
+        if (selections.size >= 10) {
+            finalPrice = 550;
+            isBundle = true;
+        }
+
+        let text = `🛒 <b>RÉSUMÉ DE VOTRE CONFIGURATION</b>\n\n`;
+        if (selections.size === 0) {
+            text += `<i>Votre panier est vide.</i>`;
+        } else {
+            const allFeatures = Object.values(featureCatalog).flat();
+            selections.forEach(id => {
+                const f = allFeatures.find(item => item.id === id);
+                text += `• ${f?.name || id}\n`;
+            });
+            text += `\n💰 Prix total : <b>${finalPrice}€</b>` + (isBundle ? ` (Economie réalisée !)` : ``);
+            if (!isBundle && selections.size > 0) {
+                text += `\n\n💡 <i>Astuce : Ajoutez encore ${10 - selections.size} options pour débloquer le PACK BUNDLE à 550€ !</i>`;
+            }
+        }
+
+        const buttons = [];
+        if (selections.size > 0) {
+            buttons.push([Markup.button.callback('✅ Valider et passer au Processus PDF', 'config_confirm')]);
+        }
+        buttons.push([Markup.button.callback('➕ Ajouter d\'autres options', 'config_start')]);
+        buttons.push([Markup.button.callback('🗑 Vider le panier', 'config_clear')]);
+
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+    });
+
+    bot.action('config_clear', async (ctx) => {
+        userSelections.delete(ctx.from.id);
+        await ctx.answerCbQuery('Panier vidé');
+        return ctx.editMessageText('🗑 Votre panier a été vidé.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'config_start')]]));
+    });
+
+    bot.action('config_confirm', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const text = `📋 <b>PROCESSUS DE MISE EN PLACE (Obligatoire)</b>\n\n` +
+            `Pour finaliser votre commande, vous devez nous fournir les éléments décrits dans le document "Process mise en place bot .pdf" :\n\n` +
+            `1️⃣ <b>Votre User ID</b> (via @userinfobot)\n` +
+            `2️⃣ <b>Votre Clé API</b> (via @BotFather)\n` +
+            `3️⃣ <b>Identifiants Gmail dédiés</b>\n\n` +
+            `⚠️ <i>Sans ces informations, nous ne pourrons pas démarrer l'installation.</i>\n\n` +
+            `Souhaitez-vous envoyer ces informations maintenant ?`;
+        
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('💎 Choisir ma formule', 'show_pricing')],
-            [Markup.button.callback('◀️ Retour', 'sales_menu_start')]
+            [Markup.button.callback('✅ Oui, j\'ai tout préparé', 'hotline_issue_feature')],
+            [Markup.button.callback('◀️ Retour au panier', 'config_summary')]
         ]);
+
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
 
