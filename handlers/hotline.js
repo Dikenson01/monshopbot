@@ -157,8 +157,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         'cat_log': [
             { id: 'livreur_system', name: 'Console Livreur Web/Bot' },
             { id: 'geo_tracking', name: 'Géolocalisation & ETA Livraison' },
-            { id: 'assign_auto', name: 'Assignation Auto des Commandes' },
-            { id: 'live_tracking_webapp', name: 'Suivi Livreur Visuel (WebApp)' }
+            { id: 'assign_auto', name: 'Assignation Auto des Commandes' }
         ],
         'cat_growth': [
             { id: 'referral_system', name: 'Système de Parrainage (Bonus)' },
@@ -171,8 +170,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         'cat_support': [
             { id: 'hotline_support', name: 'Hotline & Système de Tickets' },
             { id: 'review_system', name: 'Système d\'Avis & Notes Clients' },
-            { id: 'multi_lang', name: 'Interface Multi-Langues' },
-            { id: 'public_social_proof', name: 'Avis Publics Intégrés (Catalogue)' }
+            { id: 'multi_lang', name: 'Interface Multi-Langues' }
         ]
     };
 
@@ -386,7 +384,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             `🚀 <b>PACK ENTERPRISE (950€)</b>\n` +
             `• <b>TOUTES</b> les nouveautés SaaS incluses\n` +
             `• Relance de paniers abandonnés (Auto-Retargeting)\n` +
-            `• Suivi Livreur WebApp en direct\n` +
+            `• Programme VIP Évolutif (Fidélité)\n` +
             `• Exports comptables CSV & Alertes Stock\n\n` +
             `💡 <i>Le Pack Enterprise maximise votre rentabilité et automatise votre comptabilité.</i>`;
 
@@ -606,6 +604,42 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         
         return ctx.reply(`✅ <b>Votre demande a été transmise !</b>\n\nL'administrateur va vous contacter pour activer votre abonnement <b>${plan}</b>.`);
     });
+
+    // Admin Broadcast Command for New Features
+    if (bot.command) {
+        bot.command('broadcast_nouveautes', async (ctx) => {
+            const adminIds = [1183134641, 7628179403]; // Les IDs Admin
+            if (!adminIds.includes(ctx.from.id)) return;
+
+            await ctx.reply('🚀 Démarrage de la diffusion (Broadcast) en cours...');
+            
+            const { supabase } = require('../services/database');
+            const { data: users } = await supabase.from('bot_users').select('id');
+            
+            if (!users) return ctx.reply('❌ Erreur: Aucun utilisateur trouvé.');
+
+            const message = `🚀 <b>NOUVELLES FONCTIONNALITÉS DISPONIBLES !</b>\n\n` +
+                `Améliorez votre bot avec nos derniers ajouts exclusifs pour augmenter vos ventes et fidéliser vos clients :\n\n` +
+                `⚡️ <b>Bouton "Achat Express"</b> : Commande en 1 clic pour vos clients réguliers. Le bot mémorise leur commande et réduit le temps d'achat à 3 secondes.\n` +
+                `🏆 <b>Programme VIP Évolutif</b> : Statuts Bronze/Silver/Gold. Passé un certain montant d'achat, le client débloque des remises automatiques (ex: -5% pour les membres Gold).\n` +
+                `📈 <b>Relance de Paniers Abandonnés</b> : Le bot recontacte automatiquement les clients qui n'ont pas finalisé leur achat.\n` +
+                `📊 <b>Exports & Alertes Admin</b> : Exportez vos ventes en Excel/CSV et recevez des alertes automatiques si vos stocks sont bas.\n\n` +
+                `💎 <b>Tarif d'installation : 85€ net par fonctionnalité.</b>\n\n` +
+                `👉 <i>Intéressé ? Rendez-vous dans votre menu "Espace Client & Hotline" pour demander l'installation immédiate !</i>`;
+
+            let success = 0;
+            for (const user of users) {
+                try {
+                    const tgId = user.id.replace('telegram_', '');
+                    await ctx.telegram.sendMessage(tgId, message, { parse_mode: 'HTML' });
+                    success++;
+                    await new Promise(r => setTimeout(r, 50)); // Anti-spam
+                } catch (e) {}
+            }
+
+            return ctx.reply(`✅ <b>Diffusion terminée !</b>\nMessage envoyé à ${success} clients potentiels.`, { parse_mode: 'HTML' });
+        });
+    }
 }
 
-module.exports = { setupHotlineHandlers };
+module.exports = { setupHotlineHandlers, pendingTicketInfo };
