@@ -130,7 +130,9 @@ async function showAdminMenu(ctx, isEdit = false) {
         [Markup.button.callback('📥 Contact', 'admin_tickets')],
         [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],
         [Markup.button.callback(t(user, 'btn_admin_marketplace', '🏪 Marketplace'), 'mp_browse'), Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
-        [Markup.button.callback('📢 Diffusion Migration (Admins Only)', 'admin_broadcast_migration')],
+        [Markup.button.callback('📢 Annoncer une Mise à jour', 'admin_broadcast_update')],
+        [Markup.button.callback('📡 Diffusion Message (Général)', 'admin_broadcast')],
+        [Markup.button.callback('◀️ Retour Menu', 'admin_menu')],
         [Markup.button.callback(t(user, 'btn_admin_features', '✨ Guide Bot'), 'admin_features')],
         [Markup.button.url('👨‍💻 Contacter le dev', 'https://t.me/Bottelegramt_bot')],
         [Markup.button.callback(t(user, 'btn_quit_console', '◀️ Quitter la console'), 'main_menu')]
@@ -303,18 +305,20 @@ function setupAdminHandlers(bot) {
         const buttons = tickets.map(t => {
             let reason = 'Inconnu';
             let status = 'open';
+            let priority = 'normal';
             try {
                 const parsed = JSON.parse(t.message);
                 reason = parsed.reason || t.message;
                 status = parsed.status || 'open';
+                priority = parsed.priority || 'normal';
             } catch (e) { reason = t.message; }
             
-            const statusEmoji = status === 'closed' ? '✅' : '🟢';
-            return [Markup.button.callback(`${statusEmoji} ${t.user_id} - ${reason.slice(0, 20)}...`, `admin_ticket_view_${t.id}`)];
+            const statusEmoji = status === 'closed' ? '✅' : (priority === 'urgent' ? '⚡️' : '🟢');
+            return [Markup.button.callback(`${statusEmoji} ${t.user_id} - ${reason.slice(0, 15)}...`, `admin_ticket_view_${t.id}`)];
         });
         buttons.push([Markup.button.callback('◀️ Retour', 'admin_menu')]);
         
-        const text = `📥 <b>Section Contact (Hotline)</b>\n\n🟢 = Ouvert | ✅ = Clôturé\nSélectionnez une demande :`;
+        const text = `📥 <b>GESTION DES TICKETS</b>\n\n⚡️ = URGENT | 🟢 = Normal | ✅ = Clôturé\n\nSélectionnez une demande à traiter :`;
         if (ctx.callbackQuery) {
             return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
         } else {
@@ -334,10 +338,14 @@ function setupAdminHandlers(bot) {
         let reason = 'Inconnu';
         let status = 'open';
         let price = 'Non défini';
+        let priority = 'normal';
+        let category = 'hotline';
         try {
             const parsed = JSON.parse(ticket.message);
             reason = parsed.reason || ticket.message;
             status = parsed.status || 'open';
+            priority = parsed.priority || 'normal';
+            category = parsed.category || 'hotline';
             price = parsed.price ? `${parsed.price}€` : 'Non défini';
         } catch (e) { reason = ticket.message; }
 
@@ -347,17 +355,22 @@ function setupAdminHandlers(bot) {
 
         const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
         
-        const text = `📄 <b>Détails de la demande</b>\n\n` +
-            `👤 Utilisateur : <b>${userName}</b>\n` +
+        const text = `📄 <b>DÉTAILS DU TICKET #${ticket.id}</b>\n\n` +
+            `👤 Client : <b>${userName}</b>\n` +
             `🆔 ID : <code>${ticket.user_id}</code>\n` +
+            `📂 Catégorie : <b>${category.toUpperCase()}</b>\n` +
+            `🚨 Priorité : <b>${priority === 'urgent' ? '⚡️ URGENT' : '🟢 Normal'}</b>\n` +
             `📊 Statut : <b>${status === 'closed' ? '✅ CLÔTURÉ' : '🟢 OUVERT'}</b>\n\n` +
-            `📝 <b>Raison du contact :</b>\n<i>${reason}</i>\n\n` +
-            `💰 <b>Prix indiqué :</b> ${price}\n\n` +
-            `Que souhaitez-vous faire ?`;
+            `📝 <b>Contenu :</b>\n<i>${reason}</i>\n\n` +
+            `💰 <b>Prix facturé :</b> ${price}\n` +
+            `🕒 Créé le : <code>${new Date(ticket.created_at).toLocaleString('fr-FR')}</code>\n\n` +
+            `<b>ACTIONS DISPONIBLES :</b>`;
 
         const buttons = [
-            [Markup.button.callback('💬 Répondre / Démarrer discussion', `admin_chat_user_${platformPrefix}${ticket.user_id}`)],
-            [Markup.button.callback('💰 Indiquer un prix (Facturer)', `admin_ticket_price_${ticketId}`)]
+            [Markup.button.callback('💬 Répondre (Chat Direct)', `admin_chat_user_${platformPrefix}${ticket.user_id}`)],
+            [Markup.button.callback('📝 Réponses Rapides', `admin_ticket_quick_${ticketId}`)],
+            [Markup.button.callback('📜 Historique Client', `admin_user_history_${ticket.user_id}`)],
+            [Markup.button.callback('💰 Fixer un prix', `admin_ticket_price_${ticketId}`)]
         ];
 
         if (status === 'closed') {
@@ -385,69 +398,79 @@ function setupAdminHandlers(bot) {
         return ctx.reply('💰 <b>Indiquer un prix</b>\n\nEntrez le montant à facturer au client pour cette demande (ex: 100) :');
     });
 
-    bot.action(/^admin_ticket_close_(.+)$/, async (ctx) => {
+    // Handler Réponses Rapides
+    bot.action(/^admin_ticket_quick_(.+)$/, async (ctx) => {
         if (!(await isAdmin(ctx))) return;
-        const ticketId = parseInt(ctx.match[1]);
-        const { supabase } = require('../services/database');
-        
-        try {
-            console.log(`[Admin-Ticket] Closing ticket ${ticketId}...`);
-            const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
-            if (!ticket) return ctx.answerCbQuery("⚠️ Ticket introuvable.");
-
-            let parsed = {};
-            try { 
-                parsed = JSON.parse(ticket.message); 
-                if (typeof parsed !== 'object') throw new Error('Not an object');
-            } catch (e) { 
-                parsed = { reason: ticket.message }; 
-            }
-            
-            parsed.status = 'closed';
-            parsed.closed_at = new Date().toISOString();
-
-            const { error: updateError } = await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
-            if (updateError) throw updateError;
-
-            // Notifier le client
-            const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
-            const { sendTelegramMessage } = require('../services/notifications');
-            const targetId = `${platformPrefix}${ticket.user_id}`;
-            
-            console.log(`[Admin-Ticket] Notifying client ${targetId} of closure...`);
-            await sendTelegramMessage(targetId, `✅ <b>Votre demande a été traitée et le ticket est maintenant clôturé.</b>\n\nMerci de votre confiance !`);
-
-            await ctx.answerCbQuery("✅ Ticket clôturé.");
-            return showAdminTickets(ctx);
-        } catch (e) {
-            console.error('[CloseTicket] Error:', e);
-            await ctx.answerCbQuery(`⚠️ Erreur: ${e.message}`, { show_alert: true });
-        }
+        const ticketId = ctx.match[1];
+        const text = `📝 <b>RÉPONSES RAPIDES</b>\n\nSélectionnez un message pré-enregistré à envoyer au client :`;
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Problème résolu', `admin_quick_send_${ticketId}_resolved`)],
+            [Markup.button.callback('⏳ En cours de traitement', `admin_quick_send_${ticketId}_processing`)],
+            [Markup.button.callback('❓ Plus d\'infos requises', `admin_quick_send_${ticketId}_moreinfo`)],
+            [Markup.button.callback('💰 Prix fixé, en attente', `admin_quick_send_${ticketId}_waitingpay`)],
+            [Markup.button.callback('◀️ Annuler', `admin_ticket_view_${ticketId}`)]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
 
-    bot.action(/^admin_ticket_open_(.+)$/, async (ctx) => {
+    bot.action(/^admin_quick_send_(.+)_(.+)$/, async (ctx) => {
         if (!(await isAdmin(ctx))) return;
-        const ticketId = parseInt(ctx.match[1]);
+        const ticketId = ctx.match[1];
+        const quickKey = ctx.match[2];
+        const { supabase } = require('../services/database');
+        const { sendTelegramMessage } = require('../services/notifications');
+
+        const quickMessages = {
+            'resolved': '✅ <b>Bonne nouvelle !</b> Votre problème a été résolu. Si vous avez d\'autres questions, n\'hésitez pas.',
+            'processing': '⏳ <b>Information :</b> Votre demande est en cours de traitement par notre équipe technique. Merci de votre patience.',
+            'moreinfo': '❓ <b>Besoin de précisions :</b> Pourriez-vous nous donner plus de détails ou une capture d\'écran de votre problème ?',
+            'waitingpay': '💰 <b>Devis prêt :</b> Le prix a été fixé pour votre demande. Vous pouvez maintenant procéder au paiement pour débloquer la prestation.'
+        };
+
+        const message = quickMessages[quickKey];
+        const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
+        if (!ticket) return ctx.answerCbQuery('❌ Ticket introuvable');
+
+        const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+        await sendTelegramMessage(`${platformPrefix}${ticket.user_id}`, message);
+        await ctx.answerCbQuery('✅ Réponse envoyée !');
+        return showAdminTickets(ctx);
+    });
+
+    // Handler Historique Client
+    bot.action(/^admin_user_history_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const userId = ctx.match[1];
         const { supabase } = require('../services/database');
         
-        try {
-            const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
-            if (!ticket) return ctx.answerCbQuery("⚠️ Ticket introuvable.");
+        const { data: logs } = await supabase.from('bot_support_logs')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(10);
 
-            let parsed = {};
-            try { parsed = JSON.parse(ticket.message); } catch (e) { parsed = { reason: ticket.message }; }
-            
-            parsed.status = 'open';
-            delete parsed.closed_at;
-
-            await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
-
-            await ctx.answerCbQuery("🔓 Ticket réouvert.");
-            return showAdminTickets(ctx);
-        } catch (e) {
-            console.error('[OpenTicket] Error:', e);
-            await ctx.answerCbQuery("⚠️ Erreur lors de la réouverture.");
+        let historyText = `📜 <b>HISTORIQUE CLIENT : ${userId}</b>\n\n`;
+        if (!logs || logs.length === 0) historyText += '<i>Aucun historique trouvé.</i>';
+        else {
+            logs.forEach(log => {
+                let r = '...';
+                try { r = JSON.parse(log.message).reason || log.message; } catch(e) { r = log.message; }
+                const date = new Date(log.created_at).toLocaleDateString('fr-FR');
+                historyText += `• [${date}] ${log.type.toUpperCase()} : ${r.slice(0, 30)}...\n`;
+            });
         }
+
+        const keyboard = Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_tickets_refresh')]]);
+        return safeEdit(ctx, historyText, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    // --- BROADCAST UPDATE ---
+    const pendingUpdateBroadcasts = new Set();
+    bot.action('admin_broadcast_update', async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        pendingUpdateBroadcasts.add(ctx.from.id);
+        await ctx.answerCbQuery();
+        return ctx.reply('🚀 <b>ANNONCE DE MISE À JOUR</b>\n\nEnvoyez le message de mise à jour (Texte, Photo ou Vidéo).\n\nLe message sera formaté automatiquement avec un style premium et envoyé à TOUS les utilisateurs.', { parse_mode: 'HTML' });
     });
 
     bot.on('text', async (ctx, next) => {
@@ -1109,6 +1132,38 @@ function setupAdminHandlers(bot) {
             await safeEdit(ctx, '🚀 Diffusion en cours...');
             const res = await broadcastMessage('users', message, options);
             return safeEdit(ctx, `✅ Diffusion terminée !\n\n📊 Cibles : ${res.total}\n✅ Succès : ${res.success}\n❌ Échecs : ${res.failed}`, Markup.inlineKeyboard([[Markup.button.callback('◀️ Menu Admin', 'admin_menu')]]));
+        }
+
+        // 2bis. Update Announcement Logic
+        if (pendingUpdateBroadcasts.has(ctx.from.id) && (await isAdmin(ctx))) {
+            pendingUpdateBroadcasts.delete(ctx.from.id);
+            
+            const messageText = ctx.message.text || ctx.message.caption || '';
+            const options = {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '✨ Découvrir les Nouveautés', callback_data: 'sales_menu_start' }],
+                        [{ text: '📂 Mon Projet / Abonnements', callback_data: 'view_my_project' }]
+                    ]
+                }
+            };
+
+            const finalMsg = `📢 <b>MISE À JOUR IMPORTANTE</b> 🚀\n\n${messageText}\n\n` +
+                             `<i>Nos nouveaux abonnements sont disponibles ! Optimisez la stabilité de votre bot dès maintenant.</i>`;
+
+            if (ctx.message.photo) {
+                const photo = ctx.message.photo[ctx.message.photo.length - 1];
+                const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+                options.mediaUrls = [{ url: fileLink.href, type: 'photo' }];
+            } else if (ctx.message.video) {
+                const fileLink = await ctx.telegram.getFileLink(ctx.message.video.file_id);
+                options.mediaUrls = [{ url: fileLink.href, type: 'video' }];
+            }
+
+            await ctx.reply('🚀 Lancement de l\'annonce premium...');
+            const res = await broadcastMessage('users', finalMsg, options);
+            return ctx.reply(`✅ Annonce terminée !\n\n📊 Envoyé à ${res.success} utilisateurs.`);
         }
         
         // 3. Commandes GLOBAL /END

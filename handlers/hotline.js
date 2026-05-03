@@ -6,16 +6,25 @@ const pendingTicketInfo = new Map();
 function setupHotlineHandlers(bot) {
 
     // Hotline main menu
-    bot.action('hotline_menu', async (ctx) => {
+        const text = `🎧 <b>ESPACE CLIENT & HOTLINE</b>\n\nBienvenue dans votre espace dédié. Que souhaitez-vous faire ?`;
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('📂 Mon Projet & Abonnements', 'view_my_project')],
+            [Markup.button.callback('🆘 Signaler un problème (Ticket)', 'hotline_issues_list')],
+            [Markup.button.callback('◀️ Retour', 'start_welcome')]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action('hotline_issues_list', async (ctx) => {
         await ctx.answerCbQuery().catch(() => {});
-        const text = `🎧 <b>Bienvenue dans la hotline pour vos bots</b>\n\nVeuillez sélectionner votre problème ci-dessous :`;
+        const text = `🎧 <b>SUPPORT TECHNIQUE</b>\n\nSélectionnez le type de problème rencontré :`;
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('Mon bot Telegram ne fonctionne plus', 'hotline_issue_tg_down')],
             [Markup.button.callback('Mon bot WhatsApp ne fonctionne plus', 'hotline_issue_wa_down')],
             [Markup.button.callback('Mes bots TG et WA ne fonctionnent plus', 'hotline_issue_both_down')],
             [Markup.button.callback('J\'ai un projet / Nouvelle fonctionnalité', 'hotline_issue_feature')],
             [Markup.button.callback('Mon problème n\'est pas listé', 'hotline_issue_other')],
-            [Markup.button.callback('◀️ Retour', 'start_welcome')]
+            [Markup.button.callback('◀️ Retour', 'hotline_menu')]
         ]);
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
@@ -34,11 +43,34 @@ function setupHotlineHandlers(bot) {
         };
 
         const reason = issueMap[issueKey] || 'Problème inconnu';
-        pendingTicketInfo.set(ctx.from.id, { reason, type: 'hotline' });
+        pendingTicketInfo.set(ctx.from.id, { reason, type: 'hotline', priority: 'normal' });
 
-        const text = `🎧 Vous avez sélectionné : <b>${reason}</b>\n\n⚠️ <b>Obligatoire :</b> Afin que notre équipe puisse vous recontacter en message privé, veuillez envoyer votre <b>@username Telegram</b> ci-dessous :`;
+        const text = `🎧 Vous avez sélectionné : <b>${reason}</b>\n\n` +
+            `🔴 <b>Niveau d'urgence :</b>\n` +
+            `Si votre problème bloque totalement vos ventes, choisissez <b>URGENT</b>.`;
+            
         const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('⚡️ URGENT (Blocage total)', `hotline_priority_urgent`)],
+            [Markup.button.callback('🟢 Normal (Demande standard)', `hotline_priority_normal`)],
             [Markup.button.callback('◀️ Annuler', 'hotline_menu')]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    // Handle priority selection
+    bot.action(/^hotline_priority_(.+)$/, async (ctx) => {
+        const priority = ctx.match[1];
+        await ctx.answerCbQuery().catch(() => {});
+        
+        const info = pendingTicketInfo.get(ctx.from.id);
+        if (info) info.priority = priority;
+
+        const text = `🎧 Demande : <b>${info?.reason}</b>\n` +
+            `Urgence : <b>${priority === 'urgent' ? '⚡️ URGENT' : '🟢 Normal'}</b>\n\n` +
+            `⚠️ <b>Obligatoire :</b> Veuillez envoyer votre <b>@username Telegram</b> ci-dessous pour que l'assistance puisse vous contacter :`;
+            
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('◀️ Retour', 'hotline_menu')]
         ]);
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
@@ -46,31 +78,53 @@ function setupHotlineHandlers(bot) {
     // Sales menu start (after J'aimerais en savoir plus)
     bot.action('sales_menu_start', async (ctx) => {
         await ctx.answerCbQuery().catch(() => {});
-        const bannerUrl = 'https://le-plug-idf.up.railway.app/public/bot_presentation_premium_banner.png'; // Assuming it will be served or just use the local path if possible
         
-        const text = `🚀 <b>BOOSTEZ VOTRE BUSINESS AVEC NOS BOTS</b>\n\n` +
-            `Transformez votre canal Telegram ou WhatsApp en une véritable <b>machine à vendre automatisée</b>. Notre solution est la plus complète du marché.\n\n` +
-            `✅ <b>Pourquoi nous choisir ?</b>\n` +
-            `• 🤖 <b>Automatisation 100%</b> : Encaissez, gérez et livrez sans lever le petit doigt.\n` +
-            `• 📱 <b>Multi-Plateforme</b> : Présent sur Telegram et WhatsApp simultanément.\n` +
-            `• 🛡 <b>Sécurité Maximale</b> : Protection contre le spam, base de données sécurisée.\n` +
-            `• ⚡️ <b>Vitesse & Fluidité</b> : Une interface ultra-rapide pour vos clients.\n\n` +
-            `💬 <i>Déjà plus de 50 boutiques nous font confiance !</i>`;
+        const text = `🚀 <b>VOTRE BUSINESS MÉRITE LE MEILLEUR</b>\n\n` +
+            `Ne vous contentez pas d'un simple bot. Offrez à votre boutique une <b>infrastructure de vente complète</b>.\n\n` +
+            `🏆 <b>Pourquoi sommes-nous numéro 1 ?</b>\n` +
+            `• ⚡️ <b>Vitesse Record</b> : Traitement des commandes en moins de 3 secondes.\n` +
+            `• 💳 <b>Paiements Illimités</b> : Crypto, Lydia, Apple Pay, PayPal, CB.\n` +
+            `• 📦 <b>Logistique Intégrée</b> : Console livreur et suivi en temps réel.\n` +
+            `• 🔒 <b>Sécurité Bancaire</b> : Données cryptées et protection anti-spam.\n\n` +
+            `🥇 <i>Plus rentable, plus rapide, plus sûr. Éteignez la concurrence dès aujourd'hui.</i>`;
         
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('💎 Voir nos Tarifs & Formules', 'show_pricing')],
-            [Markup.button.callback('🚀 Voir les Fonctionnalités', 'show_features')],
-            [Markup.button.callback('🔍 Tester le catalogue démo', 'main_menu')],
+            [Markup.button.callback('💎 Découvrir nos Offres', 'show_pricing')],
+            [Markup.button.callback('📊 Comparer avec la concurrence', 'show_comparison')],
+            [Markup.button.callback('🚀 Liste des Fonctionnalités', 'show_features')],
+            [Markup.button.callback('🔍 Tester la Démo Live', 'main_menu')],
             [Markup.button.callback('◀️ Retour', 'start_welcome')]
         ]);
         
-        // Since we can't guarantee the URL immediately, we use the photo option which safeEdit handles
-        // If we have a local path from the generate_image tool, we could use it, but for now we'll stick to text-only if photo fails
         return safeEdit(ctx, text, { 
             parse_mode: 'HTML', 
-            photo: 'https://i.ibb.co/vzYpYq6/bot-banner.png' || null, // Fallback to a placeholder or empty if needed
+            photo: 'https://le-plug-idf.up.railway.app/public/bot_ventes_premium_fr.png' || null,
             ...keyboard 
         });
+    });
+
+    // Comparison View
+    bot.action('show_comparison', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const text = `📊 <b>NOTRE SOLUTION vs LA CONCURRENCE</b>\n\n` +
+            `❌ <b>Bots Classiques :</b>\n` +
+            `• Lent et instable\n` +
+            `• Un seul mode de paiement\n` +
+            `• Pas de gestion livreur\n` +
+            `• Design basique et peu rassurant\n\n` +
+            `✅ <b>Notre Solution Premium :</b>\n` +
+            `• <b>Fluidité absolue</b> (Hébergement Pro)\n` +
+            `• <b>Multitude de paiements</b> (Crypto & CB)\n` +
+            `• <b>Console Livreur</b> ultra-performante\n` +
+            `• <b>Design UX/UI</b> qui donne envie d'acheter\n` +
+            `• <b>Support VIP</b> réactif 24/7\n\n` +
+            `👉 <i>Le choix de la rentabilité est évident.</i>`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('💎 Choisir ma formule', 'show_pricing')],
+            [Markup.button.callback('◀️ Retour', 'sales_menu_start')]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
 
     // Features Showcase
@@ -164,7 +218,13 @@ function setupHotlineHandlers(bot) {
             const payload = {
                 user_id: String(userId),
                 staff_id: null,
-                message: JSON.stringify({ reason: finalReason, status: 'open', price: null }),
+                message: JSON.stringify({ 
+                    reason: finalReason, 
+                    status: 'open', 
+                    price: null, 
+                    priority: ticketData.priority || 'normal',
+                    category: ticketData.type 
+                }),
                 type: 'ticket',
                 direction: 'in',
                 created_at: new Date().toISOString()
@@ -180,6 +240,122 @@ function setupHotlineHandlers(bot) {
             }
         }
         return next();
+    });
+    // --- ESPACE PROJET & ABONNEMENTS ---
+    bot.action('view_my_project', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const { supabase } = require('../services/database');
+        const userId = String(ctx.from.id);
+        
+        // Récupérer le projet du client
+        const { data: project } = await supabase.from('bot_client_projects').select('*').eq('id', `telegram_${userId}`).single();
+        
+        if (!project) {
+            const text = `📂 <b>MON PROJET</b>\n\n` +
+                `Vous n'avez pas encore de projet enregistré sur ce compte ou votre projet est en cours de déploiement.\n\n` +
+                `👉 <i>Si vous êtes déjà client, contactez l'admin pour lier votre projet à cet ID Telegram.</i>`;
+            const keyboard = Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'hotline_menu')]]);
+            return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+        }
+
+        const features = project.features || [];
+        const plan = project.subscription_plan || 'none';
+        const expires = project.subscription_expires_at ? new Date(project.subscription_expires_at).toLocaleDateString('fr-FR') : 'N/A';
+
+        const planNames = {
+            'none': '❌ Aucun (Paiement à l\'acte)',
+            'maintenance': '🛠 Maintenance & Sécurité',
+            'evolution': '🚀 Évolution & Croissance'
+        };
+
+        const text = `📂 <b>VOTRE PROJET : ${project.bot_name || 'Bot Client'}</b>\n\n` +
+            `🤖 Type : <b>${project.bot_type?.toUpperCase() || 'TG'}</b>\n` +
+            `💎 Abonnement : <b>${planNames[plan]}</b>\n` +
+            `📅 Prochaine échéance : <code>${expires}</code>\n\n` +
+            `✅ <b>Fonctionnalités actives :</b>\n` +
+            (features.length > 0 ? features.map(f => `• ${f}`).join('\n') : '<i>Aucune option activée</i>') + '\n\n' +
+            `🛠 <b>Actions :</b>`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('🚀 Voir les Abonnements', 'view_sub_plans')],
+            [Markup.button.callback('✨ Recommandations pour vous', 'view_recommendations')],
+            [Markup.button.callback('◀️ Retour', 'hotline_menu')]
+        ]);
+
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action('view_sub_plans', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const text = `💎 <b>NOS FORMULES D'ABONNEMENT</b>\n\n` +
+            `Optimisez vos coûts et garantissez la stabilité de votre business :\n\n` +
+            `🛠 <b>Pack Maintenance - 50€/mois</b>\n` +
+            `• Remise en ligne prioritaire si le bot saute\n` +
+            `• Mises à jour de sécurité constantes\n` +
+            `• Backup quotidien de votre base de données\n\n` +
+            `🚀 <b>Pack Évolution - 100€/mois</b>\n` +
+            `• <b>2 Nouvelles fonctionnalités / mois incluses</b> (valeur 200€)\n` +
+            `• Support VIP 24h/24\n` +
+            `• Maintenance & Sécurité incluse\n\n` +
+            `💸 <i>Sans abonnement : 100€ / fonctionnalité supplémentaire.</i>`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('S\'abonner au Pack Maintenance', 'sub_request_maintenance')],
+            [Markup.button.callback('S\'abonner au Pack Évolution', 'sub_request_evolution')],
+            [Markup.button.callback('◀️ Retour', 'view_my_project')]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action('view_recommendations', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        const { supabase } = require('../services/database');
+        const userId = String(ctx.from.id);
+        
+        const [projectData, catalogData] = await Promise.all([
+            supabase.from('bot_client_projects').select('features').eq('id', `telegram_${userId}`).single(),
+            supabase.from('bot_features_catalog').select('*')
+        ]);
+
+        const myFeatures = projectData.data?.features || [];
+        const allFeatures = catalogData.data || [];
+        
+        // Trouver ce que le client n'a pas
+        const recommendations = allFeatures.filter(f => !myFeatures.includes(f.id));
+
+        let text = `✨ <b>RECOMMANDATIONS POUR VOUTE BOT</b>\n\n` +
+            `Voici les fonctionnalités que vous ne possédez pas encore et qui pourraient booster vos ventes :\n\n`;
+
+        if (recommendations.length === 0) {
+            text += `✅ <b>Félicitations !</b> Vous possédez déjà toutes les options disponibles. Votre bot est au maximum de ses capacités.`;
+        } else {
+            recommendations.slice(0, 3).forEach(f => {
+                text += `<b>• ${f.name}</b> (${f.price}€)\n<i>${f.description}</i>\n\n`;
+            });
+            text += `👇 <i>Contactez l'admin pour ajouter l'une de ces options !</i>`;
+        }
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('💬 Demander une installation', 'hotline_issue_feature')],
+            [Markup.button.callback('◀️ Retour', 'view_my_project')]
+        ]);
+
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action(/^sub_request_(.+)$/, async (ctx) => {
+        const plan = ctx.match[1];
+        await ctx.answerCbQuery('Demande envoyée !');
+        
+        const { notifyAdmins } = require('../services/notifications');
+        const adminMsg = `💳 <b>NOUVELLE DEMANDE D'ABONNEMENT</b>\n\n` +
+            `👤 Client : ${ctx.from.first_name} (@${ctx.from.username})\n` +
+            `🆔 ID : <code>${ctx.from.id}</code>\n` +
+            `💎 Formule : <b>${plan.toUpperCase()}</b>`;
+        
+        await notifyAdmins(ctx.bot || bot, adminMsg);
+        
+        return ctx.reply(`✅ <b>Votre demande a été transmise !</b>\n\nL'administrateur va vous contacter pour activer votre abonnement <b>${plan}</b>.`);
     });
 }
 
