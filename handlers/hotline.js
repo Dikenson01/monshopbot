@@ -197,12 +197,12 @@ function setupHotlineHandlers(bot) {
         const userId = ctx.from.id;
         const selections = userSelections.get(userId) || new Set();
         
-        let totalPrice = selections.size * 100;
+        let totalPrice = selections.size * 200;
         let finalPrice = totalPrice;
         let isBundle = false;
 
         if (selections.size >= 10) {
-            finalPrice = 550;
+            finalPrice = 650;
             isBundle = true;
         }
 
@@ -217,7 +217,7 @@ function setupHotlineHandlers(bot) {
             });
             text += `\n💰 Prix total : <b>${finalPrice}€</b>` + (isBundle ? ` (Economie réalisée !)` : ``);
             if (!isBundle && selections.size > 0) {
-                text += `\n\n💡 <i>Astuce : Ajoutez encore ${10 - selections.size} options pour débloquer le PACK BUNDLE à 550€ !</i>`;
+                text += `\n\n💡 <i>Astuce : Ajoutez encore ${10 - selections.size} options pour débloquer le PACK BUNDLE à 650€ !</i>`;
             }
         }
 
@@ -281,19 +281,19 @@ function setupHotlineHandlers(bot) {
         await ctx.answerCbQuery().catch(() => {});
         const text = `💎 <b>CHOISISSEZ VOTRE FORMULE</b>\n\n` +
             `Investissez dans l'outil qui va faire passer votre business au niveau supérieur :\n\n` +
-            `🥉 <b>PACK BRONZE - 350€</b>\n` +
+            `🥉 <b>PACK BRONZE - 450€</b>\n` +
             `• Bot Telegram Complet\n` +
             `• Support technique 1 an\n` +
             `• Hébergement inclus\n\n` +
-            `🟧 <b>PACK WHATSAPP - 450€</b>\n` +
+            `🟧 <b>PACK WHATSAPP - 550€</b>\n` +
             `• Bot WhatsApp Professionnel\n` +
             `• Gestion stable des sessions\n` +
             `• Support technique 1 an\n\n` +
-            `🥈 <b>PACK STANDARD - 550€</b>\n` +
+            `🥈 <b>PACK STANDARD - 650€</b>\n` +
             `• <b>Telegram + WhatsApp Sync</b>\n` +
             `• Système Livreur Premium\n` +
             `• Dashboard Admin Avancé\n\n` +
-            `🥇 <b>PACK PREMIUM - 650€</b>\n` +
+            `🥇 <b>PACK PREMIUM - 750€</b>\n` +
             `• <b>L'offre ULTIME : Tout inclus</b>\n` +
             `• Installation prioritaire\n` +
             `• Personnalisation complète du design\n` +
