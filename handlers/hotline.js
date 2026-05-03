@@ -89,7 +89,10 @@ function setupHotlineHandlers(bot) {
             `👇 <i>Personnalisez votre projet ci-dessous :</i>`;
         
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('🏗 Lancer le Configurateur', 'config_start')],
+            [Markup.button.callback('🥉 Pack Standard (450€)', 'pack_select_standard')],
+            [Markup.button.callback('🥈 Pack WhatsApp Plus (550€)', 'pack_select_wa')],
+            [Markup.button.callback('🥇 Pack Premium All-In (650€)', 'pack_select_premium')],
+            [Markup.button.callback('🏗 À la carte (Sur mesure)', 'config_start')],
             [Markup.button.callback('📊 Comparer les solutions', 'show_comparison')],
             [Markup.button.callback('◀️ Retour', 'start_welcome')]
         ]);
@@ -178,11 +181,17 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
         let text = `${cat.icon} <b>CATÉGORIE : ${cat.name}</b>\n\nCliquez sur une option pour l'ajouter ou la retirer :`;
         
-        const buttons = features.map(f => {
-            const isBase = BASE_FEATURES.includes(f.id);
-            const isSelected = selections.has(f.id) || isBase;
-            return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}${isBase ? ' (Inclus)' : ''}`, isBase ? 'none' : `config_toggle_${catId}_${f.id}`)];
-        });
+        const buttons = features
+            .filter(f => !BASE_FEATURES.includes(f.id)) // Masquer les fonctions de base
+            .map(f => {
+                const isSelected = selections.has(f.id);
+                return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}`, `config_toggle_${catId}_${f.id}`)];
+            });
+        
+        if (buttons.length === 0) {
+            text = `${cat.icon} <b>CATÉGORIE : ${cat.name}</b>\n\nToutes les fonctionnalités de cette catégorie sont déjà incluses dans votre pack de base !`;
+        }
+
         buttons.push([Markup.button.callback('◀️ Retour aux catégories', 'config_start')]);
 
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
@@ -204,10 +213,9 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
         return ctx.callbackQuery.message.reply_markup ? ctx.editMessageReplyMarkup(
             Markup.inlineKeyboard([
-                ...features.map(f => {
-                    const isBase = BASE_FEATURES.includes(f.id);
-                    const isSelected = selections.has(f.id) || isBase;
-                    return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}${isBase ? ' (Inclus)' : ''}`, isBase ? 'none' : `config_toggle_${catId}_${f.id}`)];
+                ...features.filter(f => !BASE_FEATURES.includes(f.id)).map(f => {
+                    const isSelected = selections.has(f.id);
+                    return [Markup.button.callback(`${isSelected ? '✅' : '➕'} ${f.name}`, `config_toggle_${catId}_${f.id}`)];
                 }),
                 [Markup.button.callback('◀️ Retour aux catégories', 'config_start')]
             ]).reply_markup
@@ -307,6 +315,29 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             [Markup.button.callback('💎 Voir les Tarifs', 'show_pricing')],
             [Markup.button.callback('◀️ Retour', 'sales_menu_start')]
         ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action(/^pack_select_(.+)$/, async (ctx) => {
+        const packId = ctx.match[1];
+        await ctx.answerCbQuery().catch(() => {});
+        
+        const packs = {
+            'standard': { name: 'Standard (Telegram)', price: 450 },
+            'wa': { name: 'WhatsApp Plus', price: 550 },
+            'premium': { name: 'Premium All-In', price: 650 }
+        };
+        
+        const pack = packs[packId];
+        const text = `💎 <b>PACK SÉLECTIONNÉ : ${pack.name}</b>\n\n` +
+            `Excellent choix ! Ce pack inclut toutes les fonctionnalités nécessaires pour votre business au tarif de <b>${pack.price}€</b>.\n\n` +
+            `Souhaitez-vous passer à l'étape suivante pour finaliser l'installation ?`;
+            
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Oui, continuer', 'config_confirm')],
+            [Markup.button.callback('◀️ Retour aux packs', 'sales_menu_start')]
+        ]);
+        
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
 
