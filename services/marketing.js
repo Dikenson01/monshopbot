@@ -30,35 +30,41 @@ const COMMERCIAL_TEMPLATES = [
         message: "Plusieurs livreurs sont actuellement actifs près de chez vous. Commandez maintenant pour une livraison en moins de 30 minutes !\n\n⚡️ <b>Flash Delivery</b> activé.",
         action: "COMMANDER MAINTENANT",
         type: "catalog"
+    },
+    {
+        title: "🎁 CADEAU FIDÉLITÉ DÉBLOQUÉ",
+        message: "Bonjour {first_name}, merci pour votre confiance. En tant que client fidèle, nous vous offrons une réduction exclusive sur votre prochaine commande !\n\n👇 Récupérer mon cadeau :",
+        action: "MON CADEAU",
+        type: "loyalty"
     }
 ];
 
 /**
  * Strategic Hours (Paris Time)
  */
-const STRATEGIC_HOURS = [11, 14, 19, 22]; // 11h, 14h, 19h, 22h
-let lastSentHour = -1;
+const { createPersistentMap } = require('./persistent_map');
+const marketingState = createPersistentMap('marketing_state');
+// lastSentHour est géré via marketingState.get('lastSentHour')
 
 async function runAutomatedMarketing() {
     try {
+        if (!marketingState.live) await marketingState.load();
+        
         const settings = await getAppSettings();
         if (settings.maintenance_mode) return;
 
-        // On utilise l'heure de Paris
+        const STRATEGIC_HOURS = [11, 14, 19, 22];
         const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" }));
         const currentHour = now.getHours();
+        const todayKey = now.toISOString().split('T')[0];
+        
+        const lastSent = marketingState.get('lastSentHour'); // Format: "YYYY-MM-DD:HH"
+        if (lastSent === `${todayKey}:${currentHour}`) return;
 
-        // Sécurité : Ne pas envoyer deux fois dans la même heure
-        if (currentHour === lastSentHour) return;
+        if (!STRATEGIC_HOURS.includes(currentHour)) return;
 
-        // Vérifier si nous sommes dans une heure stratégique
-        if (!STRATEGIC_HOURS.includes(currentHour)) {
-            // console.log(`[Marketing] Heure actuelle (${currentHour}h) non stratégique. En attente...`);
-            return;
-        }
-
-        console.log(`[Marketing] Heure stratégique détectée (${currentHour}h). Préparation de la campagne...`);
-        lastSentHour = currentHour;
+        console.log(`[Marketing] Strategic hour detected (${currentHour}h). Preparing campaign...`);
+        marketingState.set('lastSentHour', `${todayKey}:${currentHour}`);
 
         // 1. Sélectionner un template adapté à l'heure
         let template;

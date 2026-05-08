@@ -104,7 +104,9 @@ class TelegramChannel extends Channel {
         const telegramLockId = `tg_lock`;
 
         const lock = await checkLock(telegramLockId);
-        if (lock && lock.owner !== instanceId) {
+        const isStale = lock && (Date.now() - lock.updatedAt > 120000); // Stale après 2 minutes sans heartbeat
+
+        if (lock && lock.owner !== instanceId && !isStale) {
             console.log(`[TG-LOCK] Telegram session busy (Owner: ${lock.owner}). Waiting 30s...`);
             setTimeout(() => this.start(), 30000);
             return;

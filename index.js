@@ -338,6 +338,7 @@ async function main() {
 
         // Marketing Automatisé (Vérification toutes les 15 minutes pour les heures stratégiques)
         const marketingInterval = 15 * 60 * 1000;
+        runAutomatedMarketing().catch(e => console.error('[MARKETING-INIT-ERR]', e.message)); 
         setInterval(async () => {
             try {
                 await runAutomatedMarketing();

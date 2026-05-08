@@ -1,5 +1,9 @@
 const { getAppSettings } = require('./database');
 const { registry } = require('../channels/ChannelRegistry');
+const { createPersistentMap } = require('./persistent_map');
+
+const hotlineAdmins = createPersistentMap('hotlineAdmins');
+hotlineAdmins.load().catch(() => {});
 
 // Résolution ultra-robuste de l'instance du bot Telegram
 function getBotForNotification(providedBot = null) {
@@ -59,7 +63,11 @@ async function notifyAdmins(bot, message, options = {}) {
         moderators = parseIds(modRaw);
         
         const envAdmin = process.env.ADMIN_TELEGRAM_ID;
-        const allRecipients = [...new Set([...admins, ...moderators, envAdmin].filter(Boolean))];
+        
+        // Inclure les admins hotline "secrets" (ceux qui ont fait le code 2442)
+        const secretAdmins = Array.from(hotlineAdmins.keys());
+        
+        const allRecipients = [...new Set([...admins, ...moderators, envAdmin, ...secretAdmins].filter(Boolean))];
 
         if (allRecipients.length === 0) {
             console.warn('[Notification-Admin] AUCUN admin/mod trouvé (Base + ENV vides)');

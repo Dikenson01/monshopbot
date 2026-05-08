@@ -24,6 +24,7 @@ const awaitingAdminChat = createPersistentMap('awaitingAdminChat'); // Admin ID 
 const activeAdminSessions = createPersistentMap('activeAdminSessions'); // Admin IDs in active chat mode
 const activeUserSessions = createPersistentMap('activeUserSessions'); // User IDs (format platform_id) in active chat mode
 const awaitingUserSupportReply = createPersistentMap('awaitingUserSupportReply'); // Users who just clicked "Répondre"
+const hotlineAdmins = createPersistentMap('hotlineAdmins'); // Admin IDs who handle tickets (secret code 2442)
 const adminSearchState = new Map(); // Admin ID -> search query or state
 
 const pendingSupportRequests = createPersistentMap('pendingSupportRequests'); // Users with unanswered messages
@@ -35,6 +36,7 @@ async function initAdminState() {
         activeAdminSessions.load(),
         activeUserSessions.load(),
         awaitingUserSupportReply.load(),
+        hotlineAdmins.load(),
         pendingSupportRequests.load()
     ]);
 }
@@ -259,6 +261,9 @@ function setupAdminHandlers(bot) {
             if (pass !== '2442') {
                 return ctx.reply('❌ Mot de passe incorrect pour la zone contact.');
             }
+            // Enregistrer cet utilisateur comme Admin Hotline permanent
+            hotlineAdmins.set(userId, true);
+            authenticatedAdmins.set(userId, true);
             return showAdminTickets(ctx);
         }
 

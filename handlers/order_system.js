@@ -352,26 +352,37 @@ function setupOrderSystem(bot) {
 
     bot.action('add_to_cart', async (ctx) => {
         const userId = `${ctx.platform}_${ctx.from.id}`;
-        const user = ctx.state?.user || await getUser(userId);
-        await ctx.answerCbQuery(t(user, 'msg_added_to_cart_notif', 'Ajouté au panier ! 🛒'));
-        clearActiveMediaGroup(userId); // Quitter le contexte produit
-        const settings = ctx.state?.settings || await getAppSettings();
-        const pending = pendingOrders.get(userId);
-        if (!pending) return safeEdit(ctx, settings.msg_session_expired || "❌ Session expirée.", Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Menu', 'main_menu')]]));
+        try {
+            const user = ctx.state?.user || await getUser(userId);
+            // Réponse immédiate pour arrêter le spinner sur le bouton
+            await ctx.answerCbQuery(t(user, 'msg_added_to_cart_notif', 'Ajouté au panier ! 🛒')).catch(() => {});
 
-        let cart = userCarts.get(userId) || [];
-        cart.push(pending);
-        userCarts.set(userId, cart);
-        userLastActivity.set(userId, Date.now()); // Update activity
-        pendingOrders.delete(userId);
+            const settings = ctx.state?.settings || await getAppSettings();
+            const pending = pendingOrders.get(userId);
+            
+            if (!pending) {
+                return safeEdit(ctx, settings.msg_session_expired || "❌ Session expirée.", Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Menu', 'main_menu')]]));
+            }
 
-        const products = await getProducts();
-        const text = t(user, 'msg_product_added', '✅ Produit ajouté !') + '\n\n' + t(user, 'msg_cart_count', 'Votre panier contient <b>{count}</b> article(s).', { count: cart.length });
-        const buttons = [
-            [Markup.button.callback(t(user, 'btn_continue', '🛍️ Continuer'), 'view_catalog'), Markup.button.callback(t(user, 'btn_cart_view', '💳 Panier'), 'view_cart')],
-            [Markup.button.callback(t(user, 'btn_clear', settings.btn_clear_cart || '❌ Vider le panier'), 'clear_cart')]
-        ];
-        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
+            // Gestion panier
+            let cart = userCarts.get(userId) || [];
+            cart.push({ ...pending, added_at: new Date().toISOString() });
+            userCarts.set(userId, cart);
+            userLastActivity.set(userId, Date.now());
+            pendingOrders.delete(userId);
+
+            const text = t(user, 'msg_product_added', '✅ Produit ajouté !') + '\n\n' + t(user, 'msg_cart_count', 'Votre panier contient <b>{count}</b> article(s).', { count: cart.length });
+            const buttons = [
+                [Markup.button.callback(t(user, 'btn_continue', '🛍️ Continuer'), 'view_catalog'), Markup.button.callback(t(user, 'btn_cart_view', '💳 Panier'), 'view_cart')],
+                [Markup.button.callback(t(user, 'btn_clear', settings.btn_clear_cart || '❌ Vider le panier'), 'clear_cart')]
+            ];
+
+            await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
+            clearActiveMediaGroup(userId); // Nettoyage après l'édition
+        } catch (err) {
+            console.error('[CART-ERROR]', err);
+            await ctx.answerCbQuery('❌ Erreur lors de l\'ajout au panier.').catch(() => {});
+        }
     });
 
     bot.action('checkout_now', async (ctx) => {

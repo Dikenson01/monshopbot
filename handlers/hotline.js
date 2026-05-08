@@ -480,9 +480,45 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
             if (ticketData.type === 'hotline') {
                 const text = `✅ <b>Ticket envoyé avec succès !</b>\n\nVotre demande a bien été transmise à notre équipe technique. Un administrateur va vous répondre très prochainement sur votre compte Telegram : <b>${usernameInput}</b>.`;
+                
+                // NOTIFICATION ADMIN
+                const { notifyAdmins } = require('../services/notifications');
+                const adminMsg = `🚨 <b>NOUVEAU TICKET SUPPORT</b>\n\n` +
+                    `👤 Client : ${ctx.from.first_name} (@${ctx.from.username || 'N/A'})\n` +
+                    `🆔 ID : <code>${userId}</code>\n` +
+                    `🔴 Problème : <b>${ticketData.reason}</b>\n` +
+                    `⚡️ Urgence : <b>${ticketData.priority === 'urgent' ? 'URGENT' : 'Normal'}</b>\n` +
+                    `📱 Contact : <b>${usernameInput}</b>`;
+                
+                await notifyAdmins(ctx.bot || bot, adminMsg, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [Markup.button.callback('📥 Voir les tickets', 'admin_tickets')],
+                            [Markup.button.callback('💬 Répondre', `admin_chat_reply_${userId}`)]
+                        ]
+                    }
+                }).catch(err => console.error('[HOTLINE-NOTIF-ERR]', err));
+
                 return ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour à l\'accueil', 'start_welcome')]]) });
             } else {
                 const text = `🎉 <b>Excellent choix !</b>\n\nUn ticket a été ouvert. Notre équipe vous contactera très vite sur votre compte Telegram <b>${usernameInput}</b> pour finaliser votre commande !`;
+                
+                // NOTIFICATION SALES
+                const { notifyAdmins } = require('../services/notifications');
+                const adminMsg = `💰 <b>NOUVEAU TICKET VENTE</b>\n\n` +
+                    `👤 Client : ${ctx.from.first_name} (@${ctx.from.username || 'N/A'})\n` +
+                    `🆔 ID : <code>${userId}</code>\n` +
+                    `🏗 Intérêt : <b>${ticketData.reason}</b>\n` +
+                    `📱 Contact : <b>${usernameInput}</b>`;
+                
+                await notifyAdmins(ctx.bot || bot, adminMsg, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [Markup.button.callback('💬 Contacter le client', `admin_chat_reply_${userId}`)]
+                        ]
+                    }
+                }).catch(err => console.error('[SALES-NOTIF-ERR]', err));
+
                 return ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour à l\'accueil', 'start_welcome')]]) });
             }
         }

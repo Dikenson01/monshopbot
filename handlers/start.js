@@ -112,29 +112,38 @@ function setupStartHandler(bot) {
             const matrixChars = '0123456789ABCDEF!@#$%^&*()';
             const getMatrix = () => Array.from({length: 12}, () => matrixChars[Math.floor(Math.random() * matrixChars.length)]).join(' ');
             
-            const getInitText = (pct, step) => `🛰 <b>SHOPTONBOT : SYSTEM DEPLOYMENT</b>\n\n` +
+            const getInitText = (pct, step) => `🛰 <b>SYSTEM DEPLOYMENT : SHOPTONBOT V5</b>\n\n` +
                 `<code>${getMatrix()}</code>\n` +
                 `<code>${getMatrix()}</code>\n\n` +
                 `<code>[${'▓'.repeat(pct/10)}${'░'.repeat(10-pct/10)}] ${pct}%</code>\n\n` +
-                `🔐 <i>${step}</i>`;
+                `📡 <i>${step}</i>`;
             
-            const initMsg = await ctx.reply(getInitText(15, 'Scanning neural links...'), { parse_mode: 'HTML' }).catch(() => null);
+            // Image premium pour l'onboarding
+            const onboardingPhoto = '/public/uploads/onboarding_matrix.png';
+
+            const initMsg = await ctx.replyWithPhoto({ source: path.join(process.cwd(), 'web/public/uploads/onboarding_matrix.png') }, { 
+                caption: getInitText(10, 'Establishing neural handshake...'), 
+                parse_mode: 'HTML' 
+            }).catch(() => ctx.reply(getInitText(10, 'Establishing neural handshake...'), { parse_mode: 'HTML' }));
+
             if (initMsg) {
-                addMessageToTrack(docId, initMsg.message_id || initMsg.messageId).catch(() => {});
+                const mid = initMsg.message_id || initMsg.messageId;
+                addMessageToTrack(docId, mid).catch(() => {});
+                
+                const steps = [
+                    { p: 35, s: 'Bypassing security protocols...' },
+                    { p: 55, s: 'Injecting ShopTonBot-OS Core...' },
+                    { p: 75, s: 'Calibrating transaction nodes...' },
+                    { p: 95, s: 'Finalizing encrypted tunnel...' },
+                    { p: 100, s: 'SYSTEM DEPLOYED. READY.' }
+                ];
+
+                for (const step of steps) {
+                    await new Promise(r => setTimeout(r, 400));
+                    await ctx.telegram.editMessageCaption(ctx.chat.id, mid, null, getInitText(step.p, step.s), { parse_mode: 'HTML' }).catch(() => {});
+                }
                 
                 await new Promise(r => setTimeout(r, 300));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(40, 'Injecting core protocols...'), { parse_mode: 'HTML' }).catch(() => {});
-                
-                await new Promise(r => setTimeout(r, 300));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(65, 'Decrypting secure vault...'), { parse_mode: 'HTML' }).catch(() => {});
-                
-                await new Promise(r => setTimeout(r, 300));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(90, 'Establishing handshake...'), { parse_mode: 'HTML' }).catch(() => {});
-                
-                await new Promise(r => setTimeout(r, 300));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(100, 'SYSTEM ONLINE.'), { parse_mode: 'HTML' }).catch(() => {});
-                
-                await new Promise(r => setTimeout(r, 200));
             }
 
             // Nettoyage agressif : Supprimer la commande /start de l'utilisateur + initMsg
