@@ -138,6 +138,15 @@ class TelegramChannel extends Channel {
                 const me = await this.bot.telegram.getMe();
                 console.log(`[TG] Telegraf validé pour @${me.username}`);
 
+                // 2b. Mise à jour de la description (Que peut faire ce bot ?)
+                try {
+                    await this.bot.telegram.setMyDescription("🚀 ShopTonBot Enterprise v5.0 : Solution de commerce automatisée.\n\n✅ Catalogue dynamique & interactif\n✅ Paiements sécurisés\n✅ Suivi de livraison en temps réel\n✅ Support client intégré\n\nPropulsé par la technologie ShopTonBot.");
+                    await this.bot.telegram.setMyShortDescription("ShopTonBot Enterprise - Votre boutique automatisée 🛒");
+                    console.log(`[TG] Descriptions mises à jour pour @${me.username}`);
+                } catch (e) {
+                    console.warn(`[TG] Erreur mise à jour descriptions: ${e.message}`);
+                }
+
                 // 3. Lancement avec polling explicite et timeout court
                 console.log(`[TG] Lancement du polling (launch)...`);
                 this.bot.launch({
