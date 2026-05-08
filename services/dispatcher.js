@@ -257,6 +257,22 @@ class Dispatcher {
                     }
                     return ctx.replyWithPhoto(media.media, { caption: media.caption });
                 },
+                editMessageCaption: async (cid, mid, mid2, caption, extra = {}) => {
+                    if (channel.type === 'telegram') {
+                        const tgCh = registry.query('telegram');
+                        const tgBot = tgCh?.getBotInstance?.();
+                        if (tgBot) return tgBot.telegram.editMessageCaption(cid || userId, mid, mid2, caption, extra);
+                    }
+                    return null;
+                },
+                editMessageReplyMarkup: async (cid, mid, mid2, replyMarkup) => {
+                    if (channel.type === 'telegram') {
+                        const tgCh = registry.query('telegram');
+                        const tgBot = tgCh?.getBotInstance?.();
+                        if (tgBot) return tgBot.telegram.editMessageReplyMarkup(cid || userId, mid, mid2, replyMarkup);
+                    }
+                    return null;
+                },
                 deleteMessage: async (cid, mid) => {
                     if (channel.type === 'telegram') {
                         const tgCh = registry.query('telegram');
