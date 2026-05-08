@@ -120,9 +120,9 @@ function setupStartHandler(bot) {
                 `📡 <i>${step}</i>`;
             
             // Image premium pour l'onboarding
-            const onboardingPhoto = '/public/uploads/onboarding_matrix.png';
+            const onboardingPhoto = '/public/uploads/onboarding_logo.jpg';
 
-            const initMsg = await ctx.replyWithPhoto({ source: path.join(process.cwd(), 'web/public/uploads/onboarding_matrix.png') }, { 
+            const initMsg = await ctx.replyWithPhoto({ source: path.join(process.cwd(), 'web/public/uploads/onboarding_logo.jpg') }, { 
                 caption: getInitText(10, 'Establishing neural handshake...'), 
                 parse_mode: 'HTML' 
             }).catch(() => ctx.reply(getInitText(10, 'Establishing neural handshake...'), { parse_mode: 'HTML' }));
