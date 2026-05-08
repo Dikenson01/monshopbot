@@ -116,7 +116,7 @@ function setupStartHandler(bot) {
             const getInitText = (pct, step) => `🛰 <b>SYSTEM DEPLOYMENT : SHOPTONBOT V5</b>\n\n` +
                 `<code>${getMatrix()}</code>\n` +
                 `<code>${getMatrix()}</code>\n\n` +
-                `<code>[${'▓'.repeat(pct/10)}${'░'.repeat(10-pct/10)}] ${pct}%</code>\n\n` +
+                `<code>[${'▓'.repeat(Math.floor(pct/10))}${'░'.repeat(10-Math.floor(pct/10))}] ${pct}%</code>\n\n` +
                 `📡 <i>${step}</i>`;
             
             // Image premium pour l'onboarding
