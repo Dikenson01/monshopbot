@@ -24,13 +24,23 @@ function getDynamicWelcomeMessage(ctx, user) {
     if (hour >= 18 || hour < 5) greeting = "Bonsoir";
 
     const variations = [
-        `🚀 <b>${greeting} ${name}, prêt à révolutionner votre business ?</b>\n\nBienvenue chez <b>SHOPTONBOT</b>, l'excellence de l'automatisation à votre service.`,
-        `✨ <b>${greeting} ${name}, l'efficacité n'attend pas.</b>\n\nBienvenue chez <b>SHOPTONBOT</b>. Nous transformons vos processus complexes en flux automatisés et rentables.`,
-        `💎 <b>${greeting} ${name}, entrez dans l'ère de la performance.</b>\n\nBienvenue chez <b>SHOPTONBOT</b>. Découvrez nos solutions d'automatisation Telegram & WhatsApp conçues pour durer.`,
-        `⚙️ <b>${greeting} ${name}, automatisez, encaissez, répétez.</b>\n\nBienvenue chez <b>SHOPTONBOT</b>. Votre partenaire stratégique pour une croissance sans friction.`
+        `✦ <b>${greeting} ${name}, Bienvenue dans l'Élite.</b>\n\n` +
+        `Vous venez d'entrer dans l'univers <b>SHOPTONBOT</b>, où l'ingénierie logicielle rencontre l'excellence commerciale.\n\n` +
+        `🚀 <i>Prêt à propulser vos revenus vers de nouveaux sommets ?</i>`,
+
+        `💎 <b>${greeting} ${name}, L'Efficacité sans Compromis.</b>\n\n` +
+        `Bienvenue chez <b>SHOPTONBOT</b>. Nous ne créons pas de simples bots, nous bâtissons des empires automatisés pour nos clients les plus exigeants.\n\n` +
+        `⚡ <i>L'automatisation de demain, disponible aujourd'hui.</i>`,
+
+        `🛰 <b>${greeting} ${name}, Prenez les Commandes.</b>\n\n` +
+        `Bienvenue dans le cockpit de <b>SHOPTONBOT</b>. Notre infrastructure de pointe est désormais à votre entière disposition pour automatiser chaque aspect de votre business.\n\n` +
+        `🏆 <i>L'excellence est notre seul standard.</i>`,
+
+        `⚙️ <b>${greeting} ${name}, La Machine est Lancée.</b>\n\n` +
+        `Bienvenue chez <b>SHOPTONBOT</b>. Votre vision, notre technologie. Ensemble, nous transformons vos processus manuels en un flux de revenus passifs et optimisés.\n\n` +
+        `🔥 <i>Préparez-vous à une croissance exponentielle.</i>`
     ];
 
-    // On choisit une variation basée sur l'ID utilisateur pour que ce soit "stable" mais différent entre clients
     const index = parseInt(String(user.id).slice(-1)) % variations.length;
     return variations[index];
 }
@@ -98,9 +108,31 @@ function setupStartHandler(bot) {
             const docId = `${ctx.platform}_${user.id}`;
             const settings = ctx.state?.settings || await getAppSettings();
 
-            // Nettoyage agressif : Supprimer la commande /start de l'utilisateur + tous les anciens messages bot
+            // 1. EFFET "LIVE INITIALIZATION" ANIMÉ (VISIBLE PAR TOUS)
+            const getInitText = (pct, step) => `🛰 <b>SHOPTONBOT : INITIALISATION</b>\n\n` +
+                `<code>[${'▓'.repeat(pct/10)}${'░'.repeat(10-pct/10)}] ${pct}%</code>\n\n` +
+                `🔐 <i>${step}</i>`;
+            
+            const initMsg = await ctx.reply(getInitText(20, 'Cryptage de la session...'), { parse_mode: 'HTML' }).catch(() => null);
+            if (initMsg) {
+                addMessageToTrack(docId, initMsg.message_id || initMsg.messageId).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 400));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(50, 'Vérification des protocoles...'), { parse_mode: 'HTML' }).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 400));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(85, 'Synchronisation sécurisée...'), { parse_mode: 'HTML' }).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 400));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(100, 'Connexion établie !'), { parse_mode: 'HTML' }).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 300));
+            }
+
+            // Nettoyage agressif : Supprimer la commande /start de l'utilisateur + initMsg
             try { 
                 await ctx.deleteMessage().catch(() => {});
+                if (initMsg) await ctx.telegram.deleteMessage(ctx.chat.id, initMsg.message_id || initMsg.messageId).catch(() => {});
                 clearActiveMediaGroup(docId); 
                 await cleanupUserChat(ctx); 
             } catch(e) {}
@@ -169,16 +201,19 @@ function setupStartHandler(bot) {
                 }
                 
                 const isWa = ctx.platform === 'whatsapp';
-                const restrictedText = `🛑 <b>ACCÈS RESTREINT</b>\n\n` +
+                const restrictedText = `🔒 <b>ACCÈS VIP : VÉRIFICATION EN COURS</b>\n\n` +
                     `Bonjour <b>${user.first_name}</b>,\n\n` +
-                    `Pour accéder au bot, vous devez d'abord envoyer un message à l'administrateur.\n` +
-                    `Une fois que l'admin aura validé votre accès, vous pourrez commander.\n\n` +
-                    (isWa ? `📝 <i>Une fois validé, écrivez <b>/start</b> pour actualiser le menu.</i>\n\n` +
-                            `👇 <b>Cliquez sur les liens ci-dessous :</b>\n` +
+                    `Bienvenue chez <b>SHOPTONBOT</b>. Pour garantir l'excellence de nos services et la sécurité de nos échanges, l'accès à notre plateforme est soumis à validation.\n\n` +
+                    `🛰 <b>ÉTAT DE VOTRE DEMANDE :</b>\n` +
+                    `• Identité : <i>Vérifiée</i>\n` +
+                    `• Statut : ⏳ <code>EN ATTENTE DE VALIDATION</code>\n\n` +
+                    `🛡 <i>Un administrateur examine votre profil. Cette étape prend généralement quelques minutes.</i>\n\n` +
+                    (isWa ? `📝 <i>Une fois validé, écrivez <b>/start</b> pour activer votre console.</i>\n\n` +
+                            `👇 <b>Liens prioritaires :</b>\n` +
                             (settings.private_contact_wa_url ? `• *WhatsApp Admin :* ${settings.private_contact_wa_url}\n` : '') +
                             (settings.private_contact_url ? `• *Telegram Admin :* ${settings.private_contact_url}\n` : '') +
                             (settings.channel_url ? `• *Notre Canal :* ${settings.channel_url}\n` : '') : 
-                            `👇 <b>Veuillez cliquer ci-dessous :</b>`);
+                            `👇 <b>Utilisez les boutons ci-dessous pour accélérer le processus :</b>`);
                 
                 const b = [];
                 if (settings.private_contact_url) b.push([Markup.button.url('✉️ Telegram : Admin', settings.private_contact_url)]);
@@ -222,17 +257,33 @@ function setupStartHandler(bot) {
                     photo: settings.welcome_photo || null,
                     ...keyboard
                 });
-            } else {
-                // Bifurcation pour les clients
+            } else if (isNew) {
+                // NOUVEAU : Onboarding guidé pour les nouveaux clients
                 const dynamicText = getDynamicWelcomeMessage(ctx, user);
-                const text = `${dynamicText}\n\nQue souhaitez-vous faire pour propulser votre activité ?`;
+                const text = `${dynamicText}\n\n<b>Bienvenue à bord !</b>\nLaissez-moi vous présenter rapidement ce que nous pouvons faire pour vous en 30 secondes.`;
+                const keyboard = Markup.inlineKeyboard([
+                    [Markup.button.callback('✨ DÉCOUVRIR LE CONCEPT (30s)', 'tour_1')],
+                    [Markup.button.callback('⏩ Accéder directement au Menu', 'main_menu')]
+                ]);
+                await safeEdit(ctx, text, { 
+                    photo: settings.welcome_photo || null,
+                    ...keyboard 
+                });
+            } else {
+                // Bifurcation pour les clients existants
+                const dynamicText = getDynamicWelcomeMessage(ctx, user);
+                const text = `${dynamicText}\n\nHeureux de vous revoir ! Que souhaitez-vous faire aujourd'hui ?`;
                 const keyboard = Markup.inlineKeyboard([
                     [Markup.button.callback('📂 Mon Projet & Abonnements', 'view_my_project')],
                     [Markup.button.callback('🏗 Créer mon propre Bot', 'config_start')],
                     [Markup.button.callback('💎 Découvrir nos Offres', 'show_pricing')],
-                    [Markup.button.callback('🆘 Support & Hotline', 'hotline_menu')]
+                    [Markup.button.callback('🆘 Support & Hotline', 'hotline_menu')],
+                    [Markup.button.callback('🛒 Tester le Catalogue', 'main_menu')]
                 ]);
-                await safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+                await safeEdit(ctx, text, { 
+                    photo: settings.welcome_photo || null,
+                    ...keyboard 
+                });
             }
 
             if (ctx.telegram) {
@@ -422,6 +473,50 @@ function setupStartHandler(bot) {
         // Relancer le start
         return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
     });
+    bot.action('tour_1', async (ctx) => {
+        await ctx.answerCbQuery();
+        const settings = ctx.state?.settings || await getAppSettings();
+        const text = `🛰 <b>ÉTAPE 1 : AUTOMATISATION TOTALE</b>\n\n` +
+            `Dites adieu à la gestion manuelle. Notre système gère vos stocks, vos commandes et vos clients 24h/24.\n\n` +
+            `• <b>Ventes Instantanées</b> : Le client commande, vous encaissez.\n` +
+            `• <b>Zéro Erreur</b> : Calculs automatiques des prix et frais.\n` +
+            `• <b>Multi-Plateforme</b> : Telegram & WhatsApp synchronisés.`;
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('Suivant ⏩', 'tour_2')],
+            [Markup.button.callback('Accéder au Menu', 'main_menu')]
+        ]);
+        return safeEdit(ctx, text, { photo: settings.welcome_photo || null, ...keyboard });
+    });
+
+    bot.action('tour_2', async (ctx) => {
+        await ctx.answerCbQuery();
+        const settings = ctx.state?.settings || await getAppSettings();
+        const text = `💎 <b>ÉTAPE 2 : PAIEMENTS SÉCURISÉS</b>\n\n` +
+            `Nous intégrons les méthodes les plus fiables du marché :\n\n` +
+            `• <b>Crypto-monnaies</b> : BTC, USDT, ETH (Validation auto).\n` +
+            `• <b>Virements Bancaires</b> : Avec système de preuve photo.\n` +
+            `• <b>Cartes Cadeaux</b> : Rechargez votre wallet en un clic.`;
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('Suivant ⏩', 'tour_3')],
+            [Markup.button.callback('◀️ Précédent', 'tour_1')]
+        ]);
+        return safeEdit(ctx, text, { photo: settings.welcome_photo || null, ...keyboard });
+    });
+
+    bot.action('tour_3', async (ctx) => {
+        await ctx.answerCbQuery();
+        const settings = ctx.state?.settings || await getAppSettings();
+        const text = `🏆 <b>ÉTAPE 3 : VOTRE EMPIRE, VOS RÈGLES</b>\n\n` +
+            `Gérez tout depuis votre console admin intuitive.\n\n` +
+            `• <b>Broadcast Massif</b> : Touchez 100% de vos clients.\n` +
+            `• <b>Système de Parrainage</b> : Laissez vos clients faire votre pub.\n` +
+            `• <b>Fidélisation AI</b> : Offrez des bonus automatiques.`;
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('🚀 COMMENCER MAINTENANT', 'main_menu')],
+            [Markup.button.callback('◀️ Précédent', 'tour_2')]
+        ]);
+        return safeEdit(ctx, text, { photo: settings.welcome_photo || null, ...keyboard });
+    });
 }
 /**
  * Affiche le menu principal (Standard ou Livreur)
@@ -484,11 +579,11 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     if (!settings) settings = ctx.state?.settings || await getAppSettings();
     const buttons = [];
 
-    // Ligne 0 : Pricing (Nouveau bouton ultra-visible)
-    buttons.push([Markup.button.callback(`💎 JE VEUX CE BOT POUR MON BUSINESS 💎`, 'show_pricing')]);
+    // Ligne 0 : VIP ACCESS (Bouton ultra-premium)
+    buttons.push([Markup.button.callback(`👑 DÉPLOYER MON PROPRE EMPIRE (BOT) 👑`, 'show_pricing')]);
 
-    // Ligne 1 : Commander (Gros bouton principal)
-    buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '👟'} ${t(user, 'btn_catalog', settings.label_catalog || 'Passer une commande')}`, 'view_catalog')]);
+    // Ligne 1 : Catalogue (Gros bouton principal avec effet de brillance)
+    buttons.push([Markup.button.callback(`✨ ${t(user, 'btn_catalog', settings.label_catalog || 'ACCÉDER AU CATALOGUE').toUpperCase()} ✨`, 'view_catalog')]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
@@ -499,8 +594,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
 
     // Ligne 2 : Panier & Mes Commandes
     buttons.push([
-        Markup.button.callback(`${settings.ui_icon_cart || '🛒'} ${t(user, 'btn_cart', 'Panier')}`, 'view_cart'),
-        Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${t(user, 'btn_orders', 'Commandes')}`, 'my_orders')
+        Markup.button.callback(`🛒 ${t(user, 'btn_cart', 'PANIER')}`, 'view_cart'),
+        Markup.button.callback(`📦 ${t(user, 'btn_orders', 'COMMANDES')}`, 'my_orders')
     ]);
 
     // Ligne 3 : Aide & Contact
