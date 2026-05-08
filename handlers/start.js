@@ -108,25 +108,33 @@ function setupStartHandler(bot) {
             const docId = `${ctx.platform}_${user.id}`;
             const settings = ctx.state?.settings || await getAppSettings();
 
-            // 1. EFFET "LIVE INITIALIZATION" ANIMÉ (VISIBLE PAR TOUS)
-            const getInitText = (pct, step) => `🛰 <b>SHOPTONBOT : INITIALISATION</b>\n\n` +
+            // 1. EFFET "MATRIX INITIALIZATION" ANIMÉ (DU JAMAIS VU)
+            const matrixChars = '0123456789ABCDEF!@#$%^&*()';
+            const getMatrix = () => Array.from({length: 12}, () => matrixChars[Math.floor(Math.random() * matrixChars.length)]).join(' ');
+            
+            const getInitText = (pct, step) => `🛰 <b>SHOPTONBOT : SYSTEM DEPLOYMENT</b>\n\n` +
+                `<code>${getMatrix()}</code>\n` +
+                `<code>${getMatrix()}</code>\n\n` +
                 `<code>[${'▓'.repeat(pct/10)}${'░'.repeat(10-pct/10)}] ${pct}%</code>\n\n` +
                 `🔐 <i>${step}</i>`;
             
-            const initMsg = await ctx.reply(getInitText(20, 'Cryptage de la session...'), { parse_mode: 'HTML' }).catch(() => null);
+            const initMsg = await ctx.reply(getInitText(15, 'Scanning neural links...'), { parse_mode: 'HTML' }).catch(() => null);
             if (initMsg) {
                 addMessageToTrack(docId, initMsg.message_id || initMsg.messageId).catch(() => {});
                 
-                await new Promise(r => setTimeout(r, 400));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(50, 'Vérification des protocoles...'), { parse_mode: 'HTML' }).catch(() => {});
-                
-                await new Promise(r => setTimeout(r, 400));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(85, 'Synchronisation sécurisée...'), { parse_mode: 'HTML' }).catch(() => {});
-                
-                await new Promise(r => setTimeout(r, 400));
-                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(100, 'Connexion établie !'), { parse_mode: 'HTML' }).catch(() => {});
+                await new Promise(r => setTimeout(r, 300));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(40, 'Injecting core protocols...'), { parse_mode: 'HTML' }).catch(() => {});
                 
                 await new Promise(r => setTimeout(r, 300));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(65, 'Decrypting secure vault...'), { parse_mode: 'HTML' }).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 300));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(90, 'Establishing handshake...'), { parse_mode: 'HTML' }).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 300));
+                await ctx.telegram.editMessageText(ctx.chat.id, initMsg.message_id, null, getInitText(100, 'SYSTEM ONLINE.'), { parse_mode: 'HTML' }).catch(() => {});
+                
+                await new Promise(r => setTimeout(r, 200));
             }
 
             // Nettoyage agressif : Supprimer la commande /start de l'utilisateur + initMsg
@@ -483,7 +491,7 @@ function setupStartHandler(bot) {
         return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
     });
     bot.action('tour_1', async (ctx) => {
-        await ctx.answerCbQuery();
+        await ctx.answerCbQuery('✨ BIENVENUE DANS L\'EXPÉRIENCE SHOPTONBOT !');
         const settings = ctx.state?.settings || await getAppSettings();
         const text = `🛰 <b>ÉTAPE 1 : AUTOMATISATION TOTALE</b>\n\n` +
             `Dites adieu à la gestion manuelle. Notre système gère vos stocks, vos commandes et vos clients 24h/24.\n\n` +
@@ -498,7 +506,7 @@ function setupStartHandler(bot) {
     });
 
     bot.action('tour_2', async (ctx) => {
-        await ctx.answerCbQuery();
+        await ctx.answerCbQuery('💎 SÉCURITÉ MAXIMALE ACTIVÉE');
         const settings = ctx.state?.settings || await getAppSettings();
         const text = `💎 <b>ÉTAPE 2 : PAIEMENTS SÉCURISÉS</b>\n\n` +
             `Nous intégrons les méthodes les plus fiables du marché :\n\n` +
@@ -513,7 +521,7 @@ function setupStartHandler(bot) {
     });
 
     bot.action('tour_3', async (ctx) => {
-        await ctx.answerCbQuery();
+        await ctx.answerCbQuery('🚀 PRÊT POUR LE DÉCOLLAGE ?');
         const settings = ctx.state?.settings || await getAppSettings();
         const text = `🏆 <b>ÉTAPE 3 : VOTRE EMPIRE, VOS RÈGLES</b>\n\n` +
             `Gérez tout depuis votre console admin intuitive.\n\n` +
@@ -591,8 +599,10 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     // Ligne 0 : VIP ACCESS (Bouton ultra-premium)
     buttons.push([Markup.button.callback(`👑 DÉPLOYER MON PROPRE EMPIRE (BOT) 👑`, 'show_pricing')]);
 
-    // Ligne 1 : Catalogue (Gros bouton principal avec effet de brillance)
-    buttons.push([Markup.button.callback(`✨ ${t(user, 'btn_catalog', settings.label_catalog || 'ACCÉDER AU CATALOGUE').toUpperCase()} ✨`, 'view_catalog')]);
+    // Ligne 1 : Catalogue (Gros bouton principal avec effet de pulsation animé)
+    const pulseIcons = ['✨', '🌟', '✨', '🌟'];
+    const pIdx = Math.floor((Date.now() / 1000) % pulseIcons.length);
+    buttons.push([Markup.button.callback(`${pulseIcons[pIdx]} ${t(user, 'btn_catalog', settings.label_catalog || 'ACCÉDER AU CATALOGUE').toUpperCase()} ${pulseIcons[pIdx]}`, 'view_catalog')]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
