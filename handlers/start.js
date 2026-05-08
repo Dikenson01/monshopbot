@@ -248,8 +248,17 @@ function setupStartHandler(bot) {
             ]);
             
             if (isAdminUser) {
-                // Les admins voient le menu normal immédiatement
-                const welcomeBackText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`)
+                // RÉCUPÉRATION DES STATS LIVE POUR L'ADMIN (Effet "Command Center")
+                const overview = await getStatsOverview().catch(() => ({}));
+                const stats = overview.stats || {};
+                
+                const welcomeBackText = (settings.msg_welcome_back || `💎 <b>SYSTÈME SHOPTONBOT : CONSOLE ADMIN</b>\n\n` +
+                    `👋 Bienvenue, <b>{first_name}</b>. Votre infrastructure est stable.\n\n` +
+                    `📊 <b>ÉTAT DU RÉSEAU :</b>\n` +
+                    `• Clients : <code>${overview.total || 0}</code>\n` +
+                    `• Ventes : <code>${stats.total_orders || 0}</code>\n` +
+                    `• C.A Global : <code>${parseFloat(stats.total_ca || 0).toLocaleString()}€</code>\n\n` +
+                    `🚀 <i>Toutes les fonctions de gestion sont opérationnelles.</i>`)
                     .replace('{first_name}', user.first_name);
                 
                 const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
@@ -625,11 +634,19 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     if (spaces.length > 0) buttons.push(spaces);
 
     // Ligne de fin : Paramètres & Admin
-    const footers = [Markup.button.callback(`${settings.btn_settings || '⚙️'} ${t(user, 'btn_settings', 'Réglages')}`, 'user_settings')];
+    const footers = [Markup.button.callback(`${settings.btn_settings || '⚙️'} RÉGLAGES`, 'user_settings')];
     if (user?.is_admin || isAdminUser) {
-        footers.push(Markup.button.callback(`${settings.ui_icon_admin || '🛠'} ${t(user, 'btn_admin', 'Admin')}`, 'admin_menu'));
+        footers.push(Markup.button.callback(`🛠 CONSOLE ADMIN`, 'admin_menu'));
     }
     if (footers.length > 0) buttons.push(footers);
+    
+    // NOUVEAU: RACCOURCIS ADMIN (Uniquement si admin)
+    if (user?.is_admin || isAdminUser) {
+        buttons.push([
+            Markup.button.callback('📢 BROADCAST', 'admin_broadcast_menu'),
+            Markup.button.callback('⏳ ATTENTE', 'admin_pending_users')
+        ]);
+    }
 
     return Markup.inlineKeyboard(buttons);
 }
