@@ -128,7 +128,7 @@ async function showAdminMenu(ctx, isEdit = false) {
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
         [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders')],
         [Markup.button.callback('📥 Contact', 'admin_tickets')],
-        [Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users'), Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast')],
+        [Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast'), Markup.button.callback('📢 Marketing Auto', 'admin_trigger_marketing')],
         [Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
         [Markup.button.callback('◀️ Retour Menu', 'admin_menu')],
         [Markup.button.callback(t(user, 'btn_admin_features', '✨ Guide Bot'), 'admin_features')],
@@ -608,6 +608,20 @@ function setupAdminHandlers(bot) {
         await updateOrderStatus(orderId, status);
         await ctx.answerCbQuery(`✅ Statut mis à jour : ${status}`);
         return bot.handleUpdate({ ...ctx.update, callback_query: { ...ctx.callbackQuery, data: `ao_v_${orderId}` } });
+    });
+
+    // --- MARKETING AUTOMATIQUE (MANUEL) ---
+    bot.action('admin_trigger_marketing', async (ctx) => {
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé.');
+        await ctx.answerCbQuery('🚀 Lancement de la campagne marketing...');
+        
+        const { runAutomatedMarketing } = require('../services/marketing');
+        try {
+            await runAutomatedMarketing();
+            await ctx.reply('✅ <b>Campagne marketing lancée avec succès !</b>\n\nLe message a été diffusé à tous les utilisateurs éligibles.', { parse_mode: 'HTML' });
+        } catch (e) {
+            await ctx.reply(`❌ <b>Erreur lors du lancement :</b>\n${e.message}`, { parse_mode: 'HTML' });
+        }
     });
 
     // Gestion des Utilisateurs

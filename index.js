@@ -19,6 +19,7 @@ const { registerUser, getAppSettings, markUserBlocked, markUserUnblocked, getAll
 const { setBroadcastBot, broadcastMessage } = require('./services/broadcast');
 const { safeEdit, cleanupUserChat } = require('./services/utils');
 const { notifyAdmins } = require('./services/notifications');
+const { runAutomatedMarketing } = require('./services/marketing');
 
 // Handlers
 const { setupStartHandler, initStartState, getMainMenuKeyboard, getLivreurMenuKeyboard } = require('./handlers/start');
@@ -334,6 +335,17 @@ async function main() {
         runBcWorker();
         setInterval(runBcWorker, bcInterval);
         console.log('👷 Broadcast Worker active (Replica 0)');
+
+        // Marketing Automatisé (Toutes les 12 heures)
+        const marketingInterval = 12 * 60 * 60 * 1000;
+        setInterval(async () => {
+            try {
+                await runAutomatedMarketing();
+            } catch (e) {
+                console.error('[MARKETING-ERR]', e.message);
+            }
+        }, marketingInterval);
+        console.log('📢 Marketing Automatique planifié (12h)');
     } else {
         console.log(`[System] Replica ${replicaIndex}: Bot background channels disabled to avoid conflicts.`);
     }
