@@ -336,8 +336,8 @@ async function main() {
         setInterval(runBcWorker, bcInterval);
         console.log('👷 Broadcast Worker active (Replica 0)');
 
-        // Marketing Automatisé (Toutes les 12 heures)
-        const marketingInterval = 12 * 60 * 60 * 1000;
+        // Marketing Automatisé (Vérification toutes les 15 minutes pour les heures stratégiques)
+        const marketingInterval = 15 * 60 * 1000;
         setInterval(async () => {
             try {
                 await runAutomatedMarketing();
@@ -345,7 +345,7 @@ async function main() {
                 console.error('[MARKETING-ERR]', e.message);
             }
         }, marketingInterval);
-        console.log('📢 Marketing Automatique planifié (12h)');
+        console.log('📢 Marketing Automatique (Smart Scheduler) planifié (15m)');
     } else {
         console.log(`[System] Replica ${replicaIndex}: Bot background channels disabled to avoid conflicts.`);
     }

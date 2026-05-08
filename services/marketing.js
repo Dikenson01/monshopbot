@@ -33,36 +33,59 @@ const COMMERCIAL_TEMPLATES = [
     }
 ];
 
+/**
+ * Strategic Hours (Paris Time)
+ */
+const STRATEGIC_HOURS = [11, 14, 19, 22]; // 11h, 14h, 19h, 22h
+let lastSentHour = -1;
+
 async function runAutomatedMarketing() {
     try {
         const settings = await getAppSettings();
         if (settings.maintenance_mode) return;
 
-        console.log('[Marketing] Exécution de la campagne automatique...');
+        // On utilise l'heure de Paris
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+        const currentHour = now.getHours();
 
-        // 1. Sélectionner un template aléatoire
-        const template = COMMERCIAL_TEMPLATES[Math.floor(Math.random() * COMMERCIAL_TEMPLATES.length)];
+        // Sécurité : Ne pas envoyer deux fois dans la même heure
+        if (currentHour === lastSentHour) return;
+
+        // Vérifier si nous sommes dans une heure stratégique
+        if (!STRATEGIC_HOURS.includes(currentHour)) {
+            // console.log(`[Marketing] Heure actuelle (${currentHour}h) non stratégique. En attente...`);
+            return;
+        }
+
+        console.log(`[Marketing] Heure stratégique détectée (${currentHour}h). Préparation de la campagne...`);
+        lastSentHour = currentHour;
+
+        // 1. Sélectionner un template adapté à l'heure
+        let template;
+        if (currentHour === 11) {
+            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'catalog') || COMMERCIAL_TEMPLATES[0];
+        } else if (currentHour === 14) {
+            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'referral') || COMMERCIAL_TEMPLATES[1];
+        } else if (currentHour === 19) {
+            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'catalog') || COMMERCIAL_TEMPLATES[3];
+        } else {
+            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'pricing') || COMMERCIAL_TEMPLATES[2];
+        }
         
-        // 2. Récupérer les utilisateurs (on cible les clients normaux)
+        // 2. Récupérer les utilisateurs
         const users = await getAllUsersForBroadcast(null, 'user');
         if (users.length === 0) return;
 
-        // Pour éviter le spam massif, on peut segmenter ou envoyer à une petite partie
-        // Mais ici, le client veut "proposer régulièrement", on va simuler un broadcast global intelligent
-        
-        const now = new Date();
         const startTime = now.toISOString();
-
-        // Enregistrer le broadcast dans la table bot_broadcasts pour le tracking admin
         const payload = `${template.title}\n\n${template.message}|||MEDIA_URLS|||[]`;
         
         // On lance le broadcast
         await broadcastMessage('users', payload, {
             start_at: startTime,
-            badge: "📣 AUTO-MARKETING"
+            badge: "📣 SMART-MARKETING"
         });
 
-        console.log(`[Marketing] Campagne "${template.title}" lancée pour ${users.length} utilisateurs.`);
+        console.log(`[Marketing] Campagne "${template.title}" lancée avec succès pour ${users.length} utilisateurs.`);
     } catch (e) {
         console.error('[Marketing-Error]', e.message);
     }
