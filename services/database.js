@@ -3198,5 +3198,17 @@ module.exports = {
     logSupportMessage, getSupportLogs, bulkRegisterUsers, getAllActiveUsers,
     syncUserCart, 
     getPendingBroadcasts, getUpcomingPlannedOrders, checkLock, claimLock,
-    addMessageToTrack, getLastMenuId, getTrackedMessages, saveUserLocation // Restauration des fonctions de tracking
+    addMessageToTrack, getLastMenuId, getTrackedMessages, saveUserLocation,
+    incrementDailyStat, addToStat, incrementStat, getLivreurOrders, getAllLivreurs,
+    getClientActiveOrders, logHelpRequest, saveClientReply, incrementChatCount,
+    getAndClearPendingFeedback, saveFeedback, saveReview, uploadMediaFromUrl,
+    getSupplierByTelegramId, getSupplierProducts, getSupplierOrders, 
+    markOrderSupplierReady, markOrderSupplierNotified, getOrdersByUser,
+    // Marketplace & Others
+    getAvailableOrders, getLivreurHistory, getReviews, deleteReview,
+    getSuppliers, getSupplier, saveSupplier, deleteSupplier,
+    getMarketplaceProducts, getMarketplaceProduct, getAvailableMarketplaceProducts,
+    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock,
+    createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
+    getUserAnalytics, clearUserCache, _userCache
 };
