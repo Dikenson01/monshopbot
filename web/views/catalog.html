@@ -212,7 +212,7 @@
             font-size: 12px;
         }
 
-        /* CHECKOUT OVERLAY (MULTI-STEP) */
+        /* MODALS / OVERLAYS */
         .overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -236,6 +236,64 @@
             margin-bottom: 25px;
         }
 
+        .close-btn {
+            font-size: 24px;
+            opacity: 0.5;
+            cursor: pointer;
+        }
+
+        /* PRODUCT SELECTION MODAL */
+        .selection-modal {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: #111;
+            border-radius: 30px 30px 0 0;
+            z-index: 2500;
+            padding: 30px 20px;
+            transform: translateY(100%);
+            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+        }
+
+        .selection-modal.open {
+            transform: translateY(0);
+        }
+
+        .option-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .option-card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .option-card.active {
+            border-color: var(--accent);
+            background: rgba(255, 0, 80, 0.1);
+        }
+
+        .option-label {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .option-price {
+            font-size: 14px;
+            color: var(--accent);
+            font-weight: 800;
+        }
+
+        /* CHECKOUT STEPS */
         .step-indicator {
             display: flex;
             gap: 5px;
@@ -270,7 +328,6 @@
             margin-bottom: 15px;
         }
 
-        /* Cart Items UI */
         .cart-item {
             display: flex;
             align-items: center;
@@ -288,7 +345,6 @@
             object-fit: cover;
         }
 
-        /* Address UI */
         .input-group {
             margin-bottom: 20px;
         }
@@ -314,10 +370,14 @@
 
         .autocomplete-results {
             margin-top: 5px;
-            background: var(--card-bg);
+            background: #1a1a1a;
             border-radius: 12px;
             overflow: hidden;
             display: none;
+            position: absolute;
+            width: calc(100% - 40px);
+            z-index: 3000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
         .autocomplete-item {
@@ -327,7 +387,6 @@
             cursor: pointer;
         }
 
-        /* Delivery UI */
         .delivery-option {
             background: var(--card-bg);
             border: 1px solid rgba(255,255,255,0.1);
@@ -354,10 +413,6 @@
             position: relative;
         }
 
-        .delivery-option.active .radio-circle {
-            border-color: var(--accent);
-        }
-
         .delivery-option.active .radio-circle::after {
             content: '';
             position: absolute;
@@ -366,11 +421,6 @@
             width: 10px; height: 10px;
             background: var(--accent);
             border-radius: 50%;
-        }
-
-        .overlay-footer {
-            padding-top: 15px;
-            border-top: 1px solid rgba(255,255,255,0.1);
         }
 
         .btn-primary {
@@ -386,9 +436,20 @@
             box-shadow: 0 8px 20px rgba(255, 0, 80, 0.3);
         }
 
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .qty-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 12px;
+            border-radius: 10px;
+        }
+
+        .qty-btn {
+            font-size: 18px;
+            font-weight: 800;
+            cursor: pointer;
+            color: var(--accent);
         }
 
         #loading {
@@ -398,7 +459,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 3000;
+            z-index: 4000;
             flex-direction: column;
         }
 
@@ -423,7 +484,7 @@
 
     <header>
         <h1>SHOPTONBOT MINI APP</h1>
-        <p style="text-align:center; font-size:12px; opacity:0.4; margin-top:5px;">Expérience E-Commerce Intégrale v6.0</p>
+        <p style="text-align:center; font-size:12px; opacity:0.4; margin-top:5px;">Expérience E-Commerce Intégrale v6.1</p>
     </header>
 
     <div class="search-container">
@@ -445,6 +506,21 @@
             <span style="font-size:14px;">COMMANDER</span>
         </div>
         <div id="cart-total" style="font-size:16px;">0.00€</div>
+    </div>
+
+    <!-- SELECTION MODAL (GRAMMAGE) -->
+    <div class="selection-modal" id="selection-modal">
+        <h3 id="modal-product-name" style="font-weight:800; margin-bottom:5px;">Produit</h3>
+        <p id="modal-product-desc" style="font-size:13px; opacity:0.6; margin-bottom:20px;">Sélectionnez votre grammage</p>
+        
+        <div class="option-grid" id="modal-options">
+            <!-- Options injected here -->
+        </div>
+
+        <div style="margin-top:30px;">
+            <button class="btn-primary" onclick="addSelectionToCart()">AJOUTER AU PANIER</button>
+            <p style="text-align:center; margin-top:15px; font-size:14px; opacity:0.5; cursor:pointer;" onclick="closeSelectionModal()">Annuler</p>
+        </div>
     </div>
 
     <!-- FULL CHECKOUT OVERLAY -->
@@ -524,27 +600,22 @@
         tg.ready();
 
         let allProducts = [];
-        let filteredProducts = [];
         let cart = [];
         let currentStep = 1;
         let selectedMethod = 'normal';
         let deliveryFee = 0;
+        let activeProduct = null;
+        let activeOption = null;
 
         async function loadProducts() {
             try {
                 const response = await fetch('/api/products');
                 const data = await response.json();
                 allProducts = data;
-                filteredProducts = data;
-                
-                const categories = ['all', ...new Set(data.map(p => p.category).filter(c => c))];
-                renderCategories(categories);
+                renderCategories(['all', ...new Set(data.map(p => p.category).filter(c => c))]);
                 renderProducts(data);
-                
                 document.getElementById('loading').style.display = 'none';
-            } catch (e) {
-                tg.showAlert("Erreur de connexion.");
-            }
+            } catch (e) { tg.showAlert("Erreur de connexion."); }
         }
 
         function renderCategories(categories) {
@@ -562,17 +633,13 @@
         function filterCategory(cat, el) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             if (el) el.classList.add('active');
-            filteredProducts = cat === 'all' ? allProducts : allProducts.filter(p => p.category === cat);
-            renderProducts(filteredProducts);
+            const filtered = cat === 'all' ? allProducts : allProducts.filter(p => p.category === cat);
+            renderProducts(filtered);
         }
 
         function handleSearch() {
             const query = document.getElementById('search-input').value.toLowerCase();
-            const results = allProducts.filter(p => 
-                p.name.toLowerCase().includes(query) || 
-                (p.description && p.description.toLowerCase().includes(query))
-            );
-            renderProducts(results);
+            renderProducts(allProducts.filter(p => p.name.toLowerCase().includes(query)));
         }
 
         function renderProducts(products) {
@@ -581,7 +648,6 @@
             products.forEach((p, index) => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
-                card.style.animationDelay = `${index * 0.03}s`;
                 const img = p.image_url || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(p.name)}`;
                 card.innerHTML = `
                     <img src="${img}" class="product-image">
@@ -589,35 +655,88 @@
                         <div class="product-name">${p.name}</div>
                         <div class="product-price">${p.price}€</div>
                     </div>
-                    <div class="add-btn" onclick="addToCart('${p.id}', event)">+</div>
+                    <div class="add-btn" onclick="openSelectionModal('${p.id}', event)">+</div>
                 `;
                 container.appendChild(card);
             });
         }
 
-        function addToCart(pid, e) {
+        function openSelectionModal(pid, e) {
             if (e) e.stopPropagation();
-            const p = allProducts.find(x => x.id === pid);
-            const existing = cart.find(i => i.id === pid);
-            if (existing) existing.qty++;
-            else cart.push({ ...p, qty: 1 });
-            updateCartUI();
-            tg.HapticFeedback.notificationOccurred('success');
+            activeProduct = allProducts.find(x => x.id === pid);
+            if (!activeProduct) return;
+
+            document.getElementById('modal-product-name').innerText = activeProduct.name;
+            document.getElementById('modal-product-desc').innerText = activeProduct.description || "Sélectionnez votre grammage";
+            
+            const optionsContainer = document.getElementById('modal-options');
+            optionsContainer.innerHTML = '';
+
+            const unit = activeProduct.unit || 'g';
+            const unitValue = parseFloat(String(activeProduct.unit_value || '1').replace(',', '.')) || 1;
+            const multipliers = [1, 2, 3, 4, 5, 10];
+            
+            multipliers.forEach(m => {
+                const qty = m * unitValue;
+                let price = m * activeProduct.price;
+
+                // Appliquer les remises dégressives si elles existent
+                if (activeProduct.has_discounts && activeProduct.discounts_config) {
+                    const tier = activeProduct.discounts_config.find(d => parseInt(d.qty) === m);
+                    if (tier) price = parseFloat(tier.total || tier.total_price);
+                }
+
+                const div = document.createElement('div');
+                div.className = 'option-card';
+                div.onclick = () => selectOption(qty, price, m, div);
+                div.innerHTML = `<div class="option-label">${qty}${unit}</div><div class="option-price">${price.toFixed(0)}€</div>`;
+                optionsContainer.appendChild(div);
+                
+                if (m === 1) selectOption(qty, price, m, div); // Par défaut la première option
+            });
+
+            document.getElementById('selection-modal').classList.add('open');
         }
 
-        function updateQty(pid, delta) {
-            const idx = cart.findIndex(i => i.id === pid);
-            cart[idx].qty += delta;
-            if (cart[idx].qty <= 0) cart.splice(idx, 1);
+        function selectOption(qty, price, multiplier, el) {
+            activeOption = { qty, price, multiplier };
+            document.querySelectorAll('.option-card').forEach(o => o.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function closeSelectionModal() {
+            document.getElementById('selection-modal').classList.remove('open');
+        }
+
+        function addSelectionToCart() {
+            if (!activeProduct || !activeOption) return;
+            const cartId = `${activeProduct.id}_${activeOption.qty}`;
+            const existing = cart.find(i => i.cartId === cartId);
+            
+            if (existing) {
+                existing.qty_in_cart++;
+            } else {
+                cart.push({
+                    cartId: cartId,
+                    id: activeProduct.id,
+                    name: activeProduct.name,
+                    price: activeOption.price,
+                    selectedQty: activeOption.qty,
+                    multiplier: activeOption.multiplier,
+                    unit: activeProduct.unit || 'g',
+                    qty_in_cart: 1
+                });
+            }
+
             updateCartUI();
-            renderCheckoutItems();
-            if (cart.length === 0) closeCheckout();
+            closeSelectionModal();
+            tg.HapticFeedback.notificationOccurred('success');
         }
 
         function updateCartUI() {
             const bar = document.getElementById('cart-bar');
-            const total = cart.reduce((s, i) => s + (i.price * i.qty), 0);
-            const count = cart.reduce((s, i) => s + i.qty, 0);
+            const total = cart.reduce((s, i) => s + (i.price * i.qty_in_cart), 0);
+            const count = cart.reduce((s, i) => s + i.qty_in_cart, 0);
             document.getElementById('cart-count').innerText = count;
             document.getElementById('cart-total').innerText = total.toFixed(2) + '€';
             document.getElementById('final-total').innerText = (total + deliveryFee).toFixed(2) + '€';
@@ -628,13 +747,9 @@
         function openCheckout() {
             document.getElementById('checkout-overlay').classList.add('open');
             renderCheckoutItems();
-            currentStep = 1;
             showStep(1);
             tg.BackButton.show();
-            tg.BackButton.onClick(() => {
-                if (currentStep > 1) prevStep();
-                else closeCheckout();
-            });
+            tg.BackButton.onClick(() => { if (currentStep > 1) prevStep(); else closeCheckout(); });
         }
 
         function closeCheckout() {
@@ -649,51 +764,49 @@
                 const div = document.createElement('div');
                 div.className = 'cart-item';
                 div.innerHTML = `
-                    <img src="${i.image_url || ''}" class="cart-item-img">
                     <div style="flex:1">
-                        <div style="font-weight:700; font-size:14px;">${i.name}</div>
+                        <div style="font-weight:700; font-size:14px;">${i.name} (${i.selectedQty}${i.unit})</div>
                         <div style="color:var(--accent); font-size:13px;">${i.price}€</div>
                     </div>
                     <div class="qty-controls">
-                        <div class="qty-btn" onclick="updateQty('${i.id}', -1)">−</div>
-                        <div style="font-size:14px;">${i.qty}</div>
-                        <div class="qty-btn" onclick="updateQty('${i.id}', 1)">+</div>
+                        <div class="qty-btn" onclick="updateItemInCart('${i.cartId}', -1)">−</div>
+                        <div style="font-size:14px;">${i.qty_in_cart}</div>
+                        <div class="qty-btn" onclick="updateItemInCart('${i.cartId}', 1)">+</div>
                     </div>
                 `;
                 container.appendChild(div);
             });
         }
 
+        function updateItemInCart(cartId, delta) {
+            const idx = cart.findIndex(i => i.cartId === cartId);
+            cart[idx].qty_in_cart += delta;
+            if (cart[idx].qty_in_cart <= 0) cart.splice(idx, 1);
+            updateCartUI();
+            renderCheckoutItems();
+            if (cart.length === 0) closeCheckout();
+        }
+
         function showStep(s) {
+            currentStep = s;
             document.querySelectorAll('.step-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.step-dot').forEach(d => d.classList.remove('active'));
             document.getElementById(`step-${s}`).classList.add('active');
             for(let i=1; i<=s; i++) document.getElementById(`dot-${i}`).classList.add('active');
-            
             const btn = document.getElementById('btn-next');
-            if (s === 3) btn.innerText = "🚀 PASSER LA COMMANDE";
-            else btn.innerText = "CONTINUER";
+            btn.innerText = (s === 3) ? "🚀 PASSER LA COMMANDE" : "CONTINUER";
         }
 
         function nextStep() {
-            if (currentStep === 1) {
-                currentStep = 2;
-                showStep(2);
-            } else if (currentStep === 2) {
-                const addr = document.getElementById('address-input').value;
-                const name = document.getElementById('name-input').value;
-                if (!addr || !name) return tg.showAlert("Veuillez remplir l'adresse et votre nom.");
-                currentStep = 3;
+            if (currentStep === 1) showStep(2);
+            else if (currentStep === 2) {
+                if (!document.getElementById('address-input').value || !document.getElementById('name-input').value) 
+                    return tg.showAlert("Remplissez l'adresse et le nom.");
                 showStep(3);
-            } else {
-                submitOrder();
-            }
+            } else submitOrder();
         }
 
-        function prevStep() {
-            currentStep--;
-            showStep(currentStep);
-        }
+        function prevStep() { showStep(currentStep - 1); }
 
         function selectMethod(m, fee) {
             selectedMethod = m;
@@ -706,42 +819,41 @@
         async function searchAddress() {
             const q = document.getElementById('address-input').value;
             if (q.length < 5) return;
-            try {
-                const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5`);
-                const data = await res.json();
-                const results = document.getElementById('address-results');
-                results.innerHTML = '';
-                results.style.display = 'block';
-                data.features.forEach(f => {
-                    const div = document.createElement('div');
-                    div.className = 'autocomplete-item';
-                    const addr = `${f.properties.name || ''} ${f.properties.street || ''}, ${f.properties.postcode || ''} ${f.properties.city || ''}`;
-                    div.innerText = addr;
-                    div.onclick = () => {
-                        document.getElementById('address-input').value = addr;
-                        results.style.display = 'none';
-                    };
-                    results.appendChild(div);
-                });
-            } catch(e) {}
+            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5`);
+            const data = await res.json();
+            const results = document.getElementById('address-results');
+            results.innerHTML = ''; results.style.display = 'block';
+            data.features.forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'autocomplete-item';
+                const addr = `${f.properties.name || ''} ${f.properties.street || ''}, ${f.properties.postcode || ''} ${f.properties.city || ''}`;
+                div.innerText = addr;
+                div.onclick = () => { document.getElementById('address-input').value = addr; results.style.display = 'none'; };
+                results.appendChild(div);
+            });
         }
 
         async function submitOrder() {
             const btn = document.getElementById('btn-next');
-            btn.innerText = "Envoi en cours...";
-            btn.disabled = true;
-
+            btn.innerText = "Envoi..."; btn.disabled = true;
             const orderData = {
                 userId: tg.initDataUnsafe?.user?.id,
-                items: cart,
+                items: cart.map(i => ({ 
+                    id: i.id, 
+                    productName: i.name, 
+                    qty: i.selectedQty, // Le poids (ex: 5g)
+                    nSachets: i.multiplier, // Le nombre de pochons (multiplicateur)
+                    totalPrice: i.price * i.qty_in_cart,
+                    productUnit: i.unit,
+                    qty_in_cart: i.qty_in_cart
+                })),
                 address: document.getElementById('address-input').value,
                 customerName: document.getElementById('name-input').value,
                 phone: document.getElementById('phone-input').value,
                 deliveryMethod: selectedMethod,
                 deliveryFee: deliveryFee,
-                total: cart.reduce((s, i) => s + (i.price * i.qty), 0) + deliveryFee
+                total: cart.reduce((s, i) => s + (i.price * i.qty_in_cart), 0) + deliveryFee
             };
-
             try {
                 const response = await fetch('/api/mini-app/order', {
                     method: 'POST',
@@ -749,19 +861,9 @@
                     body: JSON.stringify(orderData)
                 });
                 const res = await response.json();
-                if (res.success) {
-                    tg.showAlert("Commande validée ! Vous allez recevoir une confirmation dans le bot.");
-                    tg.close();
-                } else {
-                    tg.showAlert("Erreur: " + res.error);
-                    btn.innerText = "🚀 PASSER LA COMMANDE";
-                    btn.disabled = false;
-                }
-            } catch(e) {
-                tg.showAlert("Erreur réseau.");
-                btn.innerText = "🚀 PASSER LA COMMANDE";
-                btn.disabled = false;
-            }
+                if (res.success) { tg.showAlert("Commande validée !"); tg.close(); }
+                else { tg.showAlert("Erreur: " + res.error); btn.innerText = "🚀 PASSER LA COMMANDE"; btn.disabled = false; }
+            } catch(e) { tg.showAlert("Erreur réseau."); btn.innerText = "🚀 PASSER LA COMMANDE"; btn.disabled = false; }
         }
 
         loadProducts();

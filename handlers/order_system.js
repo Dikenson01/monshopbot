@@ -186,11 +186,12 @@ function setupOrderSystem(bot) {
             // Préparation des items pour la DB
             const orderItems = items.map(i => ({
                 id: i.id,
-                productName: i.name,
+                productName: i.productName || i.name,
                 price: i.price,
-                qty: i.qty,
-                totalPrice: (i.price * i.qty),
-                productUnit: i.unit || 'u'
+                qty: i.qty * (i.qty_in_cart || 1), // Poids total
+                nSachets: (i.nSachets || 1) * (i.qty_in_cart || 1), // Nombre total de pochons
+                totalPrice: i.totalPrice || (i.price * (i.qty_in_cart || 1)),
+                productUnit: i.productUnit || i.unit || 'u'
             }));
 
             const orderData = {
