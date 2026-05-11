@@ -609,11 +609,10 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     // Ligne 0 : VIP ACCESS (Bouton ultra-premium)
     buttons.push([Markup.button.callback(`👑 DÉPLOYER MON PROPRE EMPIRE (BOT) 👑`, 'show_pricing')]);
 
-    // Ligne 1 : Catalogue (Gros bouton principal avec effet de pulsation animé)
-    const pulseIcons = ['✨', '🌟', '✨', '🌟'];
-    const pIdx = Math.floor((Date.now() / 1000) % pulseIcons.length);
+    // Ligne 1 : Catalogue (Classique + Mini App)
     const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
-    buttons.push([Markup.button.webApp(`${pulseIcons[pIdx]} ${t(user, 'btn_catalog', settings.label_catalog || 'ACCÉDER AU CATALOGUE').toUpperCase()} ${pulseIcons[pIdx]}`, catalogUrl)]);
+    buttons.push([Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'main_menu')]);
+    buttons.push([Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
