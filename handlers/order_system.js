@@ -93,6 +93,7 @@ function setupOrderSystem(bot) {
             const data = JSON.parse(ctx.webAppData.data);
             if (data.action === 'mini_app_cart') {
                 const uId = ctx.from.id;
+                const userId = `${ctx.platform}_${uId}`;
                 const cart = data.items;
                 
                 // Charger les produits réels pour avoir les prix et noms corrects
@@ -100,23 +101,31 @@ function setupOrderSystem(bot) {
                 const cartItems = cart.map(item => {
                     const p = products.find(x => x.id === item.id);
                     if (!p) return null;
-                    return { ...p, qty: item.qty };
+                    return { 
+                        id: p.id,
+                        productName: p.name,
+                        price: p.price,
+                        qty: item.qty,
+                        totalPrice: (p.price * item.qty),
+                        productUnit: p.unit || 'u'
+                    };
                 }).filter(Boolean);
 
                 if (cartItems.length === 0) {
                     return ctx.reply("❌ Votre panier Mini App semble vide ou les produits ne sont plus disponibles.");
                 }
 
-                userCarts.set(uId, cartItems);
+                userCarts.set(userId, cartItems);
                 await userCarts.save();
 
-                const total = cartItems.reduce((acc, i) => acc + (i.price * i.qty), 0);
+                const total = cartItems.reduce((acc, i) => acc + i.totalPrice, 0);
                 const text = `🛒 <b>Mini App : Panier synchronisé !</b>\n\n` +
-                             cartItems.map(i => `• <b>${i.name}</b> x${i.qty} (${(i.price * i.qty).toFixed(2)}€)`).join('\n') +
-                             `\n\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nSouhaitez-vous valider votre commande ?`;
+                             cartItems.map(i => `• <b>${i.productName}</b> x${i.qty} (${i.totalPrice.toFixed(2)}€)`).join('\n') +
+                             `\n\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nSouhaitez-vous finaliser votre commande maintenant ?`;
                 
                 const keyboard = Markup.inlineKeyboard([
-                    [Markup.button.callback('✅ VALIDER LA COMMANDE', 'view_cart')],
+                    [Markup.button.callback('🚀 PASSER LA COMMANDE', 'start_checkout')],
+                    [Markup.button.callback('🛒 VOIR LE PANIER / MODIFIER', 'view_cart')],
                     [Markup.button.callback('❌ VIDER LE PANIER', 'clear_cart')]
                 ]);
 
