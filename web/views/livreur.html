@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ELITE DELIVERY - Driver Console</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000;
+            --card: #111;
+            --accent: #ff0055;
+            --accent-glow: rgba(255, 0, 85, 0.3);
+            --text: #fff;
+            --border: rgba(255,255,255,0.08);
+            --safe-area-top: env(safe-area-inset-top);
+            --safe-area-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg); color: var(--text);
+            overflow-x: hidden;
+        }
+
+        .app-container { padding: calc(20px + var(--safe-area-top)) 20px calc(100px + var(--safe-area-bottom)) 20px; }
+
+        header { margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: 900; font-size: 22px; letter-spacing: -1px; }
+        .logo span { color: var(--accent); }
+        
+        .status-badge {
+            background: rgba(255,255,255,0.05);
+            padding: 8px 15px; border-radius: 20px;
+            font-size: 12px; font-weight: 800;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-online { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+        .status-offline { background: #ff4444; }
+
+        .section-title { font-size: 11px; font-weight: 900; opacity: 0.3; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 15px; }
+
+        .order-card {
+            background: var(--card); border-radius: 25px; padding: 20px;
+            margin-bottom: 15px; border: 1px solid var(--border);
+            transition: 0.3s;
+        }
+        .order-card:active { transform: scale(0.98); background: #1a1a1a; }
+
+        .order-header { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .order-id { font-weight: 900; font-size: 16px; }
+        .order-time { font-size: 12px; opacity: 0.4; font-weight: 700; }
+
+        .order-address { font-size: 14px; font-weight: 700; margin-bottom: 15px; display: flex; gap: 10px; }
+        .order-address span { opacity: 0.5; }
+
+        .order-items { font-size: 13px; opacity: 0.6; margin-bottom: 20px; padding-left: 20px; border-left: 2px solid var(--accent); }
+
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-action {
+            height: 48px; border: none; border-radius: 15px;
+            font-weight: 900; font-size: 13px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-secondary { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid var(--border); }
+        .btn-full { grid-column: span 2; }
+
+        #loading-screen {
+            position: fixed; inset: 0; background: #000; z-index: 10000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .loader { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state { text-align: center; padding: 60px 20px; opacity: 0.3; font-weight: 700; }
+
+        .tab-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: rgba(10,10,10,0.8); backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border);
+            display: grid; grid-template-columns: 1fr 1fr;
+            padding: 10px 0 calc(10px + var(--safe-area-bottom)) 0;
+            z-index: 9000;
+        }
+        .tab-item { text-align: center; font-size: 10px; font-weight: 900; opacity: 0.4; transition: 0.3s; }
+        .tab-item.active { opacity: 1; color: var(--accent); }
+        .tab-icon { font-size: 20px; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div id="loading-screen"><div class="loader"></div><p style="margin-top:20px; font-weight:800; font-size:12px; opacity:0.5;">CHARGEMENT CONSOLE...</p></div>
+
+    <div class="app-container">
+        <header>
+            <div class="logo">ELITE<span>DRIVE</span></div>
+            <div class="status-badge" onclick="toggleAvailability()">
+                <div class="status-dot status-offline" id="avail-dot"></div>
+                <span id="avail-text">INDISPONIBLE</span>
+            </div>
+        </header>
+
+        <div id="active-orders-section">
+            <div class="section-title">En livraison 🔥</div>
+            <div id="active-orders-list"></div>
+        </div>
+
+        <div id="available-orders-section" style="margin-top:40px;">
+            <div class="section-title">Commandes disponibles 📦</div>
+            <div id="available-orders-list"></div>
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <div class="tab-item active" onclick="switchTab('deliveries')">
+            <div class="tab-icon">🚚</div>
+            <div>COURSES</div>
+        </div>
+        <div class="tab-item" onclick="switchTab('history')">
+            <div class="tab-icon">📈</div>
+            <div>HISTORIQUE</div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); tg.ready();
+
+        let orders = [];
+        let userInfo = null;
+
+        async function init() {
+            const uid = tg.initDataUnsafe?.user?.id;
+            if (!uid) {
+                document.body.innerHTML = '<div class="empty-state">Veuillez ouvrir cette app depuis Telegram.</div>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/user-info?userId=telegram_${uid}`);
+                userInfo = await res.json();
+                
+                if (!userInfo.isLivreur) {
+                    document.body.innerHTML = '<div class="empty-state">Accès réservé aux livreurs certifiés.</div>';
+                    return;
+                }
+
+                updateAvailUI();
+                await refreshOrders();
+                document.getElementById('loading-screen').style.opacity = '0';
+                setTimeout(() => document.getElementById('loading-screen').remove(), 500);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function updateAvailUI() {
+            const dot = document.getElementById('avail-dot');
+            const text = document.getElementById('avail-text');
+            if (userInfo.isAvailable) {
+                dot.className = 'status-dot status-online';
+                text.innerText = 'DISPONIBLE';
+            } else {
+                dot.className = 'status-dot status-offline';
+                text.innerText = 'INDISPONIBLE';
+            }
+        }
+
+        async function toggleAvailability() {
+            userInfo.isAvailable = !userInfo.isAvailable;
+            updateAvailUI();
+            tg.HapticFeedback.impactOccurred('medium');
+            
+            try {
+                await fetch('/api/livreur/set-availability', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, available: userInfo.isAvailable })
+                });
+            } catch (e) {}
+        }
+
+        async function refreshOrders() {
+            const uid = tg.initDataUnsafe.user.id;
+            const [activeRes, availRes] = await Promise.all([
+                fetch(`/api/livreur/orders?userId=telegram_${uid}`),
+                fetch(`/api/livreur/available-orders?city=${userInfo.currentCity || 'all'}`)
+            ]);
+
+            const active = await activeRes.json();
+            const available = await availRes.json();
+
+            renderActive(active);
+            renderAvailable(available);
+        }
+
+        function renderActive(list) {
+            const cont = document.getElementById('active-orders-list');
+            cont.innerHTML = list.length ? '' : '<div class="empty-state">Aucune livraison en cours.</div>';
+            list.forEach(o => {
+                const d = document.createElement('div'); d.className = 'order-card';
+                d.innerHTML = `
+                    <div class="order-header">
+                        <div class="order-id">#${o.id.slice(-5)}</div>
+                        <div class="order-time">${new Date(o.created_at).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}</div>
+                    </div>
+                    <div class="order-address"><span>📍</span>${o.address}</div>
+                    <div class="order-items">${o.product_name}</div>
+                    <div class="btn-group">
+                        <button class="btn-action btn-primary btn-full" onclick="updateStatus('${o.id}', 'delivered')">✅ LIVRÉ</button>
+                        <button class="btn-action btn-secondary" onclick="openNav('${o.address}')">🗺 NAVIGUER</button>
+                        <button class="btn-action btn-secondary" onclick="updateStatus('${o.id}', 'cancelled')">❌ ANNULER</button>
+                    </div>
+                `;
+                cont.appendChild(d);
+            });
+        }
+
+        function renderAvailable(list) {
+            const cont = document.getElementById('available-orders-list');
+            cont.innerHTML = list.length ? '' : '<div class="empty-state">Aucune commande disponible dans votre secteur.</div>';
+            list.forEach(o => {
+                const d = document.createElement('div'); d.className = 'order-card';
+                d.innerHTML = `
+                    <div class="order-header">
+                        <div class="order-id">#${o.id.slice(-5)}</div>
+                        <div class="order-time">${o.total_price}€</div>
+                    </div>
+                    <div class="order-address"><span>📍</span>${o.address}</div>
+                    <button class="btn-action btn-primary btn-full" onclick="takeOrder('${o.id}')">📦 ACCEPTER LA COURSE</button>
+                `;
+                cont.appendChild(d);
+            });
+        }
+
+        async function takeOrder(id) {
+            tg.showConfirm("Voulez-vous prendre cette livraison ?", async (ok) => {
+                if (!ok) return;
+                try {
+                    const res = await fetch('/api/livreur/take-order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, orderId: id })
+                    });
+                    if (res.ok) {
+                        tg.HapticFeedback.notificationOccurred('success');
+                        refreshOrders();
+                    } else {
+                        tg.showAlert("Cette commande n'est plus disponible.");
+                    }
+                } catch (e) {}
+            });
+        }
+
+        async function updateStatus(id, status) {
+            const msg = status === 'delivered' ? "Confirmer la livraison ?" : "Annuler cette course ?";
+            tg.showConfirm(msg, async (ok) => {
+                if (!ok) return;
+                try {
+                    await fetch('/api/livreur/update-status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderId: id, status: status })
+                    });
+                    tg.HapticFeedback.notificationOccurred('success');
+                    refreshOrders();
+                } catch (e) {}
+            });
+        }
+
+        function openNav(addr) {
+            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+            tg.openLink(url);
+        }
+
+        init();
+        setInterval(refreshOrders, 30000); // Refresh every 30s
+    </script>
+</body>
+</html>

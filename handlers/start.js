@@ -673,7 +673,9 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
 
 async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = false, isAdminUser = false) {
     const isAvail = user?.is_available || user?.data?.is_available;
+    const livreurUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/livreur`;
     const buttons = [
+        [Markup.button.webApp('✨ ESPACE LIVREUR MINI APP ✨', livreurUrl)],
         [Markup.button.callback(isAvail ? '🔴 ' + t(user, 'btn_avail_off', 'Indisponible') : '🟢 ' + t(user, 'btn_avail_on', 'Disponible'), isAvail ? 'set_dispo_false' : 'set_dispo_true')],
         [
             Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${t(user, 'btn_orders_available_label', 'Commandes')}`, 'show_available_orders'), 

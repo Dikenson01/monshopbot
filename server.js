@@ -384,7 +384,13 @@ function createServer() {
 
     // ========== Static Pages ==========
 
-    app.get('/catalog', (req, res) => res.sendFile(path.join(__dirname, 'web', 'views', 'catalog.html')));
+    app.get('/catalog', (req, res) => {
+        res.sendFile(path.join(__dirname, 'web', 'views', 'catalog.html'));
+    });
+
+    app.get('/livreur', (req, res) => {
+        res.sendFile(path.join(__dirname, 'web', 'views', 'livreur.html'));
+    });
     app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'web', 'views', 'login.html')));
     app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'web', 'views', 'login.html')));
     app.get('/favicon.ico', (req, res) => res.status(204).end());
@@ -549,10 +555,9 @@ function createServer() {
                 user_id: userId,
                 product_name: productListStr,
                 quantity: totalQty,
-                cart: items, // On envoie l'objet structuré dans la colonne 'cart' (JSONB)
+                cart: items,
                 total_price: total,
-                address,
-                note,
+                address: note ? `${address} (Note: ${note})` : address,
                 platform: platform || 'telegram',
                 status: 'pending',
                 username: user?.username || 'inconnu',
@@ -591,6 +596,68 @@ function createServer() {
             res.json({ success: true, orderId: order.id });
         } catch (e) {
             console.error('[API-Order-Err]', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/livreur/orders', async (req, res) => {
+        try {
+            const { userId } = req.query;
+            const { getLivreurOrders } = require('./services/database');
+            const orders = await getLivreurOrders(userId);
+            res.json(orders);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/livreur/available-orders', async (req, res) => {
+        try {
+            const { city } = req.query;
+            const { getAvailableOrders } = require('./services/database');
+            const orders = await getAvailableOrders(city);
+            res.json(orders);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/livreur/set-availability', async (req, res) => {
+        try {
+            const { userId, available } = req.body;
+            const { setLivreurAvailability } = require('./services/database');
+            await setLivreurAvailability(userId, available);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/livreur/take-order', async (req, res) => {
+        try {
+            const { userId, orderId } = req.body;
+            const { getOrder, assignOrderLivreur, getUser } = require('./services/database');
+            
+            const order = await getOrder(orderId);
+            if (!order || order.status !== 'pending') {
+                return res.status(400).json({ error: 'Commande non disponible' });
+            }
+
+            const user = await getUser(userId);
+            await assignOrderLivreur(orderId, userId, user?.first_name || 'Livreur App');
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/livreur/update-status', async (req, res) => {
+        try {
+            const { orderId, status } = req.body;
+            const { updateOrderStatus } = require('./services/database');
+            await updateOrderStatus(orderId, status);
+            res.json({ success: true });
+        } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
