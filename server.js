@@ -634,6 +634,24 @@ function createServer() {
         }
     });
 
+    app.post('/api/mini-app/trigger-chat', async (req, res) => {
+        try {
+            const { userId, orderId } = req.body;
+            const tgId = userId.split('_')[1];
+            const bot = getBotInstance();
+            if (bot) {
+                const { Markup } = require('telegraf');
+                await bot.telegram.sendMessage(tgId, `📞 <b>Assistance Livraison #${orderId.slice(-5)}</b>\n\nCliquez sur le bouton ci-dessous pour ouvrir le chat sécurisé et anonyme avec votre livreur.`, {
+                    parse_mode: 'HTML',
+                    ...Markup.inlineKeyboard([[Markup.button.callback('💬 Parler au livreur', `chat_livreur_${orderId}`)]])
+                });
+            }
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.get('/api/livreur/orders', async (req, res) => {
         try {
             const { userId } = req.query;

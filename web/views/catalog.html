@@ -471,7 +471,7 @@
                         </div>
                     ` : '';
 
-                    const btnContact = (o.status === 'taken') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="tg.openTelegramLink('https://t.me/+PsQMCG9p36o0Njhk')"><i class="ph-fill ph-phone-call"></i> SUIVRE LA LIVRAISON</button>` : '';
+                    const btnContact = (o.status === 'taken') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="triggerChat('${o.id}')"><i class="ph-fill ph-phone-call"></i> SUIVRE LA LIVRAISON</button>` : '';
                     const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-primary" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="ph-fill ph-star"></i> NOTER</button>` : '';
                     const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
                     const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="ph-bold ph-x"></i> ANNULER</button>` : '';
@@ -496,6 +496,22 @@
                     cont.appendChild(d);
                 });
             } catch(e) { cont.innerHTML = '<div class="empty-state">Erreur de chargement.</div>'; }
+        }
+
+        async function triggerChat(orderId) {
+            const uid = tg.initDataUnsafe?.user?.id;
+            if (!uid) return;
+            tg.HapticFeedback.impactOccurred('medium');
+            try {
+                await fetch('/api/mini-app/trigger-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: `telegram_${uid}`, orderId })
+                });
+                tg.close();
+            } catch(e) {
+                tg.showAlert("Erreur réseau");
+            }
         }
 
         async function cancelOrder(orderId) {
