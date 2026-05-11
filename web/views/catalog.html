@@ -78,6 +78,8 @@
         .categories-scroll::-webkit-scrollbar { display: none; }
         .cat-chip { padding: 8px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 100px; font-size: 11px; font-weight: 700; white-space: nowrap; transition: 0.3s; }
         .cat-chip.active { background: #fff; color: #000; border-color: #fff; }
+        .del-tag { background: var(--card); border: 1px solid var(--border); border-radius: 100px; padding: 6px 12px; font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: 0.3s; flex-shrink: 0; }
+        .del-tag.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
         /* GRID */
         .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 20px 180px 20px; }
@@ -283,8 +285,11 @@
         tg.expand(); tg.ready();
 
         let allProducts = [];
+        let categories = [];
         let cart = [];
         let userInfo = null;
+        let favorites = JSON.parse(localStorage.getItem('stb_favorites') || '[]');
+        let selectedDeliveryTags = [];
         let activeProduct = null;
         let activeOption = null;
         let checkoutStep = 1;
@@ -361,6 +366,27 @@
             updateCartUI();
         }
 
+        function toggleFavorite(pid, e) {
+            e.stopPropagation();
+            if (favorites.includes(pid)) favorites = favorites.filter(id => id !== pid);
+            else favorites.push(pid);
+            localStorage.setItem('stb_favorites', JSON.stringify(favorites));
+            
+            const activeCat = document.querySelector('.cat-chip.active')?.innerText;
+            if (activeCat === 'TOUT') renderGrid(allProducts);
+            else if (activeCat === 'FAVORIS ❤️') renderGrid(allProducts.filter(p => favorites.includes(p.id)));
+            else renderGrid(allProducts.filter(p => p.category && p.category.toUpperCase() === activeCat));
+            
+            tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function selectTag(el, text) {
+            el.classList.toggle('active');
+            if (selectedDeliveryTags.includes(text)) selectedDeliveryTags = selectedDeliveryTags.filter(t => t !== text);
+            else selectedDeliveryTags.push(text);
+            tg.HapticFeedback.impactOccurred('light');
+        }
+
         function renderShop() {
             const carousel = document.getElementById('featured-carousel');
             const featured = allProducts.filter(p => p.is_featured);
@@ -377,14 +403,20 @@
                 carousel.appendChild(d);
             });
 
-            const cats = ['TOUT', ...new Set(allProducts.map(p => p.category).filter(c => c))];
+            const cats = ['TOUT', 'FAVORIS ❤️', ...new Set(allProducts.map(p => p.category).filter(c => c))];
             const catContainer = document.getElementById('categories');
             catContainer.innerHTML = '';
             cats.forEach(c => {
                 const d = document.createElement('div');
                 d.className = `cat-chip ${c === 'TOUT' ? 'active' : ''}`;
                 d.innerText = c.toUpperCase();
-                d.onclick = () => { document.querySelectorAll('.cat-chip').forEach(t => t.classList.remove('active')); d.classList.add('active'); renderGrid(c === 'TOUT' ? allProducts : allProducts.filter(p => p.category === c)); };
+                d.onclick = () => { 
+                    document.querySelectorAll('.cat-chip').forEach(t => t.classList.remove('active')); 
+                    d.classList.add('active'); 
+                    if (c === 'TOUT') renderGrid(allProducts);
+                    else if (c === 'FAVORIS ❤️') renderGrid(allProducts.filter(p => favorites.includes(p.id)));
+                    else renderGrid(allProducts.filter(p => p.category === c)); 
+                };
                 catContainer.appendChild(d);
             });
             renderGrid(allProducts);
@@ -411,7 +443,10 @@
                 d.innerHTML = `
                     <div style="position:relative;">
                         <img src="${img}" class="card-img" onclick="openProductModal('${p.id}')">
-                        <div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); padding:4px 8px; border-radius:8px; font-size:10px; font-weight:900; color:#ffaa00;"><i class="ph-fill ph-star"></i> ${rating}</div>
+                        <div style="position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); padding:4px 8px; border-radius:8px; font-size:10px; font-weight:900; color:#ffaa00;"><i class="ph-fill ph-star"></i> ${rating}</div>
+                        <div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); padding:6px; border-radius:50%; font-size:16px; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="toggleFavorite('${p.id}', event)">
+                            <i class="${favorites.includes(p.id) ? 'ph-fill ph-heart' : 'ph-bold ph-heart'}" style="${favorites.includes(p.id) ? 'color:#ff0050;' : 'color:#fff;'}"></i>
+                        </div>
                         ${badgeHtml}
                     </div>
                     <div class="card-content" onclick="openProductModal('${p.id}')">
@@ -925,6 +960,15 @@
                         ${addresses.length > 0 ? `<div style="text-align:right; margin-top:10px;"><span onclick="closeCheckout(); switchPage('profile', document.querySelectorAll('.nav-item')[2]); openAddressModal();" style="font-size:11px; color:var(--accent); font-weight:800; text-decoration:underline;">+ Gérer mes adresses</span></div>` : ''}
                     </div>
                     <div style="margin-bottom:20px;">
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">CONSIGNES DE LIVRAISON</label>
+                        <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; scrollbar-width:none; margin-bottom:10px;">
+                            <div class="del-tag ${selectedDeliveryTags.includes('Laisser devant la porte') ? 'active' : ''}" onclick="selectTag(this, 'Laisser devant la porte')">🚪 Laisser à la porte</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('M\\'appeler en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'M\\'appeler en arrivant')">📞 M'appeler à l'arrivée</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Remise en main propre') ? 'active' : ''}" onclick="selectTag(this, 'Remise en main propre')">🤝 Remise en main propre</div>
+                        </div>
+                        <textarea id="order-note-extra" placeholder="Instructions supplémentaires pour le livreur (facultatif)" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:60px; outline:none; resize:none;"></textarea>
+                    </div>
+                    <div style="margin-bottom:20px;">
                         <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">PROGRAMMER LA LIVRAISON</label>
                         <div style="position:relative;">
                             <input type="datetime-local" id="order-schedule-date" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; color-scheme:dark;">
@@ -961,6 +1005,14 @@
                 const d = new Date(schedule);
                 const formatted = d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
                 finalNote += ` [Programmé pour le : ${formatted}]`;
+            }
+
+            const extraNote = document.getElementById('order-note-extra')?.value?.trim();
+            if (extraNote) {
+                finalNote += ` [Note: ${extraNote}]`;
+            }
+            if (selectedDeliveryTags.length > 0) {
+                finalNote += ` [Consignes: ${selectedDeliveryTags.join(', ')}]`;
             }
 
             const uid = tg.initDataUnsafe?.user?.id;
