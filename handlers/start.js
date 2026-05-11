@@ -612,7 +612,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     // Ligne 1 : Catalogue (Gros bouton principal avec effet de pulsation animé)
     const pulseIcons = ['✨', '🌟', '✨', '🌟'];
     const pIdx = Math.floor((Date.now() / 1000) % pulseIcons.length);
-    buttons.push([Markup.button.callback(`${pulseIcons[pIdx]} ${t(user, 'btn_catalog', settings.label_catalog || 'ACCÉDER AU CATALOGUE').toUpperCase()} ${pulseIcons[pIdx]}`, 'view_catalog')]);
+    const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
+    buttons.push([Markup.button.webApp(`${pulseIcons[pIdx]} ${t(user, 'btn_catalog', settings.label_catalog || 'ACCÉDER AU CATALOGUE').toUpperCase()} ${pulseIcons[pIdx]}`, catalogUrl)]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
@@ -692,9 +693,10 @@ async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = fal
 }
 
 async function getWelcomeKeyboard(ctx, settings, user) {
+    const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
     return Markup.inlineKeyboard([
         [Markup.button.callback('🚀 CRÉER MON PROPRE BOT', 'sales_menu_start')],
-        [Markup.button.callback('🛒 TESTER LE CATALOGUE (DÉMO)', 'main_menu')],
+        [Markup.button.webApp('🛒 TESTER LE CATALOGUE (DÉMO)', catalogUrl)],
         [Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')]
     ]);
 }

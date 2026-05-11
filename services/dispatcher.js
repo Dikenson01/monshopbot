@@ -149,7 +149,7 @@ class Dispatcher {
                         ctx.callbackQuery.data.startsWith('feedback_rate_') ||
                         ctx.callbackQuery.data.startsWith('review_rate_') ||
                         ctx.callbackQuery.data.startsWith('order_view_')
-                    );
+                    )) || (ctx.updateType === 'web_app_data');
 
                     // Permettre les messages si une session de support est en cours (même si non approuvé)
                     const { activeUserSessions, awaitingUserSupportReply } = require('../handlers/admin');
@@ -216,6 +216,7 @@ class Dispatcher {
             _isPrivileged,
             message: { text: msg.text, photo: msg.photo, video: msg.video, message_id: msg.message_id || msg.rawId },
             updateType: msg.type || 'message',
+            webAppData: msg.web_app_data || null,
             match: null,
             botInfo: { username: settings.bot_name || 'Bot' },
             callbackQuery: msg.isAction ? { 
@@ -591,6 +592,7 @@ class Dispatcher {
             else if (h.type === 'location' && ctx.message.location) match = true;
             else if (h.type === 'callback_query' && ctx.callbackQuery) match = true;
             else if (h.type === 'chat_join_request' && ctx.updateType === 'chat_join_request') match = true;
+            else if (h.type === 'web_app_data' && ctx.updateType === 'web_app_data') match = true;
 
             if (match) {
                 await h.fn(ctx, runHandlers);

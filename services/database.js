@@ -1979,7 +1979,7 @@ const SETTINGS_DEFAULTS = {
     notify_on_approval: false,
     
     // UI Labels & Icons
-    label_catalog: 'Catalogue',
+    label_catalog: 'Catalogue Mini App',
     ui_icon_catalog: '🛒',
     label_my_orders: 'Mes Commandes',
     ui_icon_orders: '📦',

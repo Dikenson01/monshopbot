@@ -52,9 +52,9 @@ class TelegramChannel extends Channel {
         });
 
         this.bot.on('message', async (ctx) => {
-            console.log(`[TG-DEBUG] Message reçu de ${ctx.from.id}: "${ctx.message.text ||'NO_TEXT'}"`);
+            console.log(`[TG-DEBUG] Message reçu de ${ctx.from.id}: "${ctx.message.text || 'NO_TEXT'}"`);
             if (this.messageHandler) {
-                await this.messageHandler({
+                const payload = {
                     from: ctx.from.id,
                     name: ctx.from.first_name,
                     text: ctx.message.text || ctx.message.caption,
@@ -62,8 +62,17 @@ class TelegramChannel extends Channel {
                     video: ctx.message.video,
                     message_id: ctx.message.message_id,
                     type: 'message',
-                    ctx: ctx // On garde le ctx original pour compatibilité ascendante si besoin
-                });
+                    ctx: ctx
+                };
+
+                // Gestion des données Mini App
+                if (ctx.message.web_app_data) {
+                    payload.type = 'web_app_data';
+                    payload.text = ctx.message.web_app_data.data;
+                    payload.web_app_data = ctx.message.web_app_data;
+                }
+
+                await this.messageHandler(payload);
             }
         });
 

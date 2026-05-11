@@ -378,6 +378,7 @@ function createServer() {
 
     // ========== Static Pages ==========
 
+    app.get('/catalog', (req, res) => res.sendFile(path.join(__dirname, 'web', 'views', 'catalog.html')));
     app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'web', 'views', 'login.html')));
     app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'web', 'views', 'login.html')));
     app.get('/favicon.ico', (req, res) => res.status(204).end());

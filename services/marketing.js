@@ -6,38 +6,44 @@ const { broadcastMessage } = require('./broadcast');
  * Objectif : Re-engager les clients inactifs et convertir les curieux.
  */
 
-const COMMERCIAL_TEMPLATES = [
-    {
-        title: "💎 UNE ENVIE DE LUXE ?",
-        message: "Bonjour {first_name}, notre catalogue vient d'être mis à jour avec des pépites exclusives.\n\n🚀 <b>Dépêchez-vous, les stocks s'envolent !</b>\n\n👇 Découvrez les nouveautés :",
-        action: "ACCÉDER AU CATALOGUE",
-        type: "catalog"
-    },
-    {
-        title: "💰 VOTRE PORTEFEUILLE VOUS REMERCIE",
-        message: "Hey {first_name}, saviez-vous que vous pouvez gagner des crédits simplement en parrainant vos amis ?\n\n🎁 <b>5€ offerts</b> pour chaque ami qui commande !\n\n👇 Obtenez votre lien :",
-        action: "MON PARRAINAGE",
-        type: "referral"
-    },
-    {
-        title: "🛰 SYSTÈME SHOPTONBOT : LE FUTUR EST ICI",
-        message: "Vous n'avez pas encore votre propre bot ? Déployez votre empire aujourd'hui avec <b>ShopTonBot Enterprise</b>.\n\n✅ Automatisation 24h/24\n✅ Paiements Crypto & CB\n✅ Support VIP\n\n👇 Devenir propriétaire :",
-        action: "DÉPLOYER MON BOT",
-        type: "pricing"
-    },
-    {
-        title: "📦 LIVRAISON EN COURS DANS VOTRE ZONE",
-        message: "Plusieurs livreurs sont actuellement actifs près de chez vous. Commandez maintenant pour une livraison en moins de 30 minutes !\n\n⚡️ <b>Flash Delivery</b> activé.",
-        action: "COMMANDER MAINTENANT",
-        type: "catalog"
-    },
-    {
-        title: "🎁 CADEAU FIDÉLITÉ DÉBLOQUÉ",
-        message: "Bonjour {first_name}, merci pour votre confiance. En tant que client fidèle, nous vous offrons une réduction exclusive sur votre prochaine commande !\n\n👇 Récupérer mon cadeau :",
-        action: "MON CADEAU",
-        type: "loyalty"
+async function getMarketingTemplates() {
+    const settings = await getAppSettings();
+    if (settings.marketing_templates && Array.isArray(settings.marketing_templates)) {
+        return settings.marketing_templates;
     }
-];
+    return [
+        {
+            title: "💎 UNE ENVIE DE LUXE ?",
+            message: "Bonjour {first_name}, notre catalogue vient d'être mis à jour avec des pépites exclusives.\n\n🚀 <b>Dépêchez-vous, les stocks s'envolent !</b>\n\n👇 Découvrez les nouveautés :",
+            action: "ACCÉDER AU CATALOGUE",
+            type: "catalog"
+        },
+        {
+            title: "💰 VOTRE PORTEFEUILLE VOUS REMERCIE",
+            message: "Hey {first_name}, saviez-vous que vous pouvez gagner des crédits simplement en parrainant vos amis ?\n\n🎁 <b>5€ offerts</b> pour chaque ami qui commande !\n\n👇 Obtenez votre lien :",
+            action: "MON PARRAINAGE",
+            type: "referral"
+        },
+        {
+            title: "🛰 SYSTÈME SHOPTONBOT : LE FUTUR EST ICI",
+            message: "Vous n'avez pas encore votre propre bot ? Déployez votre empire aujourd'hui avec <b>ShopTonBot Enterprise</b>.\n\n✅ Automatisation 24h/24\n✅ Paiements Crypto & CB\n✅ Support VIP\n\n👇 Devenir propriétaire :",
+            action: "DÉPLOYER MON BOT",
+            type: "pricing"
+        },
+        {
+            title: "📦 LIVRAISON EN COURS DANS VOTRE ZONE",
+            message: "Plusieurs livreurs sont actuellement actifs près de chez vous. Commandez maintenant pour une livraison en moins de 30 minutes !\n\n⚡️ <b>Flash Delivery</b> activé.",
+            action: "COMMANDER MAINTENANT",
+            type: "catalog"
+        },
+        {
+            title: "🎁 CADEAU FIDÉLITÉ DÉBLOQUÉ",
+            message: "Bonjour {first_name}, merci pour votre confiance. En tant que client fidèle, nous vous offrons une réduction exclusive sur votre prochaine commande !\n\n👇 Récupérer mon cadeau :",
+            action: "MON CADEAU",
+            type: "loyalty"
+        }
+    ];
+}
 
 /**
  * Strategic Hours (Paris Time)
@@ -67,15 +73,16 @@ async function runAutomatedMarketing() {
         marketingState.set('lastSentHour', `${todayKey}:${currentHour}`);
 
         // 1. Sélectionner un template adapté à l'heure
+        const templates = await getMarketingTemplates();
         let template;
         if (currentHour === 11) {
-            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'catalog') || COMMERCIAL_TEMPLATES[0];
+            template = templates.find(t => t.type === 'catalog') || templates[0];
         } else if (currentHour === 14) {
-            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'referral') || COMMERCIAL_TEMPLATES[1];
+            template = templates.find(t => t.type === 'referral') || templates[1];
         } else if (currentHour === 19) {
-            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'catalog') || COMMERCIAL_TEMPLATES[3];
+            template = templates.find(t => t.type === 'catalog') || templates[3];
         } else {
-            template = COMMERCIAL_TEMPLATES.find(t => t.type === 'pricing') || COMMERCIAL_TEMPLATES[2];
+            template = templates.find(t => t.type === 'pricing') || templates[2];
         }
         
         // 2. Récupérer les utilisateurs

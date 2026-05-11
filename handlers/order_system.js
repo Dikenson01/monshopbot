@@ -88,6 +88,46 @@ async function initOrderState() {
 }
 
 function setupOrderSystem(bot) {
+    bot.on('web_app_data', async (ctx) => {
+        try {
+            const data = JSON.parse(ctx.webAppData.data);
+            if (data.action === 'mini_app_cart') {
+                const uId = ctx.from.id;
+                const cart = data.items;
+                
+                // Charger les produits réels pour avoir les prix et noms corrects
+                const products = await getProducts();
+                const cartItems = cart.map(item => {
+                    const p = products.find(x => x.id === item.id);
+                    if (!p) return null;
+                    return { ...p, qty: item.qty };
+                }).filter(Boolean);
+
+                if (cartItems.length === 0) {
+                    return ctx.reply("❌ Votre panier Mini App semble vide ou les produits ne sont plus disponibles.");
+                }
+
+                userCarts.set(uId, cartItems);
+                await userCarts.save();
+
+                const total = cartItems.reduce((acc, i) => acc + (i.price * i.qty), 0);
+                const text = `🛒 <b>Mini App : Panier synchronisé !</b>\n\n` +
+                             cartItems.map(i => `• <b>${i.name}</b> x${i.qty} (${(i.price * i.qty).toFixed(2)}€)`).join('\n') +
+                             `\n\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nSouhaitez-vous valider votre commande ?`;
+                
+                const keyboard = Markup.inlineKeyboard([
+                    [Markup.button.callback('✅ VALIDER LA COMMANDE', 'view_cart')],
+                    [Markup.button.callback('❌ VIDER LE PANIER', 'clear_cart')]
+                ]);
+
+                return ctx.reply(text, { parse_mode: 'HTML', ...keyboard });
+            }
+        } catch (e) {
+            console.error('[MiniApp] Error processing web_app_data:', e);
+            ctx.reply("❌ Une erreur est survenue lors du traitement de votre panier Mini App.");
+        }
+    });
+
     // Helper universel pour relayer un message à tous les admins
     // (Désormais géré par services/notifications.js)
 

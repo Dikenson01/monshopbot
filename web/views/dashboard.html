@@ -2233,6 +2233,7 @@
         <div class="nav-group">
             <span class="nav-label">Outils</span>
             <a class="nav-item" onclick="switchSection('insights')" id="side-nav-insights"><i>📊</i> Insights</a>
+            <a class="nav-item" onclick="switchSection('marketing')" id="side-nav-marketing"><i>🎯</i> Marketing</a>
             <a class="nav-item" onclick="switchSection('broadcast')" id="side-nav-broadcast"><i>📣</i> Diffusion</a>
             <a class="nav-item" onclick="switchSection('features')" id="side-nav-features"><i>📖</i> Guide</a>
             <a class="nav-item" onclick="switchSection('suppliers')" id="side-nav-suppliers"><i>🏪</i> Fournisseurs</a>
@@ -2303,6 +2304,21 @@
                         <div class="stat-value" id="ovStatLivreurs">-</div>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- MARKETING AUTOMATIQUE -->
+        <section class="section" id="section-marketing">
+            <div class="header-content">
+                <div>
+                    <h1 style="margin:0; font-size:32px; font-weight:800;">Marketing Automatique</h1>
+                    <p style="color:var(--text-muted); margin-top:5px;">Gérez les notifications envoyées automatiquement à vos clients aux heures stratégiques.</p>
+                </div>
+                <button class="btn btn-accent" onclick="saveMarketingTemplates()">💾 ENREGISTRER LES MODIFICATIONS</button>
+            </div>
+
+            <div id="marketing-templates-list" style="display:grid; grid-template-columns: 1fr; gap:20px;">
+                <!-- Templates loaded here -->
             </div>
         </section>
 
@@ -4844,6 +4860,9 @@
                         window._cachedUsers = users;
                         renderUsersTable(users);
                     }
+                }
+                if (id === 'marketing') {
+                    await renderMarketingTemplates();
                 }
                 if (id === 'products') {
                     let products = [];
@@ -8123,6 +8142,71 @@
                 }
             } catch (e) {
                 showToast('Erreur import: ' + e.message, 'error');
+            }
+        }
+
+        async function renderMarketingTemplates() {
+            const list = document.getElementById('marketing-templates-list');
+            const defaultTemplates = [
+                { type: 'catalog', title: 'Matin (11h)', message: 'Bonjour {first_name}, notre catalogue vient d\'être mis à jour !', action: 'VOIR CATALOGUE' },
+                { type: 'referral', title: 'Après-midi (14h)', message: 'Hey {first_name}, gagnez du crédit en parrainant vos amis !', action: 'PARRAINAGE' },
+                { type: 'catalog', title: 'Soir (19h)', message: 'Bonsoir {first_name}, une petite envie de shopping ?', action: 'SHOPPING' },
+                { type: 'pricing', title: 'Nuit (22h)', message: 'Dernière chance {first_name}, créez votre propre bot ce soir !', action: 'BOT' },
+                { type: 'loyalty', title: 'Fidélité', message: 'Cadeau pour {first_name}, merci pour votre confiance !', action: 'RÉCUPÉRER' }
+            ];
+            const templates = window.appSettings.marketing_templates && window.appSettings.marketing_templates.length > 0 
+                ? window.appSettings.marketing_templates 
+                : defaultTemplates;
+
+            list.innerHTML = templates.map((t, i) => `
+                <div class="card" style="margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                        <h3 style="margin:0;">Template #${i+1} : ${t.title || 'Sans titre'}</h3>
+                        <span class="badge badge-pending" style="background:rgba(255,0,80,0.1); color:var(--accent);">${t.type.toUpperCase()}</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                        <div class="form-group">
+                            <label>Titre de la notification</label>
+                            <input type="text" class="template-title" value="${t.title || ''}" placeholder="Ex: 💎 UNE ENVIE DE LUXE ?">
+                        </div>
+                        <div class="form-group">
+                            <label>Type / Objectif</label>
+                            <select class="template-type">
+                                <option value="catalog" ${t.type === 'catalog' ? 'selected' : ''}>Catalogue</option>
+                                <option value="referral" ${t.type === 'referral' ? 'selected' : ''}>Parrainage</option>
+                                <option value="pricing" ${t.type === 'pricing' ? 'selected' : ''}>Offres / Bots</option>
+                                <option value="loyalty" ${t.type === 'loyalty' ? 'selected' : ''}>Fidélité</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Message (Utilisez {first_name} pour le nom)</label>
+                        <textarea class="template-message" style="height:100px;">${t.message || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Texte du bouton d'action</label>
+                        <input type="text" class="template-action" value="${t.action || ''}" placeholder="Ex: VOIR LE CATALOGUE">
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function saveMarketingTemplates() {
+            const cards = document.querySelectorAll('#marketing-templates-list .card');
+            const templates = Array.from(cards).map(card => ({
+                title: card.querySelector('.template-title').value,
+                type: card.querySelector('.template-type').value,
+                message: card.querySelector('.template-message').value,
+                action: card.querySelector('.template-action').value
+            }));
+
+            try {
+                showToast('Sauvegarde en cours...', 'info');
+                await api('/settings', 'POST', { marketing_templates: templates });
+                window.appSettings.marketing_templates = templates;
+                showToast('✅ Templates marketing mis à jour !', 'success');
+            } catch (e) {
+                showToast('Erreur: ' + e.message, 'error');
             }
         }
 

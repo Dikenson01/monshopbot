@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ShopTonBot - Catalogue Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #050505;
+            --accent: #ff0050;
+            --text: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --glass: blur(15px) saturate(160%);
+            --tg-theme-bg-color: #050505;
+            --tg-theme-text-color: #ffffff;
+            --tg-theme-button-color: #ff0050;
+            --tg-theme-button-text-color: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            padding: 20px;
+            padding-bottom: 100px;
+            overflow-x: hidden;
+            background-image: radial-gradient(circle at 50% -10%, rgba(255, 0, 80, 0.1) 0%, transparent 80%);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: fadeInDown 0.8s ease;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            opacity: 0.5;
+            font-weight: 400;
+        }
+
+        .category-tabs {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 25px;
+            scrollbar-width: none;
+        }
+
+        .category-tabs::-webkit-scrollbar { display: none; }
+
+        .tab {
+            padding: 10px 20px;
+            background: var(--card-bg);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 100px;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: var(--tg-theme-button-color);
+            border-color: var(--tg-theme-button-color);
+            box-shadow: 0 5px 15px rgba(255, 0, 80, 0.3);
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .product-card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 24px;
+            overflow: hidden;
+            backdrop-filter: var(--glass);
+            -webkit-backdrop-filter: var(--glass);
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            animation: scaleIn 0.5s ease backwards;
+        }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .product-card:active {
+            transform: scale(0.95);
+        }
+
+        .product-image {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .product-info {
+            padding: 12px;
+        }
+
+        .product-name {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .product-price {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+
+        .add-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(255,0,80,0.3);
+        }
+
+        .cart-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: var(--accent);
+            height: 60px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-weight: 700;
+            box-shadow: 0 10px 30px rgba(255, 0, 80, 0.4);
+            transform: translateY(100px);
+            transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+        }
+
+        .cart-bar.visible {
+            transform: translateY(0);
+        }
+
+        .cart-count {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            flex-direction: column;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Initialisation du système...</p>
+    </div>
+
+    <header>
+        <h1>CATALOGUE MINI APP</h1>
+        <p class="subtitle">Expérience ShopTonBot v5.0 Premium</p>
+    </header>
+
+    <div class="category-tabs" id="categories">
+        <div class="tab active" onclick="filterCategory('all')">Tout</div>
+    </div>
+
+    <div class="products-grid" id="products">
+        <!-- Products will be injected here -->
+    </div>
+
+    <div class="cart-bar" id="cart-bar" onclick="checkout()">
+        <div style="display:flex; align-items:center; gap:10px">
+            <span class="cart-count" id="cart-count">0</span>
+            <span>VOIR LE PANIER</span>
+        </div>
+        <div id="cart-total">0.00€</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        let allProducts = [];
+        let cart = [];
+
+        async function loadProducts() {
+            try {
+                const response = await fetch('/api/products');
+                const data = await response.json();
+                allProducts = data;
+                
+                // Extract categories
+                const categories = ['all', ...new Set(data.map(p => p.category).filter(c => c))];
+                renderCategories(categories);
+                renderProducts(data);
+                
+                document.getElementById('loading').style.display = 'none';
+            } catch (e) {
+                console.error("Erreur chargement:", e);
+                tg.showAlert("Erreur de connexion au serveur.");
+            }
+        }
+
+        function renderCategories(categories) {
+            const container = document.getElementById('categories');
+            container.innerHTML = '';
+            categories.forEach(cat => {
+                const div = document.createElement('div');
+                div.className = `tab ${cat === 'all' ? 'active' : ''}`;
+                div.innerText = cat === 'all' ? 'Tout' : cat.toUpperCase();
+                div.onclick = () => filterCategory(cat, div);
+                container.appendChild(div);
+            });
+        }
+
+        function filterCategory(cat, el) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (el) el.classList.add('active');
+            
+            const filtered = cat === 'all' ? allProducts : allProducts.filter(p => p.category === cat);
+            renderProducts(filtered);
+        }
+
+        function renderProducts(products) {
+            const container = document.getElementById('products');
+            container.innerHTML = '';
+            
+            if (products.length === 0) {
+                container.innerHTML = '<div class="empty-state">Aucun produit disponible.</div>';
+                return;
+            }
+
+            products.forEach((p, index) => {
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.style.animationDelay = `${index * 0.05}s`;
+                
+                const imageUrl = p.image_url || 'https://placehold.co/400x400/111/fff?text=' + encodeURIComponent(p.name);
+                
+                card.innerHTML = `
+                    <img src="${imageUrl}" class="product-image" alt="${p.name}">
+                    <div class="product-info">
+                        <div class="product-name">${p.name}</div>
+                        <div class="product-price">${p.price}€</div>
+                    </div>
+                    <div class="add-btn" onclick="addToCart('${p.id}', event)">+</div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function addToCart(productId, event) {
+            event.stopPropagation();
+            const product = allProducts.find(p => p.id === productId);
+            if (!product) return;
+
+            const existing = cart.find(item => item.id === productId);
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ ...product, qty: 1 });
+            }
+
+            updateCartUI();
+            tg.HapticFeedback.notificationOccurred('success');
+        }
+
+        function updateCartUI() {
+            const cartBar = document.getElementById('cart-bar');
+            const cartCount = document.getElementById('cart-count');
+            const cartTotal = document.getElementById('cart-total');
+
+            if (cart.length > 0) {
+                cartBar.classList.add('visible');
+                const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
+                const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+                
+                cartCount.innerText = totalQty;
+                cartTotal.innerText = totalPrice.toFixed(2) + '€';
+            } else {
+                cartBar.classList.remove('visible');
+            }
+        }
+
+        function checkout() {
+            if (cart.length === 0) return;
+            
+            // On renvoie les données à Telegram via sendData (si lancé via bouton clavier) 
+            // ou on utilise un callback personnalisé.
+            // Ici on va simuler un "Ajout au panier" global qui ferme la WebApp
+            
+            const cartSummary = cart.map(item => `${item.name} x${item.qty}`).join(', ');
+            tg.showConfirm(`Confirmer l'ajout de : ${cartSummary} au panier ?`, (ok) => {
+                if (ok) {
+                    // Envoyer les données au bot
+                    tg.sendData(JSON.stringify({
+                        action: 'mini_app_cart',
+                        items: cart.map(i => ({ id: i.id, qty: i.qty }))
+                    }));
+                    tg.close();
+                }
+            });
+        }
+
+        // Initialize
+        loadProducts();
+
+        // Theme sync
+        tg.onEvent('themeChanged', () => {
+            document.body.style.backgroundColor = tg.backgroundColor;
+        });
+    </script>
+</body>
+</html>

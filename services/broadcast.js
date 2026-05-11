@@ -274,6 +274,13 @@ async function broadcastMessage(platform, message, options = {}) {
 }
 
 async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
+    // 0. Personalisation du message
+    let personalizedMessage = message || '';
+    if (personalizedMessage.includes('{first_name}')) {
+        const name = user.first_name || 'Utilisateur';
+        personalizedMessage = personalizedMessage.replace(/\{first_name\}/g, name);
+    }
+
     // 1. Déterminer le canal — détecter WhatsApp même si platform est "telegram" en DB
     let platform = user.platform || 'telegram';
     const pid = String(user.platform_id || '');
@@ -315,7 +322,7 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
                     dispatcher.setUserLastButtons(pid, buttons);
                 }
 
-                await channel.sendInteractive(cleanPid, message, buttons, {
+                await channel.sendInteractive(cleanPid, personalizedMessage, buttons, {
                     media_url: mediaUrl,
                     media_type: m0.type || 'photo'
                 });
@@ -324,7 +331,7 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
                 if (unifiedMediaList.length > 1) {
                     for (let i = 0; i < unifiedMediaList.length; i++) {
                         const m = unifiedMediaList[i];
-                        const cap = (i === 0) ? message : "";
+                        const cap = (i === 0) ? personalizedMessage : "";
                         let mediaUrl = m.url || null;
                         
                         if (mediaUrl && !mediaUrl.startsWith('http') && mediaUrl.includes('/')) {
@@ -348,7 +355,7 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
                         if (fs.existsSync(abs)) mediaUrl = abs;
                     }
 
-                    await channel.sendMessage(cleanPid, message, { 
+                    await channel.sendMessage(cleanPid, personalizedMessage, { 
                         media_url: mediaUrl, 
                         media_type: m?.type || 'photo',
                         source: m?.source || null
@@ -390,13 +397,13 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
     const _protect = !_isBroadcastPrivileged(user);
     // Captions are limited to 1024 chars in Telegram
     const maxCaption = 1020;
-    const caption = message ? (message.length > maxCaption ? message.substring(0, maxCaption - 3) + '...' : message) : '';
+    const caption = personalizedMessage ? (personalizedMessage.length > maxCaption ? personalizedMessage.substring(0, maxCaption - 3) + '...' : personalizedMessage) : '';
 
     // Helper for sending Native Poll
     const sendNativePoll = async () => {
         if (!poll_options || poll_options.length < 2) return null;
         debugLog(`[BC-SEND] Native Poll -> ${chatId}`);
-        return await _bot.telegram.sendPoll(chatId, message || "Sondage", poll_options, {
+        return await _bot.telegram.sendPoll(chatId, personalizedMessage || "Sondage", poll_options, {
             is_anonymous: false, // On veut savoir qui vote
             allows_multiple_answers: false,
             ...(_protect ? { protect_content: true } : {})
@@ -446,7 +453,7 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
             if (poll_type === 'native') {
                 await sendNativePoll();
             } else {
-                await _bot.telegram.sendMessage(chatId, message, { 
+                await _bot.telegram.sendMessage(chatId, personalizedMessage, { 
                     parse_mode: 'HTML', 
                     ...(_protect ? { protect_content: true } : {}), 
                     ...(keyboard ? keyboard : {}) 
@@ -526,8 +533,8 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
                 }
             } else {
                 debugLog(`[BC-SEND] Texte -> ${chatId}`);
-                if (!message || message.trim() === '') return { success: true };
-                const msg = await _bot.telegram.sendMessage(chatId, message, { parse_mode: 'HTML', ...(_protect ? { protect_content: true } : {}), ...(keyboard ? keyboard : {}) });
+                if (!personalizedMessage || personalizedMessage.trim() === '') return { success: true };
+                const msg = await _bot.telegram.sendMessage(chatId, personalizedMessage, { parse_mode: 'HTML', ...(_protect ? { protect_content: true } : {}), ...(keyboard ? keyboard : {}) });
                 if (msg && (user.id || user.doc_id)) {
                     const { addMessageToTrack } = require('./database');
                     await addMessageToTrack(user.id || user.doc_id, msg.message_id, false).catch(() => { });
