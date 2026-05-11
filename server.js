@@ -560,12 +560,20 @@ function createServer() {
 
     app.post('/api/mini-app/create-order', async (req, res) => {
         try {
-            const { userId, items, total, address, note, platform } = req.body;
-            const { createOrder, getUser } = require('./services/database');
+            const { userId, items, total, address, note, platform, discount } = req.body;
+            const { createOrder, getUser, updateUserWallet } = require('./services/database');
             const { notifyAdmins } = require('./services/notifications');
             
             const user = await getUser(userId);
             
+            // Validation du discount
+            let appliedDiscount = parseFloat(discount) || 0;
+            if (appliedDiscount > 0) {
+                if (!user || !user.wallet_balance || user.wallet_balance < appliedDiscount) {
+                    return res.status(400).json({ error: "Solde insuffisant pour cette réduction." });
+                }
+            }
+
             // On construit la liste textuelle des produits (comme le fait le bot)
             const productListStr = items.map(it => `${it.name} (x${it.qty})`).join(', ');
             const totalQty = items.reduce((acc, it) => acc + it.qty, 0);
@@ -576,6 +584,7 @@ function createServer() {
                 quantity: totalQty,
                 cart: items,
                 total_price: total,
+                discount_applied: appliedDiscount,
                 address: note ? `${address} (Note: ${note})` : address,
                 platform: platform || 'telegram',
                 status: 'pending',
@@ -594,6 +603,12 @@ function createServer() {
                 } else {
                     throw error;
                 }
+            }
+
+            // DEDUCT WALLET BALANCE
+            if (appliedDiscount > 0) {
+                const newBalance = user.wallet_balance - appliedDiscount;
+                await updateUserWallet(user.id, newBalance);
             }
 
             // Notification Admin & User

@@ -119,6 +119,9 @@
         .sheet { position: fixed; bottom: 0; left: 0; right: 0; background: #0a0a0a; border-radius: 40px 40px 0 0; border-top: 1px solid var(--border); z-index: 10001; padding: 30px 20px; transform: translateY(100%); transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         .sheet.open { transform: translateY(0); }
 
+        button, .btn-primary, .order-card, .product-card, .category-chip { transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s; cursor: pointer; }
+        button:active, .btn-primary:active, .product-card:active, .order-card:active { transform: scale(0.96) !important; filter: brightness(0.9); }
+
         .btn-primary { width: 100%; height: 56px; background: #fff; color: #000; border: none; border-radius: 18px; font-size: 15px; font-weight: 900; }
         
         #loading-screen { position: fixed; inset: 0; background: #000; z-index: 20000; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; }
@@ -130,7 +133,7 @@
 </head>
 <body>
     <div id="loading-screen">
-        <h1 style="font-size:28px; font-weight:900; letter-spacing:-1px;">ELITE<span>SHOP</span></h1>
+        <h1 style="font-size:28px; font-weight:900; letter-spacing:-1px;">Shop<span style="color:var(--accent);">TonBot</span></h1>
         <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
     </div>
 
@@ -430,7 +433,7 @@
 
                     statsHtml = `
                         <div style="background:linear-gradient(135deg, var(--card), rgba(255,170,0,0.1)); border:1px solid var(--accent); border-radius:24px; padding:20px; margin-bottom:20px;">
-                            <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:10px; letter-spacing:1px;">VOS STATISTIQUES VIP</div>
+                            <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:10px; letter-spacing:1px;">VOS STATISTIQUES</div>
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <div>
                                     <div style="font-size:11px; opacity:0.7;">Total Dépensé</div>
@@ -450,10 +453,25 @@
                 
                 orders.forEach(o => {
                     let color = '#ffaa00', icon = '<i class="ph-fill ph-clock"></i>', text = 'EN ATTENTE';
-                    if (o.status === 'delivered') { color = '#00ff88'; icon = '<i class="ph-fill ph-check-circle"></i>'; text = 'LIVRÉ'; }
-                    else if (o.status === 'taken') { color = 'var(--secondary)'; icon = '<i class="ph-fill ph-truck"></i>'; text = 'EN COURS'; }
-                    else if (o.status === 'cancelled') { color = '#ff0050'; icon = '<i class="ph-fill ph-x-circle"></i>'; text = 'ANNULÉE'; }
+                    let progressPct = 33;
+                    if (o.status === 'delivered') { color = '#00ff88'; icon = '<i class="ph-fill ph-check-circle"></i>'; text = 'LIVRÉ'; progressPct = 100; }
+                    else if (o.status === 'taken') { color = 'var(--secondary)'; icon = '<i class="ph-fill ph-truck"></i>'; text = 'EN COURS'; progressPct = 66; }
+                    else if (o.status === 'cancelled') { color = '#ff0050'; icon = '<i class="ph-fill ph-x-circle"></i>'; text = 'ANNULÉE'; progressPct = 0; }
 
+                    const progressBar = o.status !== 'cancelled' ? `
+                        <div style="margin:15px 0;">
+                            <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:800; opacity:0.6; margin-bottom:5px;">
+                                <span style="color:${progressPct >= 33 ? 'var(--accent)' : 'inherit'}">Confirmée</span>
+                                <span style="color:${progressPct >= 66 ? 'var(--secondary)' : 'inherit'}">En route</span>
+                                <span style="color:${progressPct >= 100 ? '#00ff88' : 'inherit'}">Livrée</span>
+                            </div>
+                            <div style="width:100%; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+                                <div style="height:100%; width:${progressPct}%; background:${color}; transition:width 0.5s ease-in-out;"></div>
+                            </div>
+                        </div>
+                    ` : '';
+
+                    const btnContact = (o.status === 'taken') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="tg.openTelegramLink('https://t.me/+PsQMCG9p36o0Njhk')"><i class="ph-fill ph-phone-call"></i> SUIVRE LA LIVRAISON</button>` : '';
                     const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-primary" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="ph-fill ph-star"></i> NOTER</button>` : '';
                     const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
                     const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="ph-bold ph-x"></i> ANNULER</button>` : '';
@@ -469,7 +487,9 @@
                         <div style="display:flex; justify-content:space-between; font-weight:900; font-size:16px;">
                             <div>TOTAL</div><div>${o.total_price || o.total}€</div>
                         </div>
+                        ${progressBar}
                         ${btnCancel}
+                        ${btnContact}
                         ${btnNoter}
                         ${btnReorder}
                     `;
@@ -687,19 +707,7 @@
 
         function closeCheckout() { document.getElementById('checkout-overlay').classList.remove('open'); }
 
-        function renderCheckout() {
-            const cont = document.getElementById('checkout-content');
-            document.getElementById('checkout-footer').style.display = 'block';
-            cont.innerHTML = '';
-            cart.forEach((i, idx) => {
-                const d = document.createElement('div');
-                d.style = "background:var(--card); padding:15px; border-radius:20px; margin-bottom:10px; display:flex; align-items:center; gap:15px; border:1px solid var(--border);";
-                d.innerHTML = `<div style="flex:1"><div style="font-weight:800; font-size:14px;">${i.name}</div><div style="color:var(--accent); font-weight:900; font-size:13px;">${i.pr}€</div></div><div style="display:flex; align-items:center; gap:12px;"><span style="opacity:0.4" onclick="updateN('${i.cid}', -1)">−</span><span style="font-weight:900">${i.n}</span><span style="color:var(--accent)" onclick="updateN('${i.cid}', 1)">+</span></div>`;
-                cont.appendChild(d);
-            });
-            const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
-            document.getElementById('final-total').innerText = tot.toFixed(2) + '€';
-        }
+
 
         function updateN(cid, d) {
             const i = cart.find(x => x.cid === cid); i.n += d;
@@ -718,10 +726,19 @@
             }
         }
 
+        let useWallet = false;
+        function toggleWallet() {
+            if (!userInfo || userInfo.balance <= 0) return;
+            useWallet = !useWallet;
+            tg.HapticFeedback.impactOccurred('light');
+            renderCheckout();
+        }
+
         function prevStep() {
             if (checkoutStep === 2) {
                 checkoutStep = 1;
                 renderCheckout();
+                tg.HapticFeedback.impactOccurred('light');
             }
         }
 
@@ -744,11 +761,40 @@
                 cart.forEach((i, idx) => {
                     const d = document.createElement('div');
                     d.style = "background:var(--card); padding:15px; border-radius:20px; margin-bottom:10px; display:flex; align-items:center; gap:15px; border:1px solid var(--border);";
-                    d.innerHTML = `<div style="flex:1"><div style="font-weight:800; font-size:14px;">${i.name}</div><div style="color:var(--accent); font-weight:900; font-size:13px;">${i.pr}€</div></div><div style="display:flex; align-items:center; gap:12px;"><span style="opacity:0.4" onclick="updateN('${i.cid}', -1)">−</span><span style="font-weight:900">${i.n}</span><span style="color:var(--accent)" onclick="updateN('${i.cid}', 1)">+</span></div>`;
+                    d.innerHTML = `<div style="flex:1"><div style="font-weight:800; font-size:14px;">${i.name}</div><div style="color:var(--accent); font-weight:900; font-size:13px;">${i.pr}€</div></div><div style="display:flex; align-items:center; gap:12px;"><span style="opacity:0.4; font-size:20px; padding:5px; cursor:pointer;" onclick="updateN('${i.cid}', -1)">−</span><span style="font-weight:900">${i.n}</span><span style="color:var(--accent); font-size:20px; padding:5px; cursor:pointer;" onclick="updateN('${i.cid}', 1)">+</span></div>`;
                     cont.appendChild(d);
                 });
-                const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
-                document.getElementById('final-total').innerText = tot.toFixed(2) + '€';
+                
+                let tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
+                let discount = 0;
+
+                if (userInfo && userInfo.balance > 0) {
+                    discount = useWallet ? Math.min(tot, userInfo.balance) : 0;
+                    const walletSection = `
+                        <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleWallet()">
+                            <div>
+                                <div style="font-weight:900; font-size:14px; margin-bottom:2px;">💰 Utiliser mon solde</div>
+                                <div style="font-size:12px; opacity:0.7;">Disponible : ${parseFloat(userInfo.balance).toFixed(2)}€</div>
+                            </div>
+                            <div style="width:50px; height:28px; border-radius:14px; background:${useWallet ? 'var(--accent)' : 'var(--border)'}; position:relative; transition:background 0.3s;">
+                                <div style="width:24px; height:24px; background:#fff; border-radius:50%; position:absolute; top:2px; left:${useWallet ? '24px' : '2px'}; transition:left 0.3s;"></div>
+                            </div>
+                        </div>
+                    `;
+                    cont.innerHTML += walletSection;
+                }
+
+                if (useWallet && discount > 0) {
+                    totalRow.innerHTML = `
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
+                            <div style="font-size:12px; opacity:0.5; text-decoration:line-through;">${tot.toFixed(2)}€</div>
+                            <div><span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:5px;">TOTAL</span><span id="final-total">${Math.max(0, tot - discount).toFixed(2)}€</span></div>
+                        </div>
+                    `;
+                } else {
+                    totalRow.innerHTML = `<span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:10px;">TOTAL</span><span id="final-total">${tot.toFixed(2)}€</span>`;
+                }
+
             } else if (checkoutStep === 2) {
                 document.querySelector('#checkout-overlay h2').innerText = "LIVRAISON";
                 btn.innerText = "CONFIRMER & PAYER";
@@ -826,10 +872,13 @@
 
             try {
                 const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
+                const discount = (useWallet && userInfo && userInfo.balance > 0) ? Math.min(tot, userInfo.balance) : 0;
+
                 const orderData = {
                     userId: `telegram_${uid}`,
                     items: cart.map(i => ({ id: i.id, name: i.name, qty: i.m * i.n, price: i.pr, totalPrice: i.pr * i.n })),
-                    total: tot,
+                    total: Math.max(0, tot - discount),
+                    discount: discount,
                     address: finalAddress,
                     note: finalNote,
                     platform: 'telegram'
