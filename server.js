@@ -504,6 +504,18 @@ function createServer() {
         }
     });
 
+    app.get('/api/product-reviews', async (req, res) => {
+        try {
+            const { productId } = req.query;
+            const { getReviews } = require('./services/database');
+            const reviews = await getReviews(20);
+            const filtered = reviews.filter(r => r.product_id === productId || !r.product_id);
+            res.json(filtered);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/forgot-password', async (req, res) => {
         try {
             const settings = await getAppSettings();
