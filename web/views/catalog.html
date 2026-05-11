@@ -901,13 +901,12 @@
                         ${addresses.length > 0 ? `<div style="text-align:right; margin-top:10px;"><span onclick="closeCheckout(); switchPage('profile', document.querySelectorAll('.nav-item')[2]); openAddressModal();" style="font-size:11px; color:var(--accent); font-weight:800; text-decoration:underline;">+ Gérer mes adresses</span></div>` : ''}
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">HORAIRE SOUHAITÉ</label>
-                        <select id="order-schedule" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none;">
-                            <option value="Dès que possible">Dès que possible</option>
-                            <option value="Ce soir">Ce soir</option>
-                            <option value="Demain">Demain</option>
-                            <option value="À programmer avec le livreur">À programmer avec le livreur</option>
-                        </select>
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">PROGRAMMER LA LIVRAISON</label>
+                        <div style="position:relative;">
+                            <input type="datetime-local" id="order-schedule-date" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; color-scheme:dark;">
+                            <div style="position:absolute; top:15px; right:15px; pointer-events:none; opacity:0.5;"><i class="ph-bold ph-calendar"></i></div>
+                        </div>
+                        <div style="font-size:11px; opacity:0.5; margin-top:8px;">Laissez vide pour une livraison "Dès que possible"</div>
                     </div>
                 `;
                 cont.innerHTML = html;
@@ -933,9 +932,11 @@
 
             if (!finalAddress) return tg.showAlert("Veuillez choisir ou saisir une adresse");
 
-            const schedule = document.getElementById('order-schedule')?.value;
-            if (schedule && schedule !== 'Dès que possible') {
-                finalNote += ` [Horaire souhaité : ${schedule}]`;
+            const schedule = document.getElementById('order-schedule-date')?.value;
+            if (schedule) {
+                const d = new Date(schedule);
+                const formatted = d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
+                finalNote += ` [Programmé pour le : ${formatted}]`;
             }
 
             const uid = tg.initDataUnsafe?.user?.id;
