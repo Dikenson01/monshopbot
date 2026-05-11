@@ -3204,6 +3204,12 @@ module.exports = {
     getAndClearPendingFeedback, saveFeedback, saveReview, uploadMediaFromUrl,
     getSupplierByTelegramId, getSupplierProducts, getSupplierOrders, 
     markOrderSupplierReady, markOrderSupplierNotified, getOrdersByUser,
+    // Core & Orders
+    getUser, createOrder, getAppSettings, updateAppSettings, getProducts, getProduct,
+    saveProduct, deleteProduct, getAllOrders, updateOrderStatus, getOrder,
+    assignOrderLivreur, setLivreurAvailability, setLivreurStatus,
+    registerUser, deleteUser, incrementOrderCount, makeDocId, getOrderAnalytics,
+    getBroadcastHistory, saveBroadcast, deleteBroadcast, decryptUser,
     // Marketplace & Others
     getAvailableOrders, getLivreurHistory, getReviews, deleteReview,
     getSuppliers, getSupplier, saveSupplier, deleteSupplier,
