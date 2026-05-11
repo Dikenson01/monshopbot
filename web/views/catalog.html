@@ -220,7 +220,7 @@
         <p onclick="closeSelectionModal()" style="text-align:center; margin-top:20px; font-size:13px; font-weight:800; opacity:0.3;">FERMER</p>
     </div>
 
-    <div class="modal" id="product-detail-modal">
+    <div class="modal" id="product-detail-modal" style="z-index: 10005;">
         <div class="modal-header">
             <div style="font-size:24px" onclick="closeProductModal()"><i class="ph-bold ph-x"></i></div>
             <div style="font-weight:900; font-size:18px; color:var(--accent)">DÉTAILS DU PRODUIT</div>
@@ -802,9 +802,33 @@
                 totalRow.style.display = 'flex';
                 
                 cart.forEach((i, idx) => {
+                    const p = allProducts.find(x => x.id === i.id);
+                    const img = p && p.image_url ? p.image_url : `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(i.name.substring(0,5))}`;
+                    
+                    let descHtml = '';
+                    if (p && p.description) {
+                        descHtml = `<div style="font-size:10px; opacity:0.5; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; margin-bottom:4px;">${p.description}</div>`;
+                    } else if (i.unit) {
+                        descHtml = `<div style="font-size:10px; opacity:0.5; margin-bottom:4px;">Format: ${i.m} ${i.unit}</div>`;
+                    }
+                    
                     const d = document.createElement('div');
-                    d.style = "background:var(--card); padding:15px; border-radius:20px; margin-bottom:10px; display:flex; align-items:center; gap:15px; border:1px solid var(--border);";
-                    d.innerHTML = `<div style="flex:1"><div style="font-weight:800; font-size:14px;">${i.name}</div><div style="color:var(--accent); font-weight:900; font-size:13px;">${i.pr}€</div></div><div style="display:flex; align-items:center; gap:12px;"><span style="opacity:0.4; font-size:20px; padding:5px; cursor:pointer;" onclick="updateN('${i.cid}', -1)">−</span><span style="font-weight:900">${i.n}</span><span style="color:var(--accent); font-size:20px; padding:5px; cursor:pointer;" onclick="updateN('${i.cid}', 1)">+</span></div>`;
+                    d.style = "background:var(--card); padding:12px; border-radius:18px; margin-bottom:12px; display:flex; align-items:center; gap:12px; border:1px solid var(--border);";
+                    d.innerHTML = `
+                        <div style="width:50px; height:50px; border-radius:12px; background:#111; overflow:hidden; flex-shrink:0;">
+                            <img src="${img}" style="width:100%; height:100%; object-fit:cover;">
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-weight:800; font-size:13px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${i.name}</div>
+                            ${descHtml}
+                            <div style="color:var(--accent); font-weight:900; font-size:13px;">${i.pr}€</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.05); padding:6px 8px; border-radius:12px; flex-shrink:0;">
+                            <div style="opacity:0.6; cursor:pointer; font-size:16px; font-weight:900; width:20px; text-align:center;" onclick="updateN('${i.cid}', -1)">−</div>
+                            <div style="font-weight:900; font-size:13px; min-width:14px; text-align:center;">${i.n}</div>
+                            <div style="color:var(--accent); cursor:pointer; font-size:16px; font-weight:900; width:20px; text-align:center;" onclick="updateN('${i.cid}', 1)">+</div>
+                        </div>
+                    `;
                     cont.appendChild(d);
                 });
                 
