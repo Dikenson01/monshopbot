@@ -227,8 +227,8 @@
             <div></div>
         </div>
         <div style="flex:1; overflow-y:auto; padding-bottom:100px;">
-            <div id="p-media" style="width:100%; aspect-ratio:1.2; background:var(--card); position:relative; overflow:hidden;">
-                <img id="p-img" src="" style="width:100%; height:100%; object-fit:cover;">
+            <div id="p-media" style="width:100%; height:300px; background:#000; position:relative; overflow:hidden;">
+                <img id="p-img" src="" style="width:100%; height:100%; object-fit:contain;">
             </div>
             <div style="padding:25px;">
                 <div id="p-name" style="font-size:28px; font-weight:900; margin-bottom:10px;">Produit</div>
@@ -819,16 +819,16 @@
                     `;
                     upsells.forEach(p => {
                         upsellHtml += `
-                            <div style="min-width:140px; background:var(--card); border:1px solid var(--border); border-radius:15px; overflow:hidden; scroll-snap-align: start; flex-shrink:0;" onclick="quickAdd('${p.id}'); event.stopPropagation();">
-                                <div style="width:100%; height:80px; background:#111; position:relative;">
-                                    <img src="${p.image_url || `https://placehold.co/140x80/111/fff?text=${encodeURIComponent(p.name)}`}" style="width:100%; height:100%; object-fit:cover;">
+                            <div style="min-width:140px; background:var(--card); border:1px solid var(--border); border-radius:15px; overflow:hidden; scroll-snap-align: start; flex-shrink:0; cursor:pointer;" onclick="openProductModal('${p.id}')">
+                                <div style="width:100%; height:120px; background:#000; position:relative;">
+                                    <img src="${p.image_url || `https://placehold.co/140x120/111/fff?text=${encodeURIComponent(p.name)}`}" style="width:100%; height:100%; object-fit:contain;">
                                     <div style="position:absolute; bottom:5px; right:5px; background:var(--accent); color:#fff; font-size:9px; font-weight:900; padding:2px 6px; border-radius:6px; box-shadow:0 2px 5px rgba(255,0,80,0.5);">+ RECOMMANDÉ</div>
                                 </div>
                                 <div style="padding:10px;">
                                     <div style="font-size:12px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;">${p.name}</div>
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
                                         <div style="font-size:13px; font-weight:900; color:var(--accent);">${p.price}€</div>
-                                        <div style="background:var(--accent); color:#fff; border:none; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="ph-bold ph-plus"></i></div>
+                                        <div style="background:var(--accent); color:#fff; border:none; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="quickAdd('${p.id}'); event.stopPropagation();"><i class="ph-bold ph-plus"></i></div>
                                     </div>
                                 </div>
                             </div>
