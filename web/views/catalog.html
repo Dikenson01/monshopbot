@@ -962,9 +962,10 @@
                     <div style="margin-bottom:20px;">
                         <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">CONSIGNES DE LIVRAISON</label>
                         <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; scrollbar-width:none; margin-bottom:10px;">
-                            <div class="del-tag ${selectedDeliveryTags.includes('Laisser devant la porte') ? 'active' : ''}" onclick="selectTag(this, 'Laisser devant la porte')">🚪 Laisser à la porte</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('M\\'appeler en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'M\\'appeler en arrivant')">📞 M'appeler à l'arrivée</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('Remise en main propre') ? 'active' : ''}" onclick="selectTag(this, 'Remise en main propre')">🤝 Remise en main propre</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('M\\'envoyer un message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'M\\'envoyer un message en arrivant')">💬 M'envoyer un message en arrivant</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Je descendrai au véhicule') ? 'active' : ''}" onclick="selectTag(this, 'Je descendrai au véhicule')">🚗 Je descendrai au véhicule</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Je vous attendrai dans le hall') ? 'active' : ''}" onclick="selectTag(this, 'Je vous attendrai dans le hall')">🏢 Je vous attendrai dans le hall</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Ne pas sonner (Discret)') ? 'active' : ''}" onclick="selectTag(this, 'Ne pas sonner (Discret)')">🤫 Ne pas sonner (Discret)</div>
                         </div>
                         <textarea id="order-note-extra" placeholder="Instructions supplémentaires pour le livreur (facultatif)" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:60px; outline:none; resize:none;"></textarea>
                     </div>
