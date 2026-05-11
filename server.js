@@ -417,6 +417,26 @@ function createServer() {
         }
     });
 
+    app.post('/api/mini-app/cart', async (req, res) => {
+        try {
+            const { userId, items, initData } = req.body;
+            if (!userId || !items) return res.status(400).json({ error: 'Données manquantes' });
+
+            const bot = getBotInstance();
+            if (!bot) return res.status(500).json({ error: 'Bot non initialisé' });
+
+            // On simule un événement interne pour le dispatcher
+            // Le dispatcher va recevoir l'événement et déclencher la suite
+            const eventBus = require('./services/event_bus'); 
+            eventBus.emit('mini_app_cart_submitted', { userId, items, platform: 'telegram' });
+
+            res.json({ success: true });
+        } catch (e) {
+            console.error('Mini App Cart API Error:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/forgot-password', async (req, res) => {
         try {
             const settings = await getAppSettings();

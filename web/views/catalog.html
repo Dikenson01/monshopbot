@@ -365,7 +365,7 @@
                 <span>Total à régler :</span>
                 <span id="overlay-total" style="color:var(--accent); font-size:20px;">0.00€</span>
             </div>
-            <button class="btn-checkout" onclick="confirmCheckout()">🚀 COMMANDER MAINTENANT</button>
+            <button class="btn-checkout" id="btn-checkout" onclick="confirmCheckout()">🚀 COMMANDER MAINTENANT</button>
         </div>
     </div>
 
@@ -530,18 +530,43 @@
             });
         }
 
-        function confirmCheckout() {
+        async function confirmCheckout() {
             if (cart.length === 0) return;
             
-            tg.showConfirm(`Confirmer votre commande (${cart.length} articles) ?`, (ok) => {
-                if (ok) {
-                    tg.sendData(JSON.stringify({
-                        action: 'mini_app_cart',
+            const user = tg.initDataUnsafe?.user;
+            if (!user || !user.id) {
+                tg.showAlert("Erreur d'identification Telegram. Veuillez relancer l'app.");
+                return;
+            }
+
+            const btn = document.getElementById('btn-checkout');
+            btn.innerText = "Traitement...";
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/mini-app/cart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: user.id,
+                        initData: tg.initData,
                         items: cart.map(i => ({ id: i.id, qty: i.qty }))
-                    }));
+                    })
+                });
+
+                const res = await response.json();
+                if (res.success) {
                     tg.close();
+                } else {
+                    tg.showAlert("Erreur: " + (res.error || "Inconnue"));
+                    btn.innerText = "🚀 COMMANDER MAINTENANT";
+                    btn.disabled = false;
                 }
-            });
+            } catch (e) {
+                tg.showAlert("Erreur réseau. Réessayez.");
+                btn.innerText = "🚀 COMMANDER MAINTENANT";
+                btn.disabled = false;
+            }
         }
 
         // Initialize

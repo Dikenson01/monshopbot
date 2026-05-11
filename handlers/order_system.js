@@ -137,6 +137,47 @@ function setupOrderSystem(bot) {
         }
     });
 
+    const eventBus = require('../services/event_bus');
+    eventBus.on('mini_app_cart_submitted', async ({ userId, items, platform }) => {
+        try {
+            const uKey = `${platform}_${userId}`;
+            const products = await getProducts();
+            const cartItems = items.map(item => {
+                const p = products.find(x => x.id === item.id);
+                if (!p) return null;
+                return { 
+                    id: p.id,
+                    productName: p.name,
+                    price: p.price,
+                    qty: item.qty,
+                    totalPrice: (p.price * item.qty),
+                    productUnit: p.unit || 'u'
+                };
+            }).filter(Boolean);
+
+            if (cartItems.length === 0) return;
+
+            userCarts.set(uKey, cartItems);
+            await userCarts.save();
+
+            const total = cartItems.reduce((acc, i) => acc + i.totalPrice, 0);
+            const text = `🛒 <b>Mini App : Panier prêt !</b>\n\n` +
+                         cartItems.map(i => `• <b>${i.productName}</b> x${i.qty}`).join('\n') +
+                         `\n\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nVotre commande est prête. Cliquez ci-dessous pour confirmer votre adresse et finaliser.`;
+            
+            const keyboard = Markup.inlineKeyboard([
+                [Markup.button.callback('🚀 FINALISER MA COMMANDE', 'start_checkout')],
+                [Markup.button.callback('🛒 Voir le panier', 'view_cart')],
+                [Markup.button.callback('❌ Vider', 'clear_cart')]
+            ]);
+
+            await sendTelegramMessage(userId, text, { parse_mode: 'HTML', ...keyboard });
+
+        } catch (e) {
+            console.error('[EventBus-MiniApp] Error:', e.message);
+        }
+    });
+
     // Helper universel pour relayer un message à tous les admins
     // (Désormais géré par services/notifications.js)
 
