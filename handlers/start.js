@@ -695,8 +695,9 @@ async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = fal
 async function getWelcomeKeyboard(ctx, settings, user) {
     const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
     return Markup.inlineKeyboard([
-        [Markup.button.callback('🚀 CRÉER MON PROPRE BOT', 'sales_menu_start')],
-        [Markup.button.webApp('🛒 TESTER LE CATALOGUE (DÉMO)', catalogUrl)],
+        [Markup.button.callback('🚀 DÉPLOYER MON PROPRE BOT', 'sales_menu_start')],
+        [Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'main_menu')],
+        [Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)],
         [Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')]
     ]);
 }
