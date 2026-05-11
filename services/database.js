@@ -3154,3 +3154,47 @@ async function bulkRegisterUsers(users) {
     
     return { success: true, count };
 }
+
+/**
+ * Synchronise le panier d'un utilisateur pour le suivi des paniers abandonnés.
+ */
+async function syncUserCart(userId, cart) {
+    if (!userId) return;
+    try {
+        const { data: current } = await supabase.from(COL_SETTINGS).select('data').eq('key', 'active_carts').single();
+        let allCarts = current?.data || {};
+        
+        if (cart && cart.length > 0) {
+            allCarts[userId] = {
+                cart: cart,
+                updated_at: Date.now(),
+                notified: false
+            };
+        } else {
+            delete allCarts[userId];
+        }
+
+        await supabase.from(COL_SETTINGS).upsert({ key: 'active_carts', data: allCarts });
+    } catch (e) {
+        console.error('[DB] syncUserCart error:', e.message);
+    }
+}
+
+module.exports = {
+    getUserCount, getActiveUserCount, getRecentUsers, searchUsers,
+    getReferralLeaderboard, getStatsOverview, getDailyStats,
+    getProducts, saveProduct, deleteProduct,
+    getAllOrders, updateOrderStatus, setLivreurStatus, getOrder, assignOrderLivreur,
+    setLivreurAvailability, getAppSettings, updateAppSettings,
+    deleteUser, incrementOrderCount, makeDocId, getOrderAnalytics, searchLivreurs,
+    getBroadcastHistory, saveBroadcast, deleteBroadcast, getDetailedLivreurActivity,
+    nukeDatabase, decryptUser, supabase, COL_USERS,
+    registerUser, getLivreurHistory, getReviews, deleteReview, deleteOrder,
+    getSuppliers, getSupplier, saveSupplier, deleteSupplier, getSupplierProducts, getSupplierOrders,
+    getMarketplaceProducts, getMarketplaceProduct, getAvailableMarketplaceProducts,
+    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock,
+    createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
+    getUserAnalytics,
+    logSupportMessage, getSupportLogs, bulkRegisterUsers, getAllActiveUsers,
+    syncUserCart // Exporté ici
+};

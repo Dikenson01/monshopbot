@@ -102,6 +102,12 @@ function createServer() {
         useTempFiles: true,
         tempFileDir: '/tmp/'
     }));
+
+    // AI & Smart Tasks Scheduling
+    const { runSmartAnalysis, checkAbandonedCarts } = require('./services/smart_reminders');
+    setInterval(runSmartAnalysis, 30 * 60 * 1000); // 30 mins
+    setInterval(checkAbandonedCarts, 30 * 60 * 1000); // 30 mins
+
     app.use('/public', express.static(path.join(__dirname, 'web', 'public')));
 
     // Webhook WhatsApp (Cloud API)
@@ -516,6 +522,17 @@ function createServer() {
         }
     });
 
+    app.post('/api/mini-app/sync-cart', async (req, res) => {
+        try {
+            const { userId, cart } = req.body;
+            const { syncUserCart } = require('./services/database');
+            await syncUserCart(userId, cart);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/forgot-password', async (req, res) => {
         try {
             const settings = await getAppSettings();
@@ -880,9 +897,23 @@ function createServer() {
 
     app.get('/api/orders/search', authMiddleware, async (req, res) => {
         try { 
-            const { searchOrders } = require('./services/database');
+            const { startWorker } = require('./services/worker');
+const { runSmartAnalysis, checkAbandonedCarts } = require('./services/smart_reminders');
+
+// Schedule smart tasks every 30 mins
+setInterval(runSmartAnalysis, 30 * 60 * 1000);
+setInterval(checkAbandonedCarts, 30 * 60 * 1000);
             res.json(await searchOrders(req.query.q)); 
         } catch (e) { res.status(500).json({ error: 'Erreur serveur' }); }
+    });
+
+    app.post('/api/orders/sync-cart', authMiddleware, async (req, res) => {
+        try {
+            const { userId, cart } = req.body;
+            const { syncUserCart } = require('./services/database');
+            await syncUserCart(userId, cart);
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
     app.delete('/api/orders/:id', authMiddleware, async (req, res) => {
