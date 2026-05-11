@@ -8148,11 +8148,10 @@
         async function renderMarketingTemplates() {
             const list = document.getElementById('marketing-templates-list');
             const defaultTemplates = [
-                { type: 'catalog', title: 'Matin (11h)', message: 'Bonjour {first_name}, notre catalogue vient d\'être mis à jour !', action: 'VOIR CATALOGUE' },
-                { type: 'referral', title: 'Après-midi (14h)', message: 'Hey {first_name}, gagnez du crédit en parrainant vos amis !', action: 'PARRAINAGE' },
-                { type: 'catalog', title: 'Soir (19h)', message: 'Bonsoir {first_name}, une petite envie de shopping ?', action: 'SHOPPING' },
-                { type: 'pricing', title: 'Nuit (22h)', message: 'Dernière chance {first_name}, créez votre propre bot ce soir !', action: 'BOT' },
-                { type: 'loyalty', title: 'Fidélité', message: 'Cadeau pour {first_name}, merci pour votre confiance !', action: 'RÉCUPÉRER' }
+                { segment: 'prospect', type: 'catalog', title: 'Matin (Prospect)', message: 'Bonjour {first_name}, découvrez notre catalogue exclusif !', action: 'VOIR CATALOGUE' },
+                { segment: 'client', type: 'catalog', title: 'Matin (Client)', message: 'Bonjour {first_name}, de nouvelles mises à jour sont disponibles sur votre bot !', action: 'DÉCOUVRIR' },
+                { segment: 'prospect', type: 'referral', title: 'Après-midi (Prospect)', message: 'Hey {first_name}, gagnez 5€ par ami parrainé !', action: 'PARRAINAGE' },
+                { segment: 'client', type: 'loyalty', title: 'Après-midi (Client)', message: 'Merci pour votre fidélité {first_name}, un cadeau vous attend !', action: 'VOIR MON CADEAU' }
             ];
             const templates = window.appSettings.marketing_templates && window.appSettings.marketing_templates.length > 0 
                 ? window.appSettings.marketing_templates 
@@ -8168,6 +8167,13 @@
                         <div class="form-group">
                             <label>Titre de la notification</label>
                             <input type="text" class="template-title" value="${t.title || ''}" placeholder="Ex: 💎 UNE ENVIE DE LUXE ?">
+                        </div>
+                        <div class="form-group">
+                            <label>Cible (Segment)</label>
+                            <select class="template-segment">
+                                <option value="prospect" ${t.segment === 'prospect' ? 'selected' : ''}>Prospect (0 commande)</option>
+                                <option value="client" ${t.segment === 'client' ? 'selected' : ''}>Client (1+ commandes)</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Type / Objectif</label>
@@ -8195,6 +8201,7 @@
             const cards = document.querySelectorAll('#marketing-templates-list .card');
             const templates = Array.from(cards).map(card => ({
                 title: card.querySelector('.template-title').value,
+                segment: card.querySelector('.template-segment').value,
                 type: card.querySelector('.template-type').value,
                 message: card.querySelector('.template-message').value,
                 action: card.querySelector('.template-action').value

@@ -12,34 +12,34 @@ async function getMarketingTemplates() {
         return settings.marketing_templates;
     }
     return [
+        // PROSPECTS (New Users)
         {
-            title: "💎 UNE ENVIE DE LUXE ?",
-            message: "Bonjour {first_name}, notre catalogue vient d'être mis à jour avec des pépites exclusives.\n\n🚀 <b>Dépêchez-vous, les stocks s'envolent !</b>\n\n👇 Découvrez les nouveautés :",
-            action: "ACCÉDER AU CATALOGUE",
+            segment: "prospect",
+            title: "💎 DÉCOUVREZ LE LUXE ACCESSIBLE",
+            message: "Bonjour {first_name}, bienvenue sur notre plateforme ! Profitez de produits exclusifs au meilleur prix.\n\n🚀 <b>Votre première commande livrée en 30min !</b>\n\n👇 Découvrez le catalogue :",
+            action: "VOIR LE CATALOGUE",
+            type: "catalog"
+        },
+        // CLIENTS (Already Ordered)
+        {
+            segment: "client",
+            title: "🛰 MISE À JOUR DISPONIBLE",
+            message: "Bonjour {first_name}, en tant que client privilégié, nous vous informons que de nouvelles fonctionnalités sont disponibles !\n\n✅ <b>Interface Mini App v5.0</b>\n✅ <b>Suivi temps réel</b>\n\n👇 Tester les nouveautés :",
+            action: "OUVRIR MINI APP",
             type: "catalog"
         },
         {
-            title: "💰 VOTRE PORTEFEUILLE VOUS REMERCIE",
-            message: "Hey {first_name}, saviez-vous que vous pouvez gagner des crédits simplement en parrainant vos amis ?\n\n🎁 <b>5€ offerts</b> pour chaque ami qui commande !\n\n👇 Obtenez votre lien :",
+            segment: "prospect",
+            title: "💰 GAGNEZ SANS DÉPENSER",
+            message: "Hey {first_name}, saviez-vous que vous pouvez gagner 5€ par ami parrainé ?\n\n🎁 <b>Idéal pour financer votre première commande !</b>\n\n👇 Mon lien :",
             action: "MON PARRAINAGE",
             type: "referral"
         },
         {
-            title: "🛰 SYSTÈME SHOPTONBOT : LE FUTUR EST ICI",
-            message: "Vous n'avez pas encore votre propre bot ? Déployez votre empire aujourd'hui avec <b>ShopTonBot Enterprise</b>.\n\n✅ Automatisation 24h/24\n✅ Paiements Crypto & CB\n✅ Support VIP\n\n👇 Devenir propriétaire :",
-            action: "DÉPLOYER MON BOT",
-            type: "pricing"
-        },
-        {
-            title: "📦 LIVRAISON EN COURS DANS VOTRE ZONE",
-            message: "Plusieurs livreurs sont actuellement actifs près de chez vous. Commandez maintenant pour une livraison en moins de 30 minutes !\n\n⚡️ <b>Flash Delivery</b> activé.",
-            action: "COMMANDER MAINTENANT",
-            type: "catalog"
-        },
-        {
-            title: "🎁 CADEAU FIDÉLITÉ DÉBLOQUÉ",
-            message: "Bonjour {first_name}, merci pour votre confiance. En tant que client fidèle, nous vous offrons une réduction exclusive sur votre prochaine commande !\n\n👇 Récupérer mon cadeau :",
-            action: "MON CADEAU",
+            segment: "client",
+            title: "🎁 RÉCOMPENSE FIDÉLITÉ",
+            message: "Merci pour votre fidélité {first_name}. Nous avons ajouté un bonus exclusif sur votre compte pour votre prochaine commande !\n\n👇 Vérifier mon solde :",
+            action: "MON PROFIL",
             type: "loyalty"
         }
     ];
@@ -50,7 +50,6 @@ async function getMarketingTemplates() {
  */
 const { createPersistentMap } = require('./persistent_map');
 const marketingState = createPersistentMap('marketing_state');
-// lastSentHour est géré via marketingState.get('lastSentHour')
 
 async function runAutomatedMarketing() {
     try {
@@ -64,41 +63,55 @@ async function runAutomatedMarketing() {
         const currentHour = now.getHours();
         const todayKey = now.toISOString().split('T')[0];
         
-        const lastSent = marketingState.get('lastSentHour'); // Format: "YYYY-MM-DD:HH"
+        const lastSent = marketingState.get('lastSentHour'); 
         if (lastSent === `${todayKey}:${currentHour}`) return;
 
         if (!STRATEGIC_HOURS.includes(currentHour)) return;
 
-        console.log(`[Marketing] Strategic hour detected (${currentHour}h). Preparing campaign...`);
+        console.log(`[Marketing] Strategic hour detected (${currentHour}h). Preparing segmented campaigns...`);
         marketingState.set('lastSentHour', `${todayKey}:${currentHour}`);
 
-        // 1. Sélectionner un template adapté à l'heure
         const templates = await getMarketingTemplates();
-        let template;
-        if (currentHour === 11) {
-            template = templates.find(t => t.type === 'catalog') || templates[0];
-        } else if (currentHour === 14) {
-            template = templates.find(t => t.type === 'referral') || templates[1];
-        } else if (currentHour === 19) {
-            template = templates.find(t => t.type === 'catalog') || templates[3];
-        } else {
-            template = templates.find(t => t.type === 'pricing') || templates[2];
-        }
+        const allUsers = await getAllUsersForBroadcast(null, 'user');
         
-        // 2. Récupérer les utilisateurs
-        const users = await getAllUsersForBroadcast(null, 'user');
-        if (users.length === 0) return;
+        const prospects = allUsers.filter(u => (u.order_count || 0) === 0);
+        const clients = allUsers.filter(u => (u.order_count || 0) > 0);
 
         const startTime = now.toISOString();
-        const payload = `${template.title}\n\n${template.message}|||MEDIA_URLS|||[]`;
-        
-        // On lance le broadcast
-        await broadcastMessage('users', payload, {
-            start_at: startTime,
-            badge: "📣 SMART-MARKETING"
-        });
 
-        console.log(`[Marketing] Campagne "${template.title}" lancée avec succès pour ${users.length} utilisateurs.`);
+        // 1. Send to PROSPECTS
+        if (prospects.length > 0) {
+            const template = templates.find(t => t.segment === 'prospect' && (currentHour < 15 ? t.type === 'catalog' : t.type === 'referral')) || templates.find(t => t.segment === 'prospect');
+            if (template) {
+                const payload = `${template.title}\n\n${template.message}|||MEDIA_URLS|||[]`;
+                // On utilise un broadcast avec filtre (ici on simule en envoyant aux IDs spécifiques si besoin, 
+                // mais pour rester performant on pourrait passer un filtre à broadcastMessage)
+                // Pour l'instant on utilise le broadcast global mais on devrait idéalement filtrer
+                // Note: broadcastMessage accepte 'users' (tous), on va adapter pour accepter une liste d'IDs
+                await broadcastMessage(prospects.map(u => u.id), payload, {
+                    start_at: startTime,
+                    badge: "📣 PROSPECT-PROMO"
+                });
+            }
+        }
+
+        // 2. Send to CLIENTS
+        if (clients.length > 0) {
+            const template = templates.find(t => t.segment === 'client' && (currentHour < 15 ? t.type === 'catalog' : t.type === 'loyalty')) || templates.find(t => t.segment === 'client');
+            if (template) {
+                const payload = `${template.title}\n\n${template.message}|||MEDIA_URLS|||[]`;
+                await broadcastMessage(clients.map(u => u.id), payload, {
+                    start_at: startTime,
+                    badge: "📣 CLIENT-UPDATE"
+                });
+            }
+        }
+
+        console.log(`[Marketing] Segmented campaigns launched (${prospects.length} prospects, ${clients.length} clients).`);
+    } catch (e) {
+        console.error('[Marketing-Error]', e.message);
+    }
+}
     } catch (e) {
         console.error('[Marketing-Error]', e.message);
     }
