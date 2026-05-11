@@ -705,6 +705,19 @@ function createServer() {
         }
     });
 
+    app.post('/api/delete-account', async (req, res) => {
+        try {
+            const { userId } = req.body;
+            const { supabase } = require('./services/database');
+            // Suppression logique ou physique ? Ici on fait physique pour le test
+            const { error } = await supabase.from('bot_users').delete().eq('id', userId);
+            if (error) throw error;
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/forgot-password', async (req, res) => {
         try {
             const settings = await getAppSettings();
