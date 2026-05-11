@@ -286,7 +286,7 @@
 
         let allProducts = [];
         let categories = [];
-        let cart = [];
+        let cart = JSON.parse(localStorage.getItem('stb_cart') || '[]');
         let userInfo = null;
         let favorites = JSON.parse(localStorage.getItem('stb_favorites') || '[]');
         let selectedDeliveryTags = [];
@@ -380,10 +380,10 @@
             tg.HapticFeedback.impactOccurred('light');
         }
 
-        function selectTag(el, text) {
+        function selectTag(el, tagId) {
             el.classList.toggle('active');
-            if (selectedDeliveryTags.includes(text)) selectedDeliveryTags = selectedDeliveryTags.filter(t => t !== text);
-            else selectedDeliveryTags.push(text);
+            if (selectedDeliveryTags.includes(tagId)) selectedDeliveryTags = selectedDeliveryTags.filter(t => t !== tagId);
+            else selectedDeliveryTags.push(tagId);
             tg.HapticFeedback.impactOccurred('light');
         }
 
@@ -596,6 +596,7 @@
                                 cart.push({ cid, id: it.id, name: prod.name, pr: it.price || prod.price, m: it.qty || 1, unit: prod.unit || 'g', n: 1 });
                             }
                         });
+                        localStorage.setItem('stb_cart', JSON.stringify(cart));
                         updateCartUI();
                         switchPage('shop', document.querySelectorAll('.nav-item')[0]);
                         tg.showAlert("Articles ajoutés au panier !");
@@ -735,9 +736,10 @@
         function quickAdd(pid) {
             const p = allProducts.find(x => x.id === pid);
             if (!p) return;
-            const cid = `${p.id}_1`;
-            const ex = cart.find(i => i.cid === cid);
-            if (ex) ex.n++; else cart.push({ cid, id: p.id, name: p.name, pr: p.price, m: 1, unit: p.unit || 'g', n: 1 });
+            const item = cart.find(i => i.id === p.id);
+            if (item) item.n++;
+            else cart.push({ id: p.id, name: p.name, pr: p.price, n: 1, cid: Date.now().toString() });
+            localStorage.setItem('stb_cart', JSON.stringify(cart));
             updateCartUI();
             tg.HapticFeedback.notificationOccurred('success');
             renderCheckout();
@@ -747,10 +749,11 @@
         function addSelectionToCart() {
             const cid = `${activeProduct.id}_${activeOption.m}`;
             const ex = cart.find(i => i.cid === cid);
-            if (ex) ex.n++; else cart.push({ cid, id: activeProduct.id, name: activeProduct.name, pr: activeOption.pr, m: activeOption.m, unit: activeProduct.unit || 'g', n: 1 });
+            if (ex) ex.n++;
+            else cart.push({ cid, id: activeProduct.id, name: activeProduct.name, pr: activeOption.pr, m: activeOption.m, unit: activeProduct.unit || 'g', n: 1 });
+            localStorage.setItem('stb_cart', JSON.stringify(cart));
             updateCartUI(); closeSelectionModal(); closeProductModal(); tg.HapticFeedback.notificationOccurred('success');
             
-            // Sync with server for abandoned cart tracking
             syncCart();
         }
 
@@ -962,10 +965,10 @@
                     <div style="margin-bottom:20px;">
                         <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">CONSIGNES DE LIVRAISON</label>
                         <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; scrollbar-width:none; margin-bottom:10px;">
-                            <div class="del-tag ${selectedDeliveryTags.includes('M\\'envoyer un message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'M\\'envoyer un message en arrivant')">💬 M'envoyer un message en arrivant</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'Message en arrivant')">💬 M'envoyer un message en arrivant</div>
                             <div class="del-tag ${selectedDeliveryTags.includes('Je descendrai au véhicule') ? 'active' : ''}" onclick="selectTag(this, 'Je descendrai au véhicule')">🚗 Je descendrai au véhicule</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('Je vous attendrai dans le hall') ? 'active' : ''}" onclick="selectTag(this, 'Je vous attendrai dans le hall')">🏢 Je vous attendrai dans le hall</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('Ne pas sonner (Discret)') ? 'active' : ''}" onclick="selectTag(this, 'Ne pas sonner (Discret)')">🤫 Ne pas sonner (Discret)</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Attente dans le hall') ? 'active' : ''}" onclick="selectTag(this, 'Attente dans le hall')">🏢 Je vous attendrai dans le hall</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Ne pas sonner') ? 'active' : ''}" onclick="selectTag(this, 'Ne pas sonner')">🤫 Ne pas sonner (Discret)</div>
                         </div>
                         <textarea id="order-note-extra" placeholder="Instructions supplémentaires pour le livreur (facultatif)" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:60px; outline:none; resize:none;"></textarea>
                     </div>
