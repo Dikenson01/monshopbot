@@ -129,6 +129,7 @@
         .loader-fill { height: 100%; background: var(--accent); width: 0%; transition: 0.5s; }
 
         .empty-state { text-align: center; padding: 60px 20px; opacity: 0.4; font-weight: 700; font-size: 14px; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -396,16 +397,28 @@
                 const d = document.createElement('div'); d.className = 'card';
                 const img = p.image_url || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(p.name)}`;
                 const rating = (4.5 + Math.random() * 0.5).toFixed(1);
+                
+                let badgeHtml = '';
+                const ageDays = p.created_at ? (Date.now() - new Date(p.created_at).getTime()) / (1000*3600*24) : 0;
+                if (ageDays < 5 && ageDays >= 0) {
+                    badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:var(--accent); color:#fff; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(255,0,80,0.5); animation: pulse 2s infinite;">NOUVEAU 🔥</div>`;
+                } else if (Math.random() > 0.8) {
+                    badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:#00ff88; color:#000; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(0,255,136,0.3);">BESTSELLER ⭐</div>`;
+                } else if (p.stock > 0 && p.stock < 10) {
+                    badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:#ffaa00; color:#000; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(255,170,0,0.5); animation: pulse 2s infinite;">VITE! PLUS QUE ${p.stock}</div>`;
+                }
+
                 d.innerHTML = `
                     <div style="position:relative;">
                         <img src="${img}" class="card-img" onclick="openProductModal('${p.id}')">
                         <div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); padding:4px 8px; border-radius:8px; font-size:10px; font-weight:900; color:#ffaa00;"><i class="ph-fill ph-star"></i> ${rating}</div>
+                        ${badgeHtml}
                     </div>
                     <div class="card-content" onclick="openProductModal('${p.id}')">
                         <div class="card-name">${p.name}</div>
                         <div class="card-price">${p.price}€</div>
                     </div>
-                    <div class="add-btn" onclick="openProductModal('${p.id}', event)">+</div>
+                    <div class="add-btn" style="animation: pulse 2s infinite;" onclick="openProductModal('${p.id}', event)">+</div>
                 `;
                 container.appendChild(d);
             });
@@ -682,6 +695,20 @@
             } catch(e) {}
         }
 
+        function closeSelectionModal() { document.getElementById('selection-modal').classList.remove('open'); }
+
+        function quickAdd(pid) {
+            const p = allProducts.find(x => x.id === pid);
+            if (!p) return;
+            const cid = `${p.id}_1`;
+            const ex = cart.find(i => i.cid === cid);
+            if (ex) ex.n++; else cart.push({ cid, id: p.id, name: p.name, pr: p.price, m: 1, unit: p.unit || 'g', n: 1 });
+            updateCartUI();
+            tg.HapticFeedback.notificationOccurred('success');
+            renderCheckout();
+            syncCart();
+        }
+
         function addSelectionToCart() {
             const cid = `${activeProduct.id}_${activeOption.m}`;
             const ex = cart.find(i => i.cid === cid);
@@ -781,6 +808,36 @@
                     cont.appendChild(d);
                 });
                 
+                // --- BUNDLE / UPSELL ---
+                const inCartIds = cart.map(i => i.id);
+                const upsells = allProducts.filter(p => p.is_active && !inCartIds.includes(p.id) && (p.stock > 0 || p.stock === null || p.stock === undefined)).sort(() => 0.5 - Math.random()).slice(0, 4);
+                if (upsells.length > 0) {
+                    let upsellHtml = `
+                        <div style="margin-top:20px; margin-bottom:10px; padding:15px; background:rgba(255,170,0,0.05); border:1px solid rgba(255,170,0,0.3); border-radius:20px;">
+                            <div style="font-size:11px; font-weight:900; opacity:0.8; margin-bottom:15px; letter-spacing:1px; display:flex; align-items:center; gap:5px; color:#ffaa00;"><i class="ph-fill ph-fire" style="font-size:14px;"></i> SOUVENT ACHETÉ AVEC</div>
+                            <div style="display:flex; gap:10px; overflow-x:auto; padding-bottom:5px; scroll-snap-type: x mandatory;">
+                    `;
+                    upsells.forEach(p => {
+                        upsellHtml += `
+                            <div style="min-width:140px; background:var(--card); border:1px solid var(--border); border-radius:15px; overflow:hidden; scroll-snap-align: start; flex-shrink:0;" onclick="quickAdd('${p.id}'); event.stopPropagation();">
+                                <div style="width:100%; height:80px; background:#111; position:relative;">
+                                    <img src="${p.image_url || `https://placehold.co/140x80/111/fff?text=${encodeURIComponent(p.name)}`}" style="width:100%; height:100%; object-fit:cover;">
+                                    <div style="position:absolute; bottom:5px; right:5px; background:var(--accent); color:#fff; font-size:9px; font-weight:900; padding:2px 6px; border-radius:6px; box-shadow:0 2px 5px rgba(255,0,80,0.5);">+ RECOMMANDÉ</div>
+                                </div>
+                                <div style="padding:10px;">
+                                    <div style="font-size:12px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;">${p.name}</div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <div style="font-size:13px; font-weight:900; color:var(--accent);">${p.price}€</div>
+                                        <div style="background:var(--accent); color:#fff; border:none; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="ph-bold ph-plus"></i></div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    upsellHtml += `</div></div>`;
+                    cont.innerHTML += upsellHtml;
+                }
+
                 let tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
                 let discount = 0;
 
