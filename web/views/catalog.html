@@ -80,13 +80,13 @@
         .cat-chip.active { background: #fff; color: #000; border-color: #fff; }
 
         /* GRID */
-        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 0 20px 180px 20px; }
-        .card { background: var(--card); border-radius: 26px; border: 1px solid var(--border); overflow: hidden; position: relative; }
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 20px 180px 20px; }
+        .card { background: var(--card); border-radius: 18px; border: 1px solid var(--border); overflow: hidden; position: relative; }
         .card-img { width: 100%; aspect-ratio: 1; object-fit: cover; }
-        .card-content { padding: 12px; }
-        .card-name { font-size: 13px; font-weight: 700; opacity: 0.9; height: 32px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .card-price { font-size: 16px; font-weight: 900; color: var(--accent); margin-top: 4px; }
-        .add-btn { position: absolute; bottom: 12px; right: 12px; width: 36px; height: 36px; background: #fff; color: #000; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 900; }
+        .card-content { padding: 10px; }
+        .card-name { font-size: 12px; font-weight: 700; opacity: 0.9; height: 30px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .card-price { font-size: 14px; font-weight: 900; color: var(--accent); margin-top: 4px; }
+        .add-btn { position: absolute; bottom: 10px; right: 10px; width: 28px; height: 28px; background: #fff; color: #000; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 900; }
 
         /* ORDERS */
         .order-card { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 20px; margin-bottom: 15px; position: relative; border-left: 4px solid transparent; }
@@ -819,16 +819,16 @@
                     `;
                     upsells.forEach(p => {
                         upsellHtml += `
-                            <div style="min-width:140px; background:var(--card); border:1px solid var(--border); border-radius:15px; overflow:hidden; scroll-snap-align: start; flex-shrink:0; cursor:pointer;" onclick="openProductModal('${p.id}')">
-                                <div style="width:100%; height:120px; background:#000; position:relative;">
-                                    <img src="${p.image_url || `https://placehold.co/140x120/111/fff?text=${encodeURIComponent(p.name)}`}" style="width:100%; height:100%; object-fit:contain;">
-                                    <div style="position:absolute; bottom:5px; right:5px; background:var(--accent); color:#fff; font-size:9px; font-weight:900; padding:2px 6px; border-radius:6px; box-shadow:0 2px 5px rgba(255,0,80,0.5);">+ RECOMMANDÉ</div>
+                            <div style="width: 120px; flex-shrink: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; scroll-snap-align: start; cursor: pointer;" onclick="openProductModal('${p.id}')">
+                                <div style="width: 100%; height: 90px; background: #111; position: relative;">
+                                    <img src="${p.image_url || `https://placehold.co/120x90/111/fff?text=Photo`}" style="width:100%; height:100%; object-fit:cover;">
+                                    <div style="position:absolute; bottom:5px; right:5px; background:var(--accent); color:#fff; font-size:8px; font-weight:900; padding:3px 6px; border-radius:6px; box-shadow:0 2px 5px rgba(255,0,80,0.5);">+ RECOMMANDÉ</div>
                                 </div>
-                                <div style="padding:10px;">
-                                    <div style="font-size:12px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;">${p.name}</div>
-                                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <div style="font-size:13px; font-weight:900; color:var(--accent);">${p.price}€</div>
-                                        <div style="background:var(--accent); color:#fff; border:none; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="quickAdd('${p.id}'); event.stopPropagation();"><i class="ph-bold ph-plus"></i></div>
+                                <div style="padding: 10px;">
+                                    <div style="font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;">${p.name}</div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div style="font-size: 12px; font-weight: 900; color: var(--accent);">${p.price}€</div>
+                                        <div style="background: var(--accent); color: #fff; border: none; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" onclick="quickAdd('${p.id}'); event.stopPropagation();"><i class="ph-bold ph-plus" style="font-size:12px;"></i></div>
                                     </div>
                                 </div>
                             </div>
