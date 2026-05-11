@@ -3197,5 +3197,6 @@ module.exports = {
     getUserAnalytics,
     logSupportMessage, getSupportLogs, bulkRegisterUsers, getAllActiveUsers,
     syncUserCart, 
-    getPendingBroadcasts, getUpcomingPlannedOrders, checkLock, claimLock // Restauration des exports critiques
+    getPendingBroadcasts, getUpcomingPlannedOrders, checkLock, claimLock,
+    addMessageToTrack, getLastMenuId, getTrackedMessages, saveUserLocation // Restauration des fonctions de tracking
 };
