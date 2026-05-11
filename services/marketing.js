@@ -112,10 +112,6 @@ async function runAutomatedMarketing() {
         console.error('[Marketing-Error]', e.message);
     }
 }
-    } catch (e) {
-        console.error('[Marketing-Error]', e.message);
-    }
-}
 
 /**
  * Envoie une notification ciblée aux paniers abandonnés (Relance 1h après)
