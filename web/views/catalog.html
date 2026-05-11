@@ -415,14 +415,48 @@
             try {
                 const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
                 const orders = await res.json();
-                cont.innerHTML = orders.length ? '' : '<div class="empty-state">Vous n\'avez pas encore de commandes.</div>';
+                
+                let statsHtml = '';
+                if(orders.length > 0) {
+                    const activeOrders = orders.filter(o => o.status !== 'cancelled');
+                    const totalSpent = activeOrders.reduce((sum, o) => sum + (o.total_price || o.total || 0), 0);
+                    
+                    const pCount = {};
+                    activeOrders.forEach(o => {
+                        const pname = o.product_name || o.product || 'Inconnu';
+                        pCount[pname] = (pCount[pname] || 0) + 1;
+                    });
+                    const topProduct = Object.keys(pCount).sort((a,b) => pCount[b] - pCount[a])[0] || 'Aucun';
+
+                    statsHtml = `
+                        <div style="background:linear-gradient(135deg, var(--card), rgba(255,170,0,0.1)); border:1px solid var(--accent); border-radius:24px; padding:20px; margin-bottom:20px;">
+                            <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:10px; letter-spacing:1px;">VOS STATISTIQUES VIP</div>
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-size:11px; opacity:0.7;">Total Dépensé</div>
+                                    <div style="font-size:20px; font-weight:900; color:var(--accent);">${totalSpent.toFixed(2)}€</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-size:11px; opacity:0.7;">Produit Préféré</div>
+                                    <div style="font-size:14px; font-weight:900;">${topProduct}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:15px; letter-spacing:1px;">HISTORIQUE DES COMMANDES</div>
+                    `;
+                }
+
+                cont.innerHTML = orders.length ? statsHtml : '<div class="empty-state">Vous n\'avez pas encore de commandes.</div>';
+                
                 orders.forEach(o => {
-                    let color = '#ffaa00', icon = '<i class="ph-fill ph-clock"></i>', text = 'PENDING';
+                    let color = '#ffaa00', icon = '<i class="ph-fill ph-clock"></i>', text = 'EN ATTENTE';
                     if (o.status === 'delivered') { color = '#00ff88'; icon = '<i class="ph-fill ph-check-circle"></i>'; text = 'LIVRÉ'; }
                     else if (o.status === 'taken') { color = 'var(--secondary)'; icon = '<i class="ph-fill ph-truck"></i>'; text = 'EN COURS'; }
+                    else if (o.status === 'cancelled') { color = '#ff0050'; icon = '<i class="ph-fill ph-x-circle"></i>'; text = 'ANNULÉE'; }
 
                     const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-primary" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="ph-fill ph-star"></i> NOTER</button>` : '';
                     const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
+                    const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="ph-bold ph-x"></i> ANNULER</button>` : '';
 
                     const d = document.createElement('div'); d.className = 'order-card';
                     d.innerHTML = `
@@ -431,15 +465,32 @@
                             <div style="font-size:12px; font-weight:800; color:${color};">${icon} ${text}</div>
                         </div>
                         <div style="font-size:11px; opacity:0.5; margin-bottom:15px;">Le ${new Date(o.created_at).toLocaleDateString()}</div>
+                        <div style="font-size:14px; font-weight:600; line-height:1.6; margin-bottom:15px;">${o.product_name || o.product}</div>
                         <div style="display:flex; justify-content:space-between; font-weight:900; font-size:16px;">
                             <div>TOTAL</div><div>${o.total_price || o.total}€</div>
                         </div>
+                        ${btnCancel}
                         ${btnNoter}
                         ${btnReorder}
                     `;
                     cont.appendChild(d);
                 });
             } catch(e) { cont.innerHTML = '<div class="empty-state">Erreur de chargement.</div>'; }
+        }
+
+        async function cancelOrder(orderId) {
+            tg.showConfirm("Voulez-vous vraiment annuler cette commande ?", async (ok) => {
+                if (!ok) return;
+                try {
+                    await fetch('/api/livreur/update-status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderId, status: 'cancelled' })
+                    });
+                    tg.showAlert("Commande annulée !");
+                    loadOrders();
+                } catch(e) {}
+            });
         }
 
         async function reorder(orderId) {
@@ -704,24 +755,69 @@
                 back.style.display = 'block';
                 totalRow.style.display = 'none';
 
+                let addresses = parseAddresses(userInfo?.address);
+                let addrHtml = '';
+                if(addresses.length > 0) {
+                    addrHtml = addresses.map((a, i) => `
+                        <label style="display:flex; align-items:flex-start; gap:10px; background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-bottom:10px;">
+                            <input type="radio" name="checkout_addr" value="${a.id}" ${i === 0 ? 'checked' : ''} style="margin-top:2px; accent-color:var(--accent);">
+                            <div>
+                                <div style="font-weight:900; font-size:14px; margin-bottom:2px;">${a.name}</div>
+                                <div style="font-size:12px; opacity:0.7;">${a.address}</div>
+                                ${a.digicode ? `<div style="font-size:11px; opacity:0.5; margin-top:2px;">Infos: ${a.digicode}</div>` : ''}
+                            </div>
+                        </label>
+                    `).join('');
+                } else {
+                    addrHtml = `
+                        <textarea id="order-address" placeholder="Rue, Ville, Code Postal..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:80px; outline:none; margin-bottom:10px;"></textarea>
+                        <input id="order-note" type="text" placeholder="Interphone, digicode..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none;">
+                    `;
+                }
+
                 const html = `
                     <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.3; margin-bottom:8px; letter-spacing:1px;">ADRESSE DE LIVRAISON</label>
-                        <textarea id="order-address" placeholder="Rue, Ville, Code Postal..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:100px; outline:none;"></textarea>
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">ADRESSE DE LIVRAISON</label>
+                        ${addrHtml}
+                        ${addresses.length > 0 ? `<div style="text-align:right; margin-top:10px;"><span onclick="closeCheckout(); switchPage('profile', document.querySelectorAll('.nav-item')[2]); openAddressModal();" style="font-size:11px; color:var(--accent); font-weight:800; text-decoration:underline;">+ Gérer mes adresses</span></div>` : ''}
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.3; margin-bottom:8px; letter-spacing:1px;">INSTRUCTIONS (OPTIONNEL)</label>
-                        <input id="order-note" type="text" placeholder="Interphone, étage..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none;">
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">HORAIRE SOUHAITÉ</label>
+                        <select id="order-schedule" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none;">
+                            <option value="Dès que possible">Dès que possible</option>
+                            <option value="Ce soir">Ce soir</option>
+                            <option value="Demain">Demain</option>
+                            <option value="À programmer avec le livreur">À programmer avec le livreur</option>
+                        </select>
                     </div>
                 `;
                 cont.innerHTML = html;
-                if (userInfo?.address) document.getElementById('order-address').value = userInfo.address;
             }
         }
 
         async function submitOrder() {
-            const addr = document.getElementById('order-address').value.trim();
-            if (!addr) return tg.showAlert("Veuillez saisir une adresse");
+            let finalAddress = '';
+            let finalNote = '';
+            
+            const radio = document.querySelector('input[name="checkout_addr"]:checked');
+            if (radio) {
+                const addrs = parseAddresses(userInfo?.address);
+                const selected = addrs.find(a => a.id === radio.value);
+                if (selected) {
+                    finalAddress = selected.address;
+                    finalNote = selected.digicode || '';
+                }
+            } else {
+                finalAddress = document.getElementById('order-address')?.value?.trim();
+                finalNote = document.getElementById('order-note')?.value?.trim();
+            }
+
+            if (!finalAddress) return tg.showAlert("Veuillez choisir ou saisir une adresse");
+
+            const schedule = document.getElementById('order-schedule')?.value;
+            if (schedule && schedule !== 'Dès que possible') {
+                finalNote += ` [Horaire souhaité : ${schedule}]`;
+            }
 
             const uid = tg.initDataUnsafe?.user?.id;
             const btn = document.getElementById('btn-next');
@@ -734,8 +830,8 @@
                     userId: `telegram_${uid}`,
                     items: cart.map(i => ({ id: i.id, name: i.name, qty: i.m * i.n, price: i.pr, totalPrice: i.pr * i.n })),
                     total: tot,
-                    address: addr,
-                    note: document.getElementById('order-note').value,
+                    address: finalAddress,
+                    note: finalNote,
                     platform: 'telegram'
                 };
 
@@ -780,30 +876,84 @@
 
         function copyReferral() { if (userInfo?.referralLink) { navigator.clipboard.writeText(userInfo.referralLink); tg.showAlert("Lien copié !"); } }
 
+        let savedAddresses = [];
+        function parseAddresses(addrString) {
+            if (!addrString) return [];
+            try {
+                const parsed = JSON.parse(addrString);
+                if (Array.isArray(parsed)) return parsed;
+            } catch(e) {}
+            return [{ id: 'default', name: 'Adresse Principale', address: addrString }];
+        }
+
         function openAddressModal() {
-            const currentAddress = userInfo?.address || '';
+            savedAddresses = parseAddresses(userInfo?.address);
+            renderAddressModal();
+        }
+
+        function renderAddressModal() {
+            let listHtml = savedAddresses.map(a => `
+                <div style="background:var(--card); border:1px solid var(--border); border-radius:15px; padding:15px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:900; font-size:14px; margin-bottom:2px;">${a.name}</div>
+                        <div style="font-size:12px; opacity:0.7;">${a.address}</div>
+                        ${a.digicode ? `<div style="font-size:11px; opacity:0.5; margin-top:2px;">Infos: ${a.digicode}</div>` : ''}
+                    </div>
+                    <div style="color:var(--accent); font-size:20px; padding:10px; cursor:pointer;" onclick="removeAddress('${a.id}')"><i class="ph-bold ph-trash"></i></div>
+                </div>
+            `).join('');
+
+            if(savedAddresses.length === 0) listHtml = `<div style="font-size:12px; opacity:0.4; text-align:center; padding:20px;">Aucune adresse enregistrée.</div>`;
+
             const html = `
-                <div style="text-align:center; font-size:14px; margin-bottom:20px; opacity:0.8;">Saisissez votre adresse de livraison par défaut :</div>
-                <input type="text" id="user-address-input" value="${currentAddress}" placeholder="Ex: 12 Rue de Paris, 75001" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Inter', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
-                <button class="btn-primary" style="background:var(--accent); color:#fff;" onclick="saveAddress()"><i class="ph-fill ph-floppy-disk"></i> ENREGISTRER</button>
+                <div style="max-height:40vh; overflow-y:auto; margin-bottom:20px;">
+                    ${listHtml}
+                </div>
+                <button class="btn-primary" style="background:none; border:1px solid var(--border); color:#fff; margin-bottom:10px;" onclick="showAddAddressForm()"><i class="ph-bold ph-plus"></i> AJOUTER UNE ADRESSE</button>
             `;
             openCustomModal('MES ADRESSES', html);
         }
 
-        async function saveAddress() {
-            const addr = document.getElementById('user-address-input').value;
+        function showAddAddressForm() {
+            const html = `
+                <input type="text" id="new-addr-name" placeholder="Nom (ex: Domicile, Bureau)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box;">
+                <textarea id="new-addr-val" placeholder="Adresse complète (Rue, Ville...)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box; height:80px;"></textarea>
+                <input type="text" id="new-addr-digicode" placeholder="Digicode / Instructions (optionnel)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
+                
+                <button class="btn-primary" style="background:var(--accent); color:#fff;" onclick="saveNewAddress()"><i class="ph-fill ph-floppy-disk"></i> ENREGISTRER</button>
+                <button class="btn-primary" style="background:none; border:none; color:#fff; opacity:0.5; margin-top:10px;" onclick="renderAddressModal()">ANNULER</button>
+            `;
+            openCustomModal('NOUVELLE ADRESSE', html);
+        }
+
+        async function saveNewAddress() {
+            const name = document.getElementById('new-addr-name').value.trim();
+            const address = document.getElementById('new-addr-val').value.trim();
+            const digicode = document.getElementById('new-addr-digicode').value.trim();
+            
+            if(!name || !address) return tg.showAlert("Nom et Adresse sont requis.");
+            
+            savedAddresses.push({ id: Date.now().toString(), name, address, digicode });
+            await syncAddressesToServer();
+            renderAddressModal();
+        }
+
+        async function removeAddress(id) {
+            savedAddresses = savedAddresses.filter(a => a.id !== id);
+            await syncAddressesToServer();
+            renderAddressModal();
+        }
+
+        async function syncAddressesToServer() {
             const uid = tg.initDataUnsafe?.user?.id;
             try {
+                const addrStr = JSON.stringify(savedAddresses);
                 const res = await fetch('/api/user-address', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: `telegram_${uid}`, address: addr })
+                    body: JSON.stringify({ userId: `telegram_${uid}`, address: addrStr })
                 });
-                if(res.ok) {
-                    if(userInfo) userInfo.address = addr;
-                    closeCustomModal();
-                    tg.showAlert("Adresse enregistrée avec succès !");
-                }
+                if(res.ok && userInfo) userInfo.address = addrStr;
             } catch(e) { tg.showAlert("Erreur réseau"); }
         }
 
@@ -833,6 +983,10 @@
                 d.style = `background:var(--card); border:1px solid var(--border); border-radius:24px; padding:20px; margin-bottom:15px; ${n.id === focusId ? 'border-color:var(--accent);' : ''}`;
                 
                 let msg = n.message || '';
+                
+                // Nettoyage des balises MEDIA_URLS brutes
+                msg = msg.replace(/\|\|\|MEDIA_URLS\|\|\|[\s\S]*?(?=\n|$)/g, '').replace(/\[\]/g, '').trim();
+
                 if (userInfo) {
                     msg = msg.replace(/{first_name}/g, userInfo.first_name || '')
                              .replace(/{username}/g, userInfo.username || '')
@@ -843,7 +997,7 @@
 
                 d.innerHTML = `
                     ${hasMedia ? `<img src="${n.media_url}" style="width:100%; border-radius:15px; margin-bottom:15px; display:block;">` : ''}
-                    <div style="font-size:14px; font-weight:800; line-height:1.6; margin-bottom:10px;">${msg}</div>
+                    <div style="font-size:14px; font-weight:500; line-height:1.6; margin-bottom:10px; color:rgba(255,255,255,0.95);">${msg}</div>
                     <div style="font-size:10px; font-weight:900; color:var(--accent);">${new Date(n.created_at).toLocaleString()}</div>
                 `;
                 cont.appendChild(d);
