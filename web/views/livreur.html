@@ -144,7 +144,8 @@
                 const res = await fetch(`/api/user-info?userId=telegram_${uid}`);
                 userInfo = await res.json();
                 
-                if (!userInfo.isLivreur) {
+                // Un admin a accès par défaut
+                if (!userInfo.isLivreur && !userInfo.isAdmin) {
                     document.body.innerHTML = '<div class="empty-state">Accès réservé aux livreurs certifiés.</div>';
                     return;
                 }
@@ -203,6 +204,7 @@
             cont.innerHTML = list.length ? '' : '<div class="empty-state">Aucune livraison en cours.</div>';
             list.forEach(o => {
                 const d = document.createElement('div'); d.className = 'order-card';
+                const tgId = o.user_id.split('_')[1];
                 d.innerHTML = `
                     <div class="order-header">
                         <div class="order-id">#${o.id.slice(-5)}</div>
@@ -213,7 +215,7 @@
                     <div class="btn-group">
                         <button class="btn-action btn-primary btn-full" onclick="updateStatus('${o.id}', 'delivered')">✅ LIVRÉ</button>
                         <button class="btn-action btn-secondary" onclick="openNav('${o.address}')">🗺 NAVIGUER</button>
-                        <button class="btn-action btn-secondary" onclick="updateStatus('${o.id}', 'cancelled')">❌ ANNULER</button>
+                        <button class="btn-action btn-secondary" onclick="tg.openTelegramLink('https://t.me/user?id=${tgId}')">💬 CONTACTER</button>
                     </div>
                 `;
                 cont.appendChild(d);

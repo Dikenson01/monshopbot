@@ -463,23 +463,42 @@ function createServer() {
         try {
             const { userId } = req.query;
             const { getUser, getAppSettings } = require('./services/database');
-            const [user, settings] = await Promise.all([
-                getUser(userId),
-                getAppSettings()
-            ]);
+            const user = await getUser(userId);
+            const settings = await getAppSettings();
+            
             if (!user) return res.status(404).json({ error: 'User not found' });
             
-            // Vérifier si Admin
-            const hotlineAdmins = require('./services/state').hotlineAdmins || new Set();
-            const isAdmin = hotlineAdmins.has(String(user.platform_id));
-
             res.json({
+                ...user,
+                isLivreur: !!user.is_livreur,
+                isAdmin: !!user.is_admin,
+                isAvailable: !!user.is_available,
                 balance: user.wallet_balance || 0,
                 points: user.points || 0,
-                referralLink: `https://t.me/${settings.bot_username || 'bot'}?start=ref_${user.platform_id}`,
-                hotline: settings.hotline_username || 'support',
-                isAdmin: isAdmin
+                referralLink: `https://t.me/${settings.bot_username}?start=${user.referral_code}`,
+                hotline: settings.admin_telegram_id || 'admin'
             });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/products/reviews', async (req, res) => {
+        try {
+            const { productId } = req.query;
+            const { getReviews } = require('./services/database');
+            const reviews = await getReviews(50);
+            res.json(reviews.filter(r => r.product_id === productId));
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/news', async (req, res) => {
+        try {
+            const { getBroadcastHistory } = require('./services/database');
+            const news = await getBroadcastHistory(10);
+            res.json(news.filter(b => b.status === 'completed'));
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
@@ -653,9 +672,33 @@ function createServer() {
 
     app.post('/api/livreur/update-status', async (req, res) => {
         try {
-            const { orderId, status } = req.body;
+            const { orderId, status, rating } = req.body;
             const { updateOrderStatus } = require('./services/database');
-            await updateOrderStatus(orderId, status);
+            const extra = {};
+            if (rating) extra.feedback_rating = rating;
+            await updateOrderStatus(orderId, status, extra);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/products/reviews', async (req, res) => {
+        try {
+            const { userId, productId, rating, text } = req.body;
+            const { getUser, saveReview } = require('./services/database');
+            const user = await getUser(userId);
+            if (!user) return res.status(404).json({ error: 'User not found' });
+            
+            await saveReview({
+                user_id: userId,
+                product_id: productId,
+                rating,
+                text,
+                first_name: user.first_name,
+                username: user.username,
+                is_public: true
+            });
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });
