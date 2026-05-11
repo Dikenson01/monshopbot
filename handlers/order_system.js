@@ -9,7 +9,7 @@ const {
     saveReview, uploadMediaFromUrl,
     getSupplierByTelegramId, getSupplierProducts, getSupplierOrders, markOrderSupplierReady,
     getSupplier, markOrderSupplierNotified,
-    getOrdersByUser
+    getOrdersByUser, syncUserCart
 } = require('../services/database');
 const { safeEdit, debugLog, trackIntermediateMessage, setActiveMediaGroup, clearActiveMediaGroup, getActiveMediaGroup, esc } = require('../services/utils');
 const { createPersistentMap } = require('../services/persistent_map');
@@ -514,6 +514,9 @@ function setupOrderSystem(bot) {
             userCarts.set(userId, cart);
             userLastActivity.set(userId, Date.now());
             pendingOrders.delete(userId);
+            
+            // Sync for abandoned cart reminders
+            syncUserCart(userId, cart).catch(() => {});
 
             const text = t(user, 'msg_product_added', '✅ Produit ajouté !') + '\n\n' + t(user, 'msg_cart_count', 'Votre panier contient <b>{count}</b> article(s).', { count: cart.length });
             const buttons = [
@@ -588,8 +591,115 @@ function setupOrderSystem(bot) {
             await ctx.answerCbQuery(`Retiré : ${cart[idx].productName}`);
             cart.splice(idx, 1);
             userCarts.set(userId, cart);
+            // Sync for abandoned cart reminders
+            syncUserCart(userId, cart).catch(() => {});
         }
         await displayCart(ctx);
+    });
+
+    bot.action('my_orders', async (ctx) => {
+        await ctx.answerCbQuery();
+        const userId = `${ctx.platform}_${ctx.from.id}`;
+        const user = await getUser(userId);
+        const orders = await getOrdersByUser(userId);
+        const settings = ctx.state?.settings || await getAppSettings();
+
+        if (!orders || orders.length === 0) {
+            return safeEdit(ctx, t(user, 'msg_no_orders', "📦 Vous n'avez pas encore passé de commande."), Markup.inlineKeyboard([[Markup.button.callback('🛒 Aller au Catalogue', 'view_catalog')], [Markup.button.callback('◀️ Retour', 'main_menu')]]));
+        }
+
+        let text = `📦 <b>VOTRE HISTORIQUE DE COMMANDES</b>\n\n` +
+                   `Voici vos dernières commandes. Cliquez sur l'une d'elles pour voir le détail ou <b>recommander</b> les mêmes produits.`;
+        
+        const buttons = orders.slice(0, 8).map(o => {
+            const date = new Date(o.created_at).toLocaleDateString('fr-FR');
+            const total = parseFloat(o.total_price || o.total || 0).toFixed(2);
+            return [Markup.button.callback(`${date} - ${total}€ (#${o.id.slice(-5)})`, `view_past_order_${o.id}`)];
+        });
+
+        buttons.push([Markup.button.callback('◀️ Retour au Menu', 'main_menu')]);
+        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
+    });
+
+    bot.action(/^view_past_order_(.+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+        const order = await getOrder(orderId);
+        const user = await getUser(`${ctx.platform}_${ctx.from.id}`);
+        const settings = ctx.state?.settings || await getAppSettings();
+
+        if (!order) return ctx.reply("❌ Commande introuvable.");
+
+        let items = [];
+        try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch(e) {}
+
+        const text = `📦 <b>DÉTAIL COMMANDE #${order.id.slice(-5)}</b>\n\n` +
+            `📅 Date : ${new Date(order.created_at).toLocaleDateString('fr-FR')}\n` +
+            `🔄 Statut : <b>${order.status.toUpperCase()}</b>\n` +
+            `📍 Adresse : <i>${order.address}</i>\n\n` +
+            `🛒 <b>Articles :</b>\n` +
+            items.map(i => `• ${i.productName || i.name} x${i.qty}${i.productUnit || 'g'} (${(parseFloat(i.totalPrice || 0)).toFixed(2)}€)`).join('\n') +
+            `\n\n💰 <b>Total : ${(parseFloat(order.total_price || order.total || 0)).toFixed(2)}€</b>`;
+
+        const buttons = [
+            [Markup.button.callback('♻️ RECOMMANDER LA MÊME CHOSE', `reorder_confirm_${order.id}`)],
+            [Markup.button.callback('◀️ Retour à l\'historique', 'my_orders')]
+        ];
+
+        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
+    });
+
+    bot.action(/^reorder_confirm_(.+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+        const order = await getOrder(orderId);
+        const userId = `${ctx.platform}_${ctx.from.id}`;
+        const user = await getUser(userId);
+
+        if (!order) return ctx.reply("❌ Erreur lors de la récupération de la commande.");
+
+        let items = [];
+        try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch(e) {}
+
+        // Pré-remplir le panier avec les items de la commande passée
+        const cartItems = items.map(i => ({
+            id: i.id,
+            productName: i.productName || i.name,
+            price: parseFloat(i.price || 0),
+            qty: i.qty,
+            totalPrice: parseFloat(i.totalPrice || 0),
+            productUnit: i.productUnit || 'g'
+        }));
+
+        userCarts.set(userId, cartItems);
+        await userCarts.save();
+
+        // Stocker l'adresse de la commande passée pour la réutiliser
+        awaitingAddressDetails.set(userId, { 
+            step: 1.5, 
+            address: order.address, 
+            total: parseFloat(order.total_price || order.total || 0),
+            is_reorder: true 
+        });
+
+        const text = `♻️ <b>PRÉPARATION DE VOTRE COMMANDE</b>\n\n` +
+            `Nous avons repris les articles de votre commande précédente.\n\n` +
+            `📍 <b>Adresse de livraison :</b>\n<i>${order.address}</i>\n\n` +
+            `Souhaitez-vous conserver cette adresse ou la modifier ?`;
+
+        const buttons = [
+            [Markup.button.callback('✅ CONSERVER CETTE ADRESSE', 'reorder_proceed')],
+            [Markup.button.callback('✏️ MODIFIER L\'ADRESSE', 'start_checkout')], // Redirige vers la saisie d'adresse classique
+            [Markup.button.callback('🛒 MODIFIER LE PANIER', 'view_cart')],
+            [Markup.button.callback('❌ ANNULER', 'my_orders')]
+        ];
+
+        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
+    });
+
+    bot.action('reorder_proceed', async (ctx) => {
+        await ctx.answerCbQuery();
+        return askScheduling(ctx); // Passe directement à l'étape du choix de l'horaire
     });
 
     bot.action('clear_cart', async (ctx) => {
