@@ -178,6 +178,59 @@ function setupOrderSystem(bot) {
         }
     });
 
+    eventBus.on('mini_app_order_submitted', async (data) => {
+        try {
+            const { userId, items, address, customerName, phone, deliveryMethod, deliveryFee, total, platform } = data;
+            const uKey = `${platform}_${userId}`;
+            
+            // Préparation des items pour la DB
+            const orderItems = items.map(i => ({
+                id: i.id,
+                productName: i.name,
+                price: i.price,
+                qty: i.qty,
+                totalPrice: (i.price * i.qty),
+                productUnit: i.unit || 'u'
+            }));
+
+            const orderData = {
+                user_id: uKey,
+                username: customerName,
+                first_name: customerName,
+                address: address,
+                items: orderItems,
+                total: total,
+                delivery_method: deliveryMethod,
+                delivery_fee: deliveryFee,
+                phone: phone,
+                status: 'pending',
+                created_at: new Date().toISOString(),
+                platform: platform
+            };
+
+            const { order, error } = await createOrder(orderData);
+            if (error) throw error;
+
+            // Vider le panier
+            userCarts.delete(uKey);
+            await userCarts.save();
+
+            // Notifications
+            const msg = `✅ <b>Commande validée (Mini App) !</b>\n\n🆔 Commande : <code>${order.id}</code>\n📍 Adresse : ${address}\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nVotre commande est en cours de préparation.`;
+            await sendTelegramMessage(userId, msg, { parse_mode: 'HTML' });
+
+            // Notification Admins & Livreurs
+            await notifyAdmins(`🆕 <b>NOUVELLE COMMANDE (MINI APP)</b>\n\nClient : ${customerName}\nAdresse : ${address}\nTotal : ${total}€`, {
+                inline_keyboard: [[Markup.button.callback('Voir la commande', `view_order_${order.id}`)]]
+            });
+
+            await notifyLivreurs(`📦 <b>NOUVELLE COURSE DISPONIBLE</b>\n\nSecteur : ${address}\nTotal : ${total}€`, order.id);
+
+        } catch (e) {
+            console.error('[EventBus-MiniApp-Order] Error:', e.message);
+        }
+    });
+
     // Helper universel pour relayer un message à tous les admins
     // (Désormais géré par services/notifications.js)
 

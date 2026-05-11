@@ -419,20 +419,30 @@ function createServer() {
 
     app.post('/api/mini-app/cart', async (req, res) => {
         try {
-            const { userId, items, initData } = req.body;
+            const { userId, items } = req.body;
             if (!userId || !items) return res.status(400).json({ error: 'Données manquantes' });
-
-            const bot = getBotInstance();
-            if (!bot) return res.status(500).json({ error: 'Bot non initialisé' });
-
-            // On simule un événement interne pour le dispatcher
-            // Le dispatcher va recevoir l'événement et déclencher la suite
             const eventBus = require('./services/event_bus'); 
             eventBus.emit('mini_app_cart_submitted', { userId, items, platform: 'telegram' });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/mini-app/order', async (req, res) => {
+        try {
+            const { userId, items, address, customerName, phone, deliveryMethod, deliveryFee, total } = req.body;
+            if (!userId || !items || !address) return res.status(400).json({ error: 'Informations de livraison manquantes' });
+
+            const eventBus = require('./services/event_bus'); 
+            eventBus.emit('mini_app_order_submitted', { 
+                userId, items, address, customerName, phone, deliveryMethod, deliveryFee, total,
+                platform: 'telegram' 
+            });
 
             res.json({ success: true });
         } catch (e) {
-            console.error('Mini App Cart API Error:', e.message);
+            console.error('Mini App Order API Error:', e.message);
             res.status(500).json({ error: e.message });
         }
     });
