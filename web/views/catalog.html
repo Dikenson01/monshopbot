@@ -200,8 +200,9 @@
         <div class="modal-header"><h2 style="font-weight:900; font-size:24px;">RECAPITULATIF</h2><div style="font-size:28px" onclick="closeCheckout()">✕</div></div>
         <div style="padding:20px; flex:1; overflow-y:auto;" id="checkout-content"></div>
         <div id="checkout-footer" style="padding:20px; border-top:1px solid var(--border); display:none">
-             <div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:900;"><span>TOTAL :</span><span id="final-total" style="color:var(--accent); font-size:22px;">0.00€</span></div>
+             <div id="checkout-total-row" style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:900;"><span>TOTAL :</span><span id="final-total" style="color:var(--accent); font-size:22px;">0.00€</span></div>
              <button class="btn-elite" id="btn-next" style="background:var(--accent); color:#fff;" onclick="nextStep()">VALIDER LA COMMANDE</button>
+             <p id="checkout-back" onclick="prevStep()" style="text-align:center; margin-top:15px; font-size:13px; font-weight:800; opacity:0.3; display:none;">RETOUR</p>
         </div>
     </div>
 
@@ -401,6 +402,7 @@
 
         function openCheckout() {
             if (cart.length === 0) return tg.showAlert("Votre panier est vide");
+            checkoutStep = 1;
             document.getElementById('checkout-overlay').classList.add('open');
             renderCheckout();
             tg.HapticFeedback.impactOccurred('medium');
@@ -427,6 +429,116 @@
             if (i.n <= 0) cart = cart.filter(x => x.cid !== cid);
             updateCartUI(); renderCheckout(); syncCart();
             if (cart.length === 0) closeCheckout();
+        }
+
+        function nextStep() {
+            if (checkoutStep === 1) {
+                checkoutStep = 2;
+                renderCheckout();
+                tg.HapticFeedback.impactOccurred('light');
+            } else {
+                submitOrder();
+            }
+        }
+
+        function prevStep() {
+            if (checkoutStep === 2) {
+                checkoutStep = 1;
+                renderCheckout();
+            }
+        }
+
+        function renderCheckout() {
+            const cont = document.getElementById('checkout-content');
+            const footer = document.getElementById('checkout-footer');
+            const btn = document.getElementById('btn-next');
+            const back = document.getElementById('checkout-back');
+            const totalRow = document.getElementById('checkout-total-row');
+            
+            footer.style.display = 'block';
+            cont.innerHTML = '';
+
+            if (checkoutStep === 1) {
+                document.querySelector('#checkout-overlay h2').innerText = "RECAPITULATIF";
+                btn.innerText = "VALIDER LA COMMANDE";
+                back.style.display = 'none';
+                totalRow.style.display = 'flex';
+                
+                cart.forEach((i, idx) => {
+                    const d = document.createElement('div');
+                    d.style = "background:var(--card); padding:15px; border-radius:20px; margin-bottom:10px; display:flex; align-items:center; gap:15px; border:1px solid var(--border);";
+                    d.innerHTML = `<div style="flex:1"><div style="font-weight:800; font-size:14px;">${i.name}</div><div style="color:var(--accent); font-weight:900; font-size:13px;">${i.pr}€</div></div><div style="display:flex; align-items:center; gap:12px;"><span style="opacity:0.4" onclick="updateN('${i.cid}', -1)">−</span><span style="font-weight:900">${i.n}</span><span style="color:var(--accent)" onclick="updateN('${i.cid}', 1)">+</span></div>`;
+                    cont.appendChild(d);
+                });
+                const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
+                document.getElementById('final-total').innerText = tot.toFixed(2) + '€';
+            } else if (checkoutStep === 2) {
+                document.querySelector('#checkout-overlay h2').innerText = "LIVRAISON";
+                btn.innerText = "CONFIRMER & PAYER";
+                back.style.display = 'block';
+                totalRow.style.display = 'none';
+
+                const html = `
+                    <div style="margin-bottom:20px;">
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.3; margin-bottom:8px; letter-spacing:1px;">ADRESSE DE LIVRAISON</label>
+                        <textarea id="order-address" placeholder="Rue, Ville, Code Postal..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:100px; outline:none;"></textarea>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.3; margin-bottom:8px; letter-spacing:1px;">INSTRUCTIONS (OPTIONNEL)</label>
+                        <input id="order-note" type="text" placeholder="Interphone, étage..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none;">
+                    </div>
+                `;
+                cont.innerHTML = html;
+                if (userInfo?.address) document.getElementById('order-address').value = userInfo.address;
+            }
+        }
+
+        async function submitOrder() {
+            const addr = document.getElementById('order-address').value.trim();
+            if (!addr) return tg.showAlert("Veuillez saisir une adresse");
+
+            const uid = tg.initDataUnsafe?.user?.id;
+            const btn = document.getElementById('btn-next');
+            btn.disabled = true;
+            btn.innerText = "ENVOI EN COURS...";
+
+            try {
+                const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
+                const orderData = {
+                    userId: `telegram_${uid}`,
+                    items: cart.map(i => ({ id: i.id, name: i.name, qty: i.m * i.n, price: i.pr, totalPrice: i.pr * i.n })),
+                    total: tot,
+                    address: addr,
+                    note: document.getElementById('order-note').value,
+                    platform: 'telegram'
+                };
+
+                // For simplicity, we use the same sync endpoint or a new one. 
+                // Let's assume we need a proper order creation endpoint.
+                // If not available, we send a message to the bot via WebApp.sendData or a fetch.
+                const res = await fetch('/api/mini-app/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+
+                if (res.ok) {
+                    tg.showConfirm("Commande envoyée avec succès ! Souhaitez-vous retourner au shop ?", (ok) => {
+                        cart = [];
+                        updateCartUI();
+                        closeCheckout();
+                        checkoutStep = 1;
+                        if (ok) switchPage('shop', document.querySelectorAll('.nav-item')[0]);
+                    });
+                } else {
+                    tg.showAlert("Erreur lors de l'envoi de la commande.");
+                }
+            } catch(e) {
+                tg.showAlert("Erreur réseau.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "CONFIRMER & PAYER";
+            }
         }
 
         function handleSearch() {

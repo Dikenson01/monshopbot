@@ -533,6 +533,50 @@ function createServer() {
         }
     });
 
+    app.post('/api/mini-app/create-order', async (req, res) => {
+        try {
+            const { userId, items, total, address, note, platform } = req.body;
+            const { createOrder, getAppSettings, getUser } = require('./services/database');
+            const { notifyAdmins } = require('./services/notifications');
+            
+            const user = await getUser(userId);
+            const orderData = {
+                user_id: userId,
+                items: JSON.stringify(items),
+                total_price: total,
+                address,
+                note,
+                platform: platform || 'telegram',
+                status: 'pending',
+                username: user?.username || 'inconnu',
+                first_name: user?.first_name || 'Inconnu'
+            };
+
+            const { order, error } = await createOrder(orderData);
+            if (error) throw error;
+
+            // Notification Admin & User
+            const bot = getBotInstance();
+            if (bot) {
+                const adminMsg = `🛒 <b>NOUVELLE COMMANDE (MINI APP)</b>\n\n` +
+                                 `👤 Client : ${user?.first_name || userId}\n` +
+                                 `💰 Total : <b>${total}€</b>\n` +
+                                 `📍 Adresse : <i>${address}</i>\n` +
+                                 `📝 Note : ${note || 'Aucune'}\n\n` +
+                                 `#${order.id.slice(-5)}`;
+                await notifyAdmins(bot, adminMsg);
+
+                const tgId = userId.split('_')[1];
+                await bot.telegram.sendMessage(tgId, `✅ <b>Commande confirmée !</b>\n\nMerci pour votre achat sur la Mini App. Votre commande #${order.id.slice(-5)} est en cours de traitement.`, { parse_mode: 'HTML' }).catch(() => {});
+            }
+
+            res.json({ success: true, orderId: order.id });
+        } catch (e) {
+            console.error('[API-Order-Err]', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/forgot-password', async (req, res) => {
         try {
             const settings = await getAppSettings();
