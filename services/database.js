@@ -3196,5 +3196,6 @@ module.exports = {
     createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
     getUserAnalytics,
     logSupportMessage, getSupportLogs, bulkRegisterUsers, getAllActiveUsers,
-    syncUserCart // Exporté ici
+    syncUserCart, 
+    getPendingBroadcasts, getUpcomingPlannedOrders, checkLock, claimLock // Restauration des exports critiques
 };
