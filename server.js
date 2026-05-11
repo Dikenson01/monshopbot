@@ -706,7 +706,7 @@ function createServer() {
 
     // ========== Product Routes ==========
 
-    app.get('/api/products', authMiddleware, async (req, res) => {
+    app.get('/api/products', async (req, res) => {
         try { res.json(await getProducts()); }
         catch (e) { res.status(500).json({ error: 'Erreur serveur' }); }
     });
