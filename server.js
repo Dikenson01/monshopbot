@@ -457,12 +457,32 @@ function createServer() {
             ]);
             if (!user) return res.status(404).json({ error: 'User not found' });
             
+            // Vérifier si Admin
+            const hotlineAdmins = require('./services/state').hotlineAdmins || new Set();
+            const isAdmin = hotlineAdmins.has(String(user.platform_id));
+
             res.json({
                 balance: user.wallet_balance || 0,
                 points: user.points || 0,
                 referralLink: `https://t.me/${settings.bot_username || 'bot'}?start=ref_${user.platform_id}`,
-                hotline: settings.hotline_username || 'support'
+                hotline: settings.hotline_username || 'support',
+                isAdmin: isAdmin
             });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/toggle-feature', async (req, res) => {
+        try {
+            const { userId, productId, featured } = req.body;
+            const hotlineAdmins = require('./services/state').hotlineAdmins || new Set();
+            // userId in req.body should be the platform_id (e.g. 12345)
+            if (!hotlineAdmins.has(String(userId))) return res.status(403).json({ error: 'Unauthorized' });
+
+            const { updateProduct } = require('./services/database');
+            await updateProduct(productId, { is_featured: featured });
+            res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
