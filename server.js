@@ -536,13 +536,20 @@ function createServer() {
     app.post('/api/mini-app/create-order', async (req, res) => {
         try {
             const { userId, items, total, address, note, platform } = req.body;
-            const { createOrder, getAppSettings, getUser } = require('./services/database');
+            const { createOrder, getUser } = require('./services/database');
             const { notifyAdmins } = require('./services/notifications');
             
             const user = await getUser(userId);
+            
+            // On construit la liste textuelle des produits (comme le fait le bot)
+            const productListStr = items.map(it => `${it.name} (x${it.qty})`).join(', ');
+            const totalQty = items.reduce((acc, it) => acc + it.qty, 0);
+
             const orderData = {
                 user_id: userId,
-                items: JSON.stringify(items),
+                product_name: productListStr,
+                quantity: totalQty,
+                cart: items, // On envoie l'objet structuré dans la colonne 'cart' (JSONB)
                 total_price: total,
                 address,
                 note,
@@ -553,13 +560,24 @@ function createServer() {
             };
 
             const { order, error } = await createOrder(orderData);
-            if (error) throw error;
+            if (error) {
+                // Fallback si 'cart' manque aussi (vieille DB)
+                if (error.message && error.message.includes("'cart'")) {
+                    delete orderData.cart;
+                    const retry = await createOrder(orderData);
+                    if (retry.error) throw retry.error;
+                    order = retry.order;
+                } else {
+                    throw error;
+                }
+            }
 
             // Notification Admin & User
             const bot = getBotInstance();
             if (bot) {
                 const adminMsg = `🛒 <b>NOUVELLE COMMANDE (MINI APP)</b>\n\n` +
                                  `👤 Client : ${user?.first_name || userId}\n` +
+                                 `📦 Produits : ${productListStr}\n` +
                                  `💰 Total : <b>${total}€</b>\n` +
                                  `📍 Adresse : <i>${address}</i>\n` +
                                  `📝 Note : ${note || 'Aucune'}\n\n` +
