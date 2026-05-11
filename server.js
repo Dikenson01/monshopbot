@@ -447,6 +447,43 @@ function createServer() {
         }
     });
 
+    app.get('/api/user-info', async (req, res) => {
+        try {
+            const { userId } = req.query;
+            const { getUser, getAppSettings } = require('./services/database');
+            const [user, settings] = await Promise.all([
+                getUser(userId),
+                getAppSettings()
+            ]);
+            if (!user) return res.status(404).json({ error: 'User not found' });
+            
+            res.json({
+                balance: user.wallet_balance || 0,
+                points: user.points || 0,
+                referralLink: `https://t.me/${settings.bot_username || 'bot'}?start=ref_${user.platform_id}`,
+                hotline: settings.hotline_username || 'support'
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/user-orders', async (req, res) => {
+        try {
+            const { userId } = req.query;
+            const { supabase } = require('./config/supabase');
+            const { data } = await supabase.from('bot_orders')
+                .select('*')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            
+            res.json(data || []);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/forgot-password', async (req, res) => {
         try {
             const settings = await getAppSettings();
