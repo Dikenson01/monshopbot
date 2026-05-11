@@ -149,7 +149,7 @@ class Dispatcher {
                         ctx.callbackQuery.data.startsWith('feedback_rate_') ||
                         ctx.callbackQuery.data.startsWith('review_rate_') ||
                         ctx.callbackQuery.data.startsWith('order_view_')
-                    )) || (ctx.updateType === 'web_app_data');
+                    ) || (ctx.updateType === 'web_app_data');
 
                     // Permettre les messages si une session de support est en cours (même si non approuvé)
                     const { activeUserSessions, awaitingUserSupportReply } = require('../handlers/admin');
