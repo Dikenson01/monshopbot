@@ -610,8 +610,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     buttons.push([Markup.button.callback(`👑 DÉPLOYER MON PROPRE EMPIRE (BOT) 👑`, 'show_pricing')]);
 
     // Ligne 1 : Catalogue (Classique + Mini App)
-    const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
-    buttons.push([Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'main_menu')]);
+    const catalogUrl = settings.mini_app_url ? `${settings.mini_app_url}/catalog` : 'https://le-plug-idf.up.railway.app/catalog';
+    buttons.push([Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog')]);
     buttons.push([Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)]);
     
     // Suivi commande (Uniquement si panier plein)
@@ -697,7 +697,7 @@ async function getWelcomeKeyboard(ctx, settings, user) {
     const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
     return Markup.inlineKeyboard([
         [Markup.button.callback('🚀 DÉPLOYER MON PROPRE BOT', 'sales_menu_start')],
-        [Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'main_menu')],
+        [Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog')],
         [Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)],
         [Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')]
     ]);

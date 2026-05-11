@@ -709,8 +709,20 @@ function createServer() {
         try {
             const { userId } = req.body;
             const { supabase } = require('./services/database');
-            // Suppression logique ou physique ? Ici on fait physique pour le test
             const { error } = await supabase.from('bot_users').delete().eq('id', userId);
+            if (error) throw error;
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/user-address', async (req, res) => {
+        try {
+            const { userId, address } = req.body;
+            const { supabase } = require('./services/database');
+            // Mettre à jour l'adresse dans la table bot_users (colonne 'address')
+            const { error } = await supabase.from('bot_users').update({ address: address }).eq('id', userId);
             if (error) throw error;
             res.json({ success: true });
         } catch (e) {

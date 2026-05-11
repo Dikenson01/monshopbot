@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>ShopTonBot - Elite Intelligence v12.0</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -138,15 +139,15 @@
             <div>
                 <div class="logo">SHOP<span>VIP</span></div>
                 <div id="shop-stats" style="font-size:10px; font-weight:800; opacity:0.5; margin-top:2px; display:flex; gap:8px;">
-                    <span style="color:#ffaa00;">⭐ <span id="shop-rating-avg">4.9</span></span>
-                    <span>👤 <span id="shop-review-count">128</span> AVIS</span>
+                    <span style="color:#ffaa00;"><i class="ph-fill ph-star"></i> <span id="shop-rating-avg">4.9</span></span>
+                    <span><i class="ph-fill ph-users"></i> <span id="shop-review-count">128</span> AVIS</span>
                 </div>
             </div>
             <div class="header-actions">
-                <div id="news-badge" class="nav-icon" style="font-size:18px; position:relative;" onclick="openNotifications()">
-                    🔔<div class="cart-badge-dot" id="news-dot" style="display:none; width:16px; height:16px; top:-5px; right:-5px; font-size:9px; font-weight:900; align-items:center; justify-content:center; border:1.5px solid #000;">0</div>
+                <div id="news-badge" class="nav-icon" style="font-size:22px; position:relative;" onclick="openNotifications()">
+                    <i class="ph-fill ph-bell"></i><div class="cart-badge-dot" id="news-dot" style="display:none; width:16px; height:16px; top:-5px; right:-5px; font-size:9px; font-weight:900; align-items:center; justify-content:center; border:1.5px solid #000;">0</div>
                 </div>
-                <div class="cart-icon-btn" onclick="openCheckout()">🛒<div class="cart-badge-dot" id="cart-dot"></div></div>
+                <div class="cart-icon-btn" onclick="openCheckout()"><i class="ph-fill ph-shopping-cart"></i><div class="cart-badge-dot" id="cart-dot"></div></div>
             </div>
         </div>
 
@@ -160,7 +161,7 @@
             <div class="carousel" id="featured-carousel"></div>
         </div>
 
-        <div class="search-area"><div class="search-bar"><span>🔍</span><input type="text" placeholder="Rechercher..." id="search-input" oninput="handleSearch()"></div></div>
+        <div class="search-area"><div class="search-bar"><i class="ph-bold ph-magnifying-glass"></i><input type="text" placeholder="Rechercher..." id="search-input" oninput="handleSearch()"></div></div>
 
         <div class="categories-scroll" id="categories"></div>
 
@@ -180,20 +181,20 @@
         </div>
         <div style="background:var(--card); border-radius:24px; overflow:hidden; border:1px solid var(--border); margin-bottom:20px;">
             <div onclick="copyReferral()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
-                <div><div style="font-weight:800; font-size:15px;">🤝 PARRAINAGE</div><div style="font-size:11px; opacity:0.4;">Invitez & Encaissez</div></div>
+                <div><div style="font-weight:800; font-size:15px;"><i class="ph-fill ph-handshake"></i> PARRAINAGE</div><div style="font-size:11px; opacity:0.4;">Invitez & Encaissez</div></div>
                 <div style="color:var(--accent); font-weight:900; font-size:12px;">PARTAGER</div>
             </div>
-            <div onclick="tg.showAlert('Fonctionnalité bientôt disponible')" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
-                <div><div style="font-weight:800; font-size:15px;">📍 MES ADRESSES</div><div style="font-size:11px; opacity:0.4;">Gérer vos lieux de livraison</div></div>
-                <div style="font-size:18px;">🏠</div>
+            <div onclick="openAddressModal()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+                <div><div style="font-weight:800; font-size:15px;"><i class="ph-fill ph-map-pin"></i> MES ADRESSES</div><div style="font-size:11px; opacity:0.4;">Gérer vos lieux de livraison</div></div>
+                <div style="font-size:22px; color:var(--accent);"><i class="ph-fill ph-house"></i></div>
             </div>
             <div id="hotline-btn" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center;">
-                <div><div style="font-weight:800; font-size:15px;">🆘 SUPPORT VIP</div><div style="font-size:11px; opacity:0.4;">Assistance 24/7</div></div>
-                <div style="font-size:22px;">💬</div>
+                <div><div style="font-weight:800; font-size:15px;"><i class="ph-fill ph-lifebuoy"></i> SUPPORT VIP</div><div style="font-size:11px; opacity:0.4;">Assistance 24/7</div></div>
+                <div style="font-size:22px; color:var(--accent);"><i class="ph-fill ph-chat-circle-dots"></i></div>
             </div>
         </div>
 
-        <button onclick="confirmDeleteAccount()" style="width:100%; background:none; border:1px solid rgba(255,0,80,0.3); height:50px; border-radius:18px; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:1px;">🗑️ SUPPRIMER MON COMPTE</button>
+        <button onclick="confirmDeleteAccount()" style="width:100%; background:none; border:1px solid rgba(255,0,80,0.3); height:50px; border-radius:18px; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:1px;"><i class="ph-fill ph-trash"></i> SUPPRIMER MON COMPTE</button>
     </div>
 
     <div class="cart-float" id="cart-bar" onclick="openCheckout()">
@@ -202,9 +203,9 @@
     </div>
 
     <div class="bottom-nav">
-        <div class="nav-item active" onclick="switchPage('shop', this)"><div class="nav-icon">💎</div><div class="nav-label">Shop</div></div>
-        <div class="nav-item" onclick="switchPage('orders', this)"><div class="nav-icon">📦</div><div class="nav-label">Suivi</div></div>
-        <div class="nav-item" onclick="switchPage('profile', this)"><div class="nav-icon">👑</div><div class="nav-label">Profil</div></div>
+        <div class="nav-item active" onclick="switchPage('shop', this)"><div class="nav-icon"><i class="ph-fill ph-diamond"></i></div><div class="nav-label">Shop</div></div>
+        <div class="nav-item" onclick="switchPage('orders', this)"><div class="nav-icon"><i class="ph-fill ph-package"></i></div><div class="nav-label">Suivi</div></div>
+        <div class="nav-item" onclick="switchPage('profile', this)"><div class="nav-icon"><i class="ph-fill ph-crown"></i></div><div class="nav-label">Profil</div></div>
     </div>
 
     <div class="sheet" id="selection-modal">
@@ -217,7 +218,7 @@
 
     <div class="modal" id="product-detail-modal">
         <div class="modal-header">
-            <div style="font-size:24px" onclick="closeProductModal()">✕</div>
+            <div style="font-size:24px" onclick="closeProductModal()"><i class="ph-bold ph-x"></i></div>
             <div style="font-weight:900; font-size:18px; color:var(--accent)">VIP DETAILS</div>
             <div></div>
         </div>
@@ -245,7 +246,7 @@
 
     <div class="modal" id="notifications-modal">
         <div class="modal-header">
-            <div style="font-size:24px" onclick="closeNotifications()">✕</div>
+            <div style="font-size:24px" onclick="closeNotifications()"><i class="ph-bold ph-x"></i></div>
             <div style="font-weight:900; font-size:18px; color:var(--accent)">NOTIFICATIONS VIP</div>
             <div></div>
         </div>
@@ -255,7 +256,7 @@
     <div class="modal" id="checkout-overlay">
         <div class="modal-header">
             <h2 style="font-weight:900; font-size:24px;">RECAPITULATIF</h2>
-            <div style="font-size:28px" onclick="closeCheckout()">✕</div>
+            <div style="font-size:28px" onclick="closeCheckout()"><i class="ph-bold ph-x"></i></div>
         </div>
         <div style="padding:20px; flex:1; overflow-y:auto;" id="checkout-content"></div>
         <div id="checkout-footer" style="padding:20px; border-top:1px solid var(--border); display:none">
@@ -263,6 +264,14 @@
              <button class="btn-elite" id="btn-next" style="background:var(--accent); color:#fff;" onclick="nextStep()">VALIDER LA COMMANDE</button>
              <p id="checkout-back" onclick="prevStep()" style="text-align:center; margin-top:15px; font-size:13px; font-weight:800; opacity:0.3; display:none;">RETOUR</p>
         </div>
+    </div>
+
+    <div class="modal" id="custom-modal-overlay">
+        <div class="modal-header">
+            <h2 style="font-weight:900; font-size:24px;" id="cmodal-title">TITRE</h2>
+            <div style="font-size:28px" onclick="closeCustomModal()"><i class="ph-bold ph-x"></i></div>
+        </div>
+        <div style="padding:20px;" id="cmodal-content"></div>
     </div>
 
     <script>
@@ -314,7 +323,7 @@
             news.slice(0, 3).forEach(n => {
                 const d = document.createElement('div');
                 d.className = 'featured-item';
-                d.style.minWidth = '160px'; // Un peu plus large pour le texte
+                d.style.minWidth = '160px'; 
                 
                 let msg = n.message || '';
                 if (userInfo) {
@@ -327,7 +336,7 @@
                 
                 d.innerHTML = `
                     <div style="background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; width:100%; height:60px; display:flex; align-items:center; gap:10px; cursor:pointer;">
-                        ${hasMedia ? `<img src="${n.media_url}" style="width:40px; height:40px; border-radius:10px; object-fit:cover;">` : `<div style="font-size:20px;">🔔</div>`}
+                        ${hasMedia ? `<img src="${n.media_url}" style="width:40px; height:40px; border-radius:10px; object-fit:cover;">` : `<div style="font-size:24px; color:var(--accent)"><i class="ph-fill ph-bell-ringing"></i></div>`}
                         <div style="font-size:10px; font-weight:800; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; flex:1; opacity:0.9;">${msg}</div>
                     </div>
                 `;
@@ -383,11 +392,11 @@
             prods.forEach((p, i) => {
                 const d = document.createElement('div'); d.className = 'card';
                 const img = p.image_url || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(p.name)}`;
-                const rating = (4.5 + Math.random() * 0.5).toFixed(1); // Fake dynamic rating for now
+                const rating = (4.5 + Math.random() * 0.5).toFixed(1);
                 d.innerHTML = `
                     <div style="position:relative;">
                         <img src="${img}" class="card-img" onclick="openProductModal('${p.id}')">
-                        <div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); padding:4px 8px; border-radius:8px; font-size:10px; font-weight:900; color:#ffaa00;">⭐ ${rating}</div>
+                        <div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); padding:4px 8px; border-radius:8px; font-size:10px; font-weight:900; color:#ffaa00;"><i class="ph-fill ph-star"></i> ${rating}</div>
                     </div>
                     <div class="card-content" onclick="openProductModal('${p.id}')">
                         <div class="card-name">${p.name}</div>
@@ -408,15 +417,25 @@
                 const orders = await res.json();
                 cont.innerHTML = orders.length ? '' : '<div class="empty-state">Vous n\'avez pas encore de commandes.</div>';
                 orders.forEach(o => {
-                    const d = document.createElement('div'); d.className = `order-card ${o.status}`;
-                    const date = new Date(o.created_at).toLocaleDateString('fr-FR');
-                    const canRate = o.status === 'delivered' && !o.feedback_rating;
+                    let color = '#ffaa00', icon = '<i class="ph-fill ph-clock"></i>', text = 'PENDING';
+                    if (o.status === 'delivered') { color = '#00ff88'; icon = '<i class="ph-fill ph-check-circle"></i>'; text = 'LIVRÉ'; }
+                    else if (o.status === 'taken') { color = 'var(--secondary)'; icon = '<i class="ph-fill ph-truck"></i>'; text = 'EN COURS'; }
+
+                    const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-elite" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="ph-fill ph-star"></i> NOTER</button>` : '';
+                    const btnReorder = `<button class="btn-elite" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
+
+                    const d = document.createElement('div'); d.className = 'order-card';
                     d.innerHTML = `
-                        <div class="order-status-pill status-${o.status}">${o.status.toUpperCase()}</div>
-                        <div style="font-weight:900; font-size:15px; margin-bottom:5px;">Commande #${o.id.split('-')[0]}</div>
-                        <div style="font-size:12px; opacity:0.5;">${date} • ${o.total_price || o.total}€</div>
-                        ${canRate ? `<button class="reorder-btn" style="background:var(--accent); border-color:var(--accent); margin-bottom:10px;" onclick="openRating('${o.id}')">⭐ NOTER LA LIVRAISON</button>` : ''}
-                        <button class="reorder-btn" onclick="reorder('${o.id}')">RECOMMANDER LA MÊME CHOSE</button>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                            <div style="font-weight:900; font-size:14px;"><i class="ph-fill ph-receipt"></i> #${o.id.slice(-5).toUpperCase()}</div>
+                            <div style="font-size:12px; font-weight:800; color:${color};">${icon} ${text}</div>
+                        </div>
+                        <div style="font-size:11px; opacity:0.5; margin-bottom:15px;">Le ${new Date(o.created_at).toLocaleDateString()}</div>
+                        <div style="display:flex; justify-content:space-between; font-weight:900; font-size:16px;">
+                            <div>TOTAL</div><div>${o.total_price || o.total}€</div>
+                        </div>
+                        ${btnNoter}
+                        ${btnReorder}
                     `;
                     cont.appendChild(d);
                 });
@@ -486,30 +505,44 @@
         }
 
         function openReviewPrompt(pid) {
-            tg.showPopup({
-                title: 'Donner votre avis',
-                message: 'Notez ce produit :',
-                buttons: [
-                    {id: '5', type: 'default', text: '⭐⭐⭐⭐⭐'},
-                    {id: '4', type: 'default', text: '⭐⭐⭐⭐'},
-                    {id: '3', type: 'default', text: '⭐⭐⭐'},
-                    {id: 'cancel', type: 'destructive', text: 'Plus tard'}
-                ]
-            }, async (id) => {
-                if (id === 'cancel') return;
-                const rating = parseInt(id);
-                // On demande le texte via une autre popup ou on laisse vide
-                const uid = tg.initDataUnsafe?.user?.id;
-                try {
-                    await fetch('/api/products/reviews', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: `telegram_${uid}`, productId: pid, rating: rating, text: "Génial !" })
-                    });
-                    tg.showAlert("Merci pour votre avis !");
-                    loadProductReviews(pid);
-                } catch(e) {}
-            });
+            const html = `
+                <div style="text-align:center; font-size:14px; margin-bottom:15px; opacity:0.8;">Notez ce produit et partagez votre expérience :</div>
+                <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;" id="review-stars">
+                    <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(1)"></i>
+                    <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(2)"></i>
+                    <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(3)"></i>
+                    <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(4)"></i>
+                    <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(5)"></i>
+                </div>
+                <textarea id="review-text" placeholder="Génial ! Je recommande fortement..." style="width:100%; height:80px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px; font-family:'Outfit', sans-serif; resize:none;"></textarea>
+                <button class="btn-elite" style="background:var(--accent); color:#fff; margin-top:15px;" onclick="submitProductReview('${pid}')">ENVOYER L'AVIS</button>
+            `;
+            openCustomModal('VOTRE AVIS', html);
+            window.currentReviewRating = 5;
+            setReviewStar(5);
+        }
+
+        function setReviewStar(val) {
+            window.currentReviewRating = val;
+            const stars = document.getElementById('review-stars').children;
+            for(let i=0; i<5; i++) {
+                stars[i].style.color = i < val ? '#ffaa00' : 'var(--border)';
+            }
+        }
+
+        async function submitProductReview(pid) {
+            const text = document.getElementById('review-text').value;
+            const uid = tg.initDataUnsafe?.user?.id;
+            try {
+                await fetch('/api/products/reviews', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: `telegram_${uid}`, productId: pid, rating: window.currentReviewRating, text: text })
+                });
+                closeCustomModal();
+                tg.showAlert("Merci pour votre avis !");
+                loadProductReviews(pid);
+            } catch(e) {}
         }
 
         async function loadProductReviews(pid) {
@@ -530,32 +563,36 @@
 
         function closeProductModal() { document.getElementById('product-detail-modal').classList.remove('open'); }
 
+        function openCustomModal(title, contentHTML) {
+            document.getElementById('cmodal-title').innerText = title;
+            document.getElementById('cmodal-content').innerHTML = contentHTML;
+            document.getElementById('custom-modal-overlay').classList.add('open');
+        }
+        function closeCustomModal() { document.getElementById('custom-modal-overlay').classList.remove('open'); }
+
         function openRating(orderId) {
-            tg.showPopup({
-                title: 'Noter la livraison',
-                message: 'Veuillez attribuer une note à cette livraison :',
-                buttons: [
-                    {id: '5', type: 'default', text: '⭐⭐⭐⭐⭐'},
-                    {id: '4', type: 'default', text: '⭐⭐⭐⭐'},
-                    {id: '3', type: 'default', text: '⭐⭐⭐'},
-                    {id: 'cancel', type: 'destructive', text: 'Annuler'}
-                ]
-            }, async (id) => {
-                if (id === 'cancel') return;
-                const rating = parseInt(id);
-                tg.showPopup({ title: 'Commentaire', message: 'Un petit mot sur la livraison ?', buttons: [{id:'ok', text:'Envoyer'}]}, async () => {
-                    // Pour simplifier, on envoie juste la note pour l'instant
-                    try {
-                        await fetch('/api/livreur/update-status', { // Re-using status update for rating if we add it
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ orderId, status: 'delivered', rating: rating })
-                        });
-                        tg.showAlert("Merci pour votre avis !");
-                        loadOrders();
-                    } catch(e) {}
+            const html = `
+                <div style="text-align:center; font-size:14px; margin-bottom:20px; opacity:0.8;">Veuillez attribuer une note à cette livraison :</div>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <button class="btn-elite" style="background:var(--card); border:1px solid var(--border)" onclick="submitRating('${orderId}', 5)"><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i> (Parfait)</button>
+                    <button class="btn-elite" style="background:var(--card); border:1px solid var(--border)" onclick="submitRating('${orderId}', 4)"><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i> (Très Bien)</button>
+                    <button class="btn-elite" style="background:var(--card); border:1px solid var(--border)" onclick="submitRating('${orderId}', 3)"><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i><i class="ph-fill ph-star" style="color:#ffaa00"></i> (Moyen)</button>
+                </div>
+            `;
+            openCustomModal('NOTER', html);
+        }
+
+        async function submitRating(orderId, rating) {
+            try {
+                await fetch('/api/livreur/update-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId, status: 'delivered', rating })
                 });
-            });
+                closeCustomModal();
+                tg.showAlert("Merci pour votre évaluation !");
+                loadOrders();
+            } catch(e) {}
         }
 
         function addSelectionToCart() {
@@ -742,6 +779,33 @@
         }
 
         function copyReferral() { if (userInfo?.referralLink) { navigator.clipboard.writeText(userInfo.referralLink); tg.showAlert("Lien copié !"); } }
+
+        function openAddressModal() {
+            const currentAddress = userInfo?.address || '';
+            const html = `
+                <div style="text-align:center; font-size:14px; margin-bottom:20px; opacity:0.8;">Saisissez votre adresse de livraison par défaut :</div>
+                <input type="text" id="user-address-input" value="${currentAddress}" placeholder="Ex: 12 Rue de Paris, 75001" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Inter', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
+                <button class="btn-elite" style="background:var(--accent); color:#fff;" onclick="saveAddress()"><i class="ph-fill ph-floppy-disk"></i> ENREGISTRER</button>
+            `;
+            openCustomModal('MES ADRESSES', html);
+        }
+
+        async function saveAddress() {
+            const addr = document.getElementById('user-address-input').value;
+            const uid = tg.initDataUnsafe?.user?.id;
+            try {
+                const res = await fetch('/api/user-address', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: `telegram_${uid}`, address: addr })
+                });
+                if(res.ok) {
+                    if(userInfo) userInfo.address = addr;
+                    closeCustomModal();
+                    tg.showAlert("Adresse enregistrée avec succès !");
+                }
+            } catch(e) { tg.showAlert("Erreur réseau"); }
+        }
 
         async function confirmDeleteAccount() {
             tg.showConfirm("⚠️ ATTENTION : Cette action est irréversible. Voulez-vous vraiment supprimer définitivement votre compte VIP et perdre tous vos points ?", async (ok) => {
