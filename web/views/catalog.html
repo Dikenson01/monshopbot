@@ -164,7 +164,7 @@
         </div>
 
         <div class="featured-section">
-            <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;">LES PÉPITES DU MOMENT</div>
+            <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;">FORMULES & MODULES À LA CARTE</div>
             <div class="carousel" id="featured-carousel"></div>
         </div>
 
@@ -642,21 +642,51 @@
             document.getElementById('p-desc').innerText = activeProduct.description || 'Aucune description disponible.';
             
             const cont = document.getElementById('p-options'); cont.innerHTML = '';
-            const uv = parseFloat(String(activeProduct.unit_value || '1').replace(',','.')) || 1;
-            
-            [1, 2, 3, 4, 5, 10].forEach(m => {
-                let pr = m * activeProduct.price;
-                if (activeProduct.has_discounts && activeProduct.discounts_config) {
-                    const t = activeProduct.discounts_config.find(d => parseInt(d.qty) === m);
-                    if (t) pr = parseFloat(t.total || t.total_price);
-                }
-                const d = document.createElement('div');
-                d.style = "background:rgba(255,255,255,0.05); padding:15px; border-radius:20px; text-align:center; border:2px solid transparent;";
-                d.onclick = () => { activeOption = { m, pr }; document.querySelectorAll('#p-options div').forEach(o => o.style.borderColor = 'transparent'); d.style.borderColor = '#fff'; };
-                d.innerHTML = `<div style="font-weight:800; font-size:15px;">${m*uv}${activeProduct.unit || 'g'}</div><div style="font-weight:900; color:var(--accent);">${pr.toFixed(0)}€</div>`;
-                cont.appendChild(d);
-                if (m === 1) { activeOption = { m, pr }; d.style.borderColor = '#fff'; }
-            });
+            const isBotItem = activeProduct.category && (activeProduct.category.includes('PACK') || activeProduct.category.includes('MODULE'));
+
+            if (isBotItem) {
+                const headerTitle = document.querySelector('#product-detail-modal .modal-header div:nth-child(2)');
+                if (headerTitle) headerTitle.innerText = "CONFIGURATION DU BOT";
+                
+                const optHeader = document.querySelector('#product-detail-modal div:nth-child(2) div:nth-child(2) div:nth-child(5)');
+                if (optHeader) optHeader.innerText = "OPTIONS DISPONIBLES 🚀";
+                
+                const botOptions = [
+                    { m: 1, label: '1 Licence Standard', prMultiplier: 1 },
+                    { m: 2, label: '+ Support Dédié 24/7', prAdd: 100 },
+                    { m: 3, label: 'Licence Multi-Bots (x2)', prMultiplier: 1.8 }
+                ];
+                botOptions.forEach((opt, idx) => {
+                    let pr = opt.prAdd ? activeProduct.price + opt.prAdd : activeProduct.price * opt.prMultiplier;
+                    const d = document.createElement('div');
+                    d.style = "background:rgba(255,255,255,0.05); padding:12px; border-radius:20px; text-align:center; border:2px solid transparent; cursor:pointer;";
+                    d.onclick = () => { activeOption = { m: opt.m, pr, label: opt.label }; document.querySelectorAll('#p-options div').forEach(o => o.style.borderColor = 'transparent'); d.style.borderColor = '#fff'; };
+                    d.innerHTML = `<div style="font-weight:800; font-size:13px; color:#fff;">${opt.label}</div><div style="font-weight:900; color:var(--accent); margin-top:4px;">${pr.toFixed(0)}€</div>`;
+                    cont.appendChild(d);
+                    if (idx === 0) { activeOption = { m: opt.m, pr, label: opt.label }; d.style.borderColor = '#fff'; }
+                });
+            } else {
+                const headerTitle = document.querySelector('#product-detail-modal .modal-header div:nth-child(2)');
+                if (headerTitle) headerTitle.innerText = "DÉTAILS DU PRODUIT";
+                
+                const optHeader = document.querySelector('#product-detail-modal div:nth-child(2) div:nth-child(2) div:nth-child(5)');
+                if (optHeader) optHeader.innerText = "FORMATS DISPONIBLES 📦";
+                
+                const uv = parseFloat(String(activeProduct.unit_value || '1').replace(',','.')) || 1;
+                [1, 2, 3, 4, 5, 10].forEach(m => {
+                    let pr = m * activeProduct.price;
+                    if (activeProduct.has_discounts && activeProduct.discounts_config) {
+                        const t = activeProduct.discounts_config.find(d => parseInt(d.qty) === m);
+                        if (t) pr = parseFloat(t.total || t.total_price);
+                    }
+                    const d = document.createElement('div');
+                    d.style = "background:rgba(255,255,255,0.05); padding:15px; border-radius:20px; text-align:center; border:2px solid transparent; cursor:pointer;";
+                    d.onclick = () => { activeOption = { m, pr }; document.querySelectorAll('#p-options div').forEach(o => o.style.borderColor = 'transparent'); d.style.borderColor = '#fff'; };
+                    d.innerHTML = `<div style="font-weight:800; font-size:15px;">${m*uv}${activeProduct.unit || 'g'}</div><div style="font-weight:900; color:var(--accent);">${pr.toFixed(0)}€</div>`;
+                    cont.appendChild(d);
+                    if (m === 1) { activeOption = { m, pr }; d.style.borderColor = '#fff'; }
+                });
+            }
 
             document.getElementById('p-add-cart-btn').onclick = addSelectionToCart;
             document.getElementById('btn-add-review').onclick = () => openReviewPrompt(pid);
@@ -776,7 +806,7 @@
             const cid = `${activeProduct.id}_${activeOption.m}`;
             const ex = cart.find(i => i.cid === cid);
             if (ex) ex.n++;
-            else cart.push({ cid, id: activeProduct.id, name: activeProduct.name, pr: activeOption.pr, m: activeOption.m, unit: activeProduct.unit || 'g', n: 1 });
+            else cart.push({ cid, id: activeProduct.id, name: activeProduct.name, pr: activeOption.pr, m: activeOption.m, label: activeOption.label, unit: activeProduct.unit || 'g', n: 1 });
             localStorage.setItem('stb_cart', JSON.stringify(cart));
             updateCartUI(); closeSelectionModal(); closeProductModal(); tg.HapticFeedback.notificationOccurred('success');
             
@@ -897,7 +927,9 @@
                     const img = p && p.image_url ? p.image_url : `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(i.name.substring(0,5))}`;
                     
                     let descHtml = '';
-                    if (p && p.description) {
+                    if (i.label) {
+                        descHtml = `<div style="font-size:10px; opacity:0.8; color:var(--accent); font-weight:700; margin-bottom:4px;">${i.label}</div>`;
+                    } else if (p && p.description) {
                         descHtml = `<div style="font-size:10px; opacity:0.5; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; margin-bottom:4px;">${p.description}</div>`;
                     } else if (i.unit) {
                         descHtml = `<div style="font-size:10px; opacity:0.5; margin-bottom:4px;">Format: ${i.m} ${i.unit}</div>`;

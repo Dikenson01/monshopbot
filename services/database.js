@@ -2266,8 +2266,120 @@ async function getProducts(includeInactive = false) {
         is_mp: true // Flag pour savoir que c'est du marketplace
     }));
 
-    _productsCache = [...(nativeProds || []), ...normalizedMp];
-    _productsExpire = Date.now() + 60000; // Cache valid for 60 seconds
+    // --- INTEGRATION DES FORMULES ET MODULES DU BOT (BaaS) ---
+    const officialBotProducts = [
+        {
+            id: 'pack_standard',
+            name: '🥉 Pack Standard (Telegram)',
+            category: 'PACKS BOT',
+            price: 450,
+            description: 'Bot Telegram Professionnel complet avec catalogue multimédia, gestion de panier fluide et interface d\'administration intégrée.',
+            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Standard+Telegram',
+            is_active: true,
+            is_featured: true,
+            priority: 1,
+            promo: '-30€ par code parrain'
+        },
+        {
+            id: 'pack_wa',
+            name: '🥈 Pack WhatsApp Plus',
+            category: 'PACKS BOT',
+            price: 550,
+            description: 'Bot WhatsApp Professionnel haute stabilité. Sessions persistantes, réponses instantanées et support technique VIP inclus pendant 1 an.',
+            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+WhatsApp+Plus',
+            is_active: true,
+            is_featured: true,
+            priority: 2,
+            promo: '-40€ par code promo'
+        },
+        {
+            id: 'pack_premium',
+            name: '🥇 Pack Premium (TG + WA Sync)',
+            category: 'PACKS BOT',
+            price: 650,
+            description: 'L\'offre de référence. Synchronisation multiplateforme en temps réel, alertes livreur automatisées et statistiques de croissance avancées.',
+            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Premium+Sync',
+            is_active: true,
+            is_featured: true,
+            priority: 3,
+            promo: '-50€ de remise immédiate'
+        },
+        {
+            id: 'pack_enterprise',
+            name: '🚀 Pack Enterprise (Sur mesure)',
+            category: 'PACKS BOT',
+            price: 950,
+            description: 'Solution sur mesure clé en main. Architecture dédiée haute performance, intégration API personnalisée et accompagnement stratégique dédié.',
+            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Enterprise+VIP',
+            is_active: true,
+            is_featured: false,
+            priority: 4,
+            promo: '-50€ de remise immédiate'
+        },
+        {
+            id: 'mod_payment',
+            name: '💳 Paiement Stripe & Crypto Intégré',
+            category: 'MODULES SUR MESURE',
+            price: 150,
+            description: 'Encaissement automatisé et sécurisé par carte bancaire via Stripe et portefeuilles cryptographiques (USDT/BTC/ETH).',
+            image_url: 'https://placehold.co/400x300/222/00ff88?text=Module+Paiement',
+            is_active: true,
+            is_featured: false,
+            priority: 5
+        },
+        {
+            id: 'mod_livreur',
+            name: '🚴 Système Console Livreur & Tracking',
+            category: 'MODULES SUR MESURE',
+            price: 200,
+            description: 'Interface WebApp dédiée aux livreurs, suivi GPS en direct, calcul du temps estimé d\'arrivée (ETA) et chat de coordination sécurisé.',
+            image_url: 'https://placehold.co/400x300/222/ffaa00?text=Console+Livreur',
+            is_active: true,
+            is_featured: false,
+            priority: 6
+        },
+        {
+            id: 'mod_vip',
+            name: '👑 Programme VIP & Cashback Fidélité',
+            category: 'MODULES SUR MESURE',
+            price: 120,
+            description: 'Système de paliers clients évolutifs (Bronze/Silver/Gold), génération de liens de parrainage et attribution automatique de solde fidélité.',
+            image_url: 'https://placehold.co/400x300/222/ff0050?text=Programme+VIP',
+            is_active: true,
+            is_featured: false,
+            priority: 7
+        },
+        {
+            id: 'mod_mkt',
+            name: '📣 Diffusion Broadcast & Relance Paniers',
+            category: 'MODULES SUR MESURE',
+            price: 180,
+            description: 'Envois groupés de campagnes marketing multimédias et scénarios de relance intelligente automatisée pour récupérer les paniers abandonnés.',
+            image_url: 'https://placehold.co/400x300/222/00aaff?text=Marketing+Engine',
+            is_active: true,
+            is_featured: false,
+            priority: 8
+        },
+        {
+            id: 'mod_gating',
+            name: '🔒 Gating de Canal (Force Join)',
+            category: 'MODULES SUR MESURE',
+            price: 90,
+            description: 'Obligation automatique pour l\'utilisateur de rejoindre votre canal Telegram officiel ou groupe privé pour débloquer l\'accès aux commandes.',
+            image_url: 'https://placehold.co/400x300/222/bb00ff?text=Force+Join+Canal',
+            is_active: true,
+            is_featured: false,
+            priority: 9
+        }
+    ];
+
+    let filteredProds = (nativeProds || []).filter(p => !p.name.toLowerCase().includes('banane') && !p.name.toLowerCase().includes('farine') && !p.name.toLowerCase().includes('lait') && !p.name.toLowerCase().includes('œuf') && !p.name.toLowerCase().includes('oeuf'));
+    
+    const existingIds = new Set(filteredProds.map(p => p.id));
+    const toAdd = officialBotProducts.filter(p => !existingIds.has(p.id));
+
+    _productsCache = [...toAdd, ...filteredProds, ...normalizedMp];
+    _productsExpire = Date.now() + 60000;
     return _productsCache;
 }
 
