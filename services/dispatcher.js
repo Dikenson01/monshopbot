@@ -470,12 +470,14 @@ class Dispatcher {
         let buttons = [];
 
         if (extra.reply_markup) {
+            options.reply_markup = extra.reply_markup;
             if (extra.reply_markup.inline_keyboard) {
                 buttons = extra.reply_markup.inline_keyboard;
             } else if (extra.reply_markup.keyboard) {
                 buttons = extra.reply_markup.keyboard.flat();
             }
         } else if (extra.inline_keyboard) {
+            options.reply_markup = { inline_keyboard: extra.inline_keyboard };
             buttons = extra.inline_keyboard;
         }
 

@@ -286,17 +286,19 @@ class TelegramChannel extends Channel {
 
     async sendInteractive(userId, text, buttons = [], options = {}) {
         // En Telegram, interactiveButtons = Inline Keyboard
-        const keyboard = buttons.map((b) => {
-            // Sécurité: si c'est un lien URL
-            if (b.url) return [Markup.button.url(b.title, b.url)];
-            // Si c'est un webApp
-            if (b.web_app) return [Markup.button.webApp(b.title, b.web_app.url || b.web_app)];
-            // Sinon c'est un callback
-            return [Markup.button.callback(b.title, b.id)];
-        });
+        // Si la structure originale du clavier a été préservée dans les options, on l'utilise pour maintenir les boutons côte à côte !
+        let reply_markup = options.reply_markup;
+        if (!reply_markup) {
+            const keyboard = buttons.map((b) => {
+                if (b.url) return [Markup.button.url(b.title, b.url)];
+                if (b.web_app) return [Markup.button.webApp(b.title, b.web_app.url || b.web_app)];
+                return [Markup.button.callback(b.title, b.id)];
+            });
+            reply_markup = { inline_keyboard: keyboard };
+        }
 
         const sendOpts = {
-            reply_markup: { inline_keyboard: keyboard },
+            reply_markup,
             protect_content: options.protect_content || false
         };
 

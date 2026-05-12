@@ -620,8 +620,10 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     // Ligne 1 : Catalogue (Classique + Mini App)
     const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
     const catalogUrl = settings.mini_app_url ? `${settings.mini_app_url}/catalog` : `https://${baseDomain}/catalog`;
-    buttons.push([Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog')]);
-    buttons.push([Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)]);
+    buttons.push([
+        Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog'),
+        Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)
+    ]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
