@@ -15,7 +15,7 @@ async function runSmartAnalysis() {
         
         const { data: orders, error } = await supabase
             .from('bot_orders')
-            .select('user_id, items, created_at')
+            .select('*')
             .gte('created_at', thirtyDaysAgo.toISOString());
 
         if (error) throw error;
@@ -32,11 +32,25 @@ async function runSmartAnalysis() {
 
             // Produits
             try {
-                const items = JSON.parse(o.items);
-                items.forEach(it => {
-                    const name = it.name || it.id;
-                    userStats[o.user_id].products[name] = (userStats[o.user_id].products[name] || 0) + 1;
-                });
+                let itemsList = null;
+                if (o.cart) {
+                    itemsList = typeof o.cart === 'string' ? JSON.parse(o.cart) : o.cart;
+                } else if (o.items) {
+                    itemsList = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+                }
+                
+                if (Array.isArray(itemsList)) {
+                    itemsList.forEach(it => {
+                        const name = it.productName || it.name || it.id;
+                        if (name) userStats[o.user_id].products[name] = (userStats[o.user_id].products[name] || 0) + 1;
+                    });
+                } else if (o.product_name) {
+                    const parts = o.product_name.split(',');
+                    parts.forEach(p => {
+                        const cleanName = p.split(' (x')[0].split('\n')[0].trim();
+                        if (cleanName) userStats[o.user_id].products[cleanName] = (userStats[o.user_id].products[cleanName] || 0) + 1;
+                    });
+                }
             } catch(e) {}
         });
 

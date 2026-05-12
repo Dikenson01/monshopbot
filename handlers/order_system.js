@@ -3260,5 +3260,6 @@ module.exports = {
     awaitingDelayReason,
     awaitingChatReply,
     checkAbandonedCarts,
-    userLastActivity
+    userLastActivity,
+    awaitingPaymentProof
 };

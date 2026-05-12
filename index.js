@@ -47,8 +47,9 @@ async function main() {
     // 1. Démarrage du serveur Web IMMEDIAT
     const server = createServer();
     server.listen(finalPort, '0.0.0.0', () => {
+        const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
         console.log(`\n✅ SERVEUR WEB ACTIF SUR LE PORT ${finalPort}`);
-        console.log(`🔗 TEST HEALTH : https://le-plug-idf.up.railway.app/_health\n`);
+        console.log(`🔗 TEST HEALTH : https://${baseDomain}/_health\n`);
     });
 
     // 2. Initialisation du Dispatcher (Simule Telegraf)

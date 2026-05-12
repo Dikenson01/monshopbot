@@ -109,9 +109,10 @@ function setupHotlineHandlers(bot) {
             [Markup.button.callback('◀️ Retour', 'start_welcome')]
         ]);
         
+        const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
         return safeEdit(ctx, text, { 
             parse_mode: 'HTML', 
-            photo: 'https://le-plug-idf.up.railway.app/public/bot_ventes_premium_fr.png' || null,
+            photo: `https://${baseDomain}/public/bot_ventes_premium_fr.png` || null,
             ...keyboard 
         });
     });

@@ -634,6 +634,22 @@ async function createOrder(orderData) {
     if (secureOrderData.first_name) secureOrderData.first_name = encryption.encrypt(secureOrderData.first_name);
     if (secureOrderData.username) secureOrderData.username = encryption.encrypt(secureOrderData.username);
 
+    // Compatibilité universelle Mini App vs Bot classique
+    if (secureOrderData.items && Array.isArray(secureOrderData.items)) {
+        secureOrderData.cart = JSON.stringify(secureOrderData.items);
+        if (!secureOrderData.product_name) {
+            secureOrderData.product_name = secureOrderData.items.map(it => `${it.productName || it.name || 'Produit'} (x${it.qty || 1})`).join(', ');
+        }
+        if (secureOrderData.quantity === undefined) {
+            secureOrderData.quantity = secureOrderData.items.reduce((acc, it) => acc + (it.qty || 1), 0);
+        }
+        if (secureOrderData.total_price === undefined && secureOrderData.total !== undefined) {
+            secureOrderData.total_price = secureOrderData.total;
+        }
+        delete secureOrderData.items;
+        delete secureOrderData.total;
+    }
+
     const insertData = {
         id: id,
         ...secureOrderData,
@@ -646,7 +662,14 @@ async function createOrder(orderData) {
 
     let { data, error } = await supabase.from(COL_ORDERS).insert([insertData]).select();
 
-    // Fallback if 'district' column is missing from DB (common issue during migration)
+    // Fallbacks si des colonnes manquent dans la base en production
+    if (error && error.message && error.message.includes("'cart'")) {
+        console.warn("⚠️ Column 'cart' missing in bot_orders. Retrying without it...");
+        delete insertData.cart;
+        const retry = await supabase.from(COL_ORDERS).insert([insertData]).select();
+        data = retry.data;
+        error = retry.error;
+    }
     if (error && error.message && error.message.includes("'district'")) {
         console.warn("⚠️ Column 'district' missing in bot_orders. Retrying without it...");
         delete insertData.district;
@@ -3040,42 +3063,6 @@ async function recalculateAllUserStats() {
     return { updated };
 }
 
-module.exports = {
-    supabase, COL_USERS, COL_PRODUCTS, COL_ORDERS, COL_SETTINGS, COL_BROADCASTS, COL_REFERRALS,
-    incr, ts, makeDocId, decryptUser, decryptOrder, decryptReview,
-    registerUser, getAllActiveUsers, getAllUsersForBroadcast, markUserBlocked, markUserUnblocked, deleteUser, getUser, saveUser, updateUser, updateUserWallet, updateUserPoints,
-    getUserCount, getActiveUserCount, getRecentUsers, getBlockedUsers, searchUsers, searchLivreurs,
-    generateReferralCode, getReferralLeaderboard, incrementOrderCount,
-    setLivreurStatus, updateLivreurPosition, getActiveLivreursCount,
-    createOrder, updateOrderStatus, assignOrderLivreur, getOrder, deleteOrder, getAvailableOrders, getAllOrders,
-    saveBroadcast, updateBroadcast, deleteBroadcast, getBroadcastHistory, getPendingBroadcasts, recordPollVote, recordPollFreeResponse, incrementStat, incrementDailyStat,
-    getGlobalStats, getDailyStats, getStatsOverview, getAppSettings, updateAppSettings, getClientActiveOrders,
-    updateUserField, updateProduct,
-    getProducts, getProduct, saveProduct, deleteProduct, setLivreurAvailability,
-    getAvailableLivreurs, getAllLivreurs, getOrderAnalytics, backfillOrderCities, saveUserLocation, addMessageToTrack, getLastMenuId, getTrackedMessages, getLivreurOrders, getLivreurHistory, getOrdersByUser, getDetailedLivreurActivity, saveFeedback, setPendingFeedback, getAndClearPendingFeedback, nukeDatabase,
-    saveReview, getReviews, getPublicReviews, deleteReview, uploadMediaFromUrl, uploadMediaBuffer,
-    incrementChatCount, saveClientReply, logHelpRequest,
-    getUpcomingPlannedOrders, markNotifSent, registerUser, addToStat,
-    _userCache, clearUserCache, // <--- ADDED
-    useSupabaseAuthState,
-    // Suppliers
-    COL_SUPPLIERS, getSuppliers, getSupplier, getSupplierByTelegramId, saveSupplier, deleteSupplier,
-    getSupplierProducts, getSupplierOrders, markOrderSupplierNotified, markOrderSupplierReady,
-    // Marketplace
-    COL_SUPPLIER_PRODUCTS, COL_SUPPLIER_ORDERS,
-    getMarketplaceProducts, getMarketplaceProduct, getAvailableMarketplaceProducts,
-    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock, promoteMarketplaceProduct,
-    createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
-    approveUser, getPendingUsers, getPendingUserCount,
-    claimLock, checkLock,
-    backfillOrderCities,
-    getUserAnalytics,
-    recalculateAllUserStats,
-    claimBroadcast,
-    // New Moderator/Support & CSV features
-    logSupportMessage, getSupportLogs, bulkRegisterUsers
-};
-
 async function logSupportMessage(userId, staffId, message, type = 'text', direction = 'out', staffRole = 'admin') {
     const payload = {
         user_id: userId,
@@ -3122,7 +3109,7 @@ async function getSupportLogs() {
         console.log(`[getSupportLogs] SUCCESS: ${result.data.length} rows. First:`, JSON.stringify(result.data[0]));
         return result.data;
     } catch (e) {
-        console.error(`[getSupportLogs] EXCEPTION:`, e.message, e.stack?.split('\\n').slice(0,3));
+        console.error(`[getSupportLogs] EXCEPTION:`, e.message, e.stack?.split('\n').slice(0,3));
         return [];
     }
 }
@@ -3181,40 +3168,35 @@ async function syncUserCart(userId, cart) {
 }
 
 module.exports = {
-    getUserCount, getActiveUserCount, getRecentUsers, searchUsers,
-    getReferralLeaderboard, getStatsOverview, getDailyStats,
-    getProducts, saveProduct, deleteProduct,
-    getAllOrders, updateOrderStatus, setLivreurStatus, getOrder, assignOrderLivreur,
-    setLivreurAvailability, getAppSettings, updateAppSettings,
-    deleteUser, incrementOrderCount, makeDocId, getOrderAnalytics, searchLivreurs,
-    getBroadcastHistory, saveBroadcast, deleteBroadcast, getDetailedLivreurActivity,
-    nukeDatabase, decryptUser, supabase, COL_USERS,
-    registerUser, getLivreurHistory, getReviews, deleteReview, deleteOrder,
-    getSuppliers, getSupplier, saveSupplier, deleteSupplier, getSupplierProducts, getSupplierOrders,
+    supabase, COL_USERS, COL_PRODUCTS, COL_ORDERS, COL_SETTINGS, COL_BROADCASTS, COL_REFERRALS,
+    incr, ts, makeDocId, decryptUser, decryptOrder, decryptReview,
+    registerUser, getAllActiveUsers, getAllUsersForBroadcast, markUserBlocked, markUserUnblocked, deleteUser, getUser, saveUser, updateUser, updateUserWallet, updateUserPoints,
+    getUserCount, getActiveUserCount, getRecentUsers, getBlockedUsers, searchUsers, searchLivreurs,
+    generateReferralCode, getReferralLeaderboard, incrementOrderCount,
+    setLivreurStatus, updateLivreurPosition, getActiveLivreursCount,
+    createOrder, updateOrderStatus, assignOrderLivreur, getOrder, deleteOrder, getAvailableOrders, getAllOrders,
+    saveBroadcast, updateBroadcast, deleteBroadcast, getBroadcastHistory, getPendingBroadcasts, recordPollVote, recordPollFreeResponse, incrementStat, incrementDailyStat,
+    getGlobalStats, getDailyStats, getStatsOverview, getAppSettings, updateAppSettings, getClientActiveOrders,
+    updateUserField, updateProduct,
+    getProducts, getProduct, saveProduct, deleteProduct, setLivreurAvailability,
+    getAvailableLivreurs, getAllLivreurs, getOrderAnalytics, backfillOrderCities, saveUserLocation, addMessageToTrack, getLastMenuId, getTrackedMessages, getLivreurOrders, getLivreurHistory, getOrdersByUser, getDetailedLivreurActivity, saveFeedback, setPendingFeedback, getAndClearPendingFeedback, nukeDatabase,
+    saveReview, getReviews, getPublicReviews, deleteReview, uploadMediaFromUrl, uploadMediaBuffer,
+    incrementChatCount, saveClientReply, logHelpRequest,
+    getUpcomingPlannedOrders, markNotifSent, addToStat,
+    _userCache, clearUserCache,
+    useSupabaseAuthState,
+    // Suppliers
+    COL_SUPPLIERS, getSuppliers, getSupplier, getSupplierByTelegramId, saveSupplier, deleteSupplier,
+    getSupplierProducts, getSupplierOrders, markOrderSupplierNotified, markOrderSupplierReady,
+    // Marketplace
+    COL_SUPPLIER_PRODUCTS, COL_SUPPLIER_ORDERS,
     getMarketplaceProducts, getMarketplaceProduct, getAvailableMarketplaceProducts,
-    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock,
+    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock, promoteMarketplaceProduct,
     createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
+    approveUser, getPendingUsers, getPendingUserCount,
+    claimLock, checkLock,
     getUserAnalytics,
-    logSupportMessage, getSupportLogs, bulkRegisterUsers, getAllActiveUsers,
-    syncUserCart, 
-    getPendingBroadcasts, getUpcomingPlannedOrders, checkLock, claimLock,
-    addMessageToTrack, getLastMenuId, getTrackedMessages, saveUserLocation,
-    incrementDailyStat, addToStat, incrementStat, getLivreurOrders, getAllLivreurs,
-    getClientActiveOrders, logHelpRequest, saveClientReply, incrementChatCount,
-    getAndClearPendingFeedback, saveFeedback, saveReview, uploadMediaFromUrl,
-    getSupplierByTelegramId, getSupplierProducts, getSupplierOrders, 
-    markOrderSupplierReady, markOrderSupplierNotified, getOrdersByUser,
-    // Core & Orders
-    getUser, createOrder, getAppSettings, updateAppSettings, getProducts, getProduct,
-    saveProduct, deleteProduct, getAllOrders, updateOrderStatus, getOrder,
-    assignOrderLivreur, setLivreurAvailability, setLivreurStatus,
-    registerUser, deleteUser, incrementOrderCount, makeDocId, getOrderAnalytics,
-    getBroadcastHistory, saveBroadcast, deleteBroadcast, decryptUser,
-    // Marketplace & Others
-    getAvailableOrders, getLivreurHistory, getReviews, deleteReview,
-    getSuppliers, getSupplier, saveSupplier, deleteSupplier,
-    getMarketplaceProducts, getMarketplaceProduct, getAvailableMarketplaceProducts,
-    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock,
-    createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
-    getUserAnalytics, clearUserCache, _userCache
+    recalculateAllUserStats,
+    claimBroadcast,
+    logSupportMessage, getSupportLogs, bulkRegisterUsers, syncUserCart
 };

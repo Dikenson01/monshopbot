@@ -123,7 +123,8 @@ async function showAdminMenu(ctx, isEdit = false) {
 
     const settings = await getAppSettings();
     const adminToken = settings.admin_password || process.env.ADMIN_PASSWORD || '1234';
-    const dashboardUrl = `https://monshopbot-production.up.railway.app/dashboard?token=${adminToken}#users`;
+    const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
+    const dashboardUrl = `https://${baseDomain}/dashboard?token=${adminToken}#users`;
 
     const rows = [
         [Markup.button.webApp('🌐 ACCÈS MON SHOP (Web)', dashboardUrl)],

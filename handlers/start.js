@@ -550,8 +550,16 @@ function setupStartHandler(bot) {
  */
 async function showMainMenu(ctx) {
     const userId = `${ctx.platform}_${ctx.from.id}`;
-    // Nettoyer les états marketplace
+    // Nettoyer les états marketplace et globaux
     clearAllAwaitingMaps(ctx.from.id);
+    try {
+        const { awaitingAdminChat } = require('./admin');
+        const { awaitingPaymentProof } = require('./order_system');
+        const { cleanupUserChat } = require('../services/utils');
+        if (awaitingAdminChat) awaitingAdminChat.delete(String(ctx.from.id));
+        if (awaitingPaymentProof) awaitingPaymentProof.delete(String(ctx.from.id));
+        await cleanupUserChat(ctx);
+    } catch(e) {}
     const settings = await getAppSettings();
     // Use already-patched ctx.state.user if available (e.g. right after language change),
     // otherwise fetch fresh from DB.
@@ -610,7 +618,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     buttons.push([Markup.button.callback(`👑 DÉPLOYER MON PROPRE EMPIRE (BOT) 👑`, 'show_pricing')]);
 
     // Ligne 1 : Catalogue (Classique + Mini App)
-    const catalogUrl = settings.mini_app_url ? `${settings.mini_app_url}/catalog` : 'https://le-plug-idf.up.railway.app/catalog';
+    const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
+    const catalogUrl = settings.mini_app_url ? `${settings.mini_app_url}/catalog` : `https://${baseDomain}/catalog`;
     buttons.push([Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog')]);
     buttons.push([Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)]);
     
@@ -697,7 +706,7 @@ async function getWelcomeKeyboard(ctx, settings, user) {
     const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
     return Markup.inlineKeyboard([
         [Markup.button.callback('🚀 DÉPLOYER MON PROPRE BOT', 'sales_menu_start')],
-        [Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog')],
+        [Markup.button.callback('🤖 TESTER LE BOT', 'main_menu')],
         [Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)],
         [Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')]
     ]);
