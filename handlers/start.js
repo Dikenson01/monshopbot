@@ -51,10 +51,11 @@ function getDynamicWelcomeMessage(ctx, user) {
  */
 async function checkSubscription(bot, ctx, settings) {
     if (ctx.platform !== 'telegram') return true;
-    if (!settings.force_subscribe || !settings.force_subscribe_channel_id) return true;
+    const channelId = settings.force_subscribe_channel_id || '-1001880590480';
+    if (!settings.force_subscribe) return true;
 
     try {
-        const member = await ctx.telegram.getChatMember(settings.force_subscribe_channel_id, ctx.from.id);
+        const member = await ctx.telegram.getChatMember(channelId, ctx.from.id);
         const status = member.status;
         return ['creator', 'administrator', 'member'].includes(status);
     } catch (e) {
@@ -177,7 +178,7 @@ function setupStartHandler(bot) {
                         `C'est ici que nous publions nos nouveautés et promotions ! 🚀`;
                     
                     const subKeyboard = Markup.inlineKeyboard([
-                        [Markup.button.url('📢 Rejoindre le Canal', settings.channel_url || 'https://t.me/channel')],
+                        [Markup.button.url('📢 Rejoindre le Canal', 'https://t.me/+PsQMCG9p36o0Njhk')],
                         [Markup.button.callback(settings.btn_verify_sub || '✅ Vérifier / Nouveau Lien', 'check_sub')]
                     ]);
 
@@ -452,11 +453,12 @@ function setupStartHandler(bot) {
     bot.action('channel_link', async (ctx) => {
         await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
+        const channelUrl = 'https://t.me/+PsQMCG9p36o0Njhk';
         const buttons = [
-            [Markup.button.url('📢 Rejoindre le canal', settings.channel_url || 'https://t.me/channel'), Markup.button.callback('◀️ Retour', 'main_menu')]
+            [Markup.button.url('📢 Rejoindre le canal', channelUrl), Markup.button.callback('◀️ Retour', 'main_menu')]
         ];
-        let text = `${settings.ui_icon_channel} <b>${settings.label_channel || 'Lien Canal'}</b>\n\n` +
-                   (settings.channel_url ? `📢 Lien direct : <a href="${settings.channel_url}">${settings.channel_url}</a>\n\n` : '') +
+        let text = `${settings.ui_icon_channel || '📢'} <b>${settings.label_channel || 'Lien Canal'}</b>\n\n` +
+                   `📢 Lien direct : <a href="${channelUrl}">${channelUrl}</a>\n\n` +
                    `Restez informé de nos nouveautés en rejoignant notre canal officiel.`;
         await safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
     });
@@ -707,10 +709,14 @@ async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = fal
 async function getWelcomeKeyboard(ctx, settings, user) {
     const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
     return Markup.inlineKeyboard([
-        [Markup.button.callback('🚀 DÉPLOYER MON PROPRE BOT', 'sales_menu_start')],
-        [Markup.button.callback('🤖 TESTER LE BOT', 'main_menu')],
-        [Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)],
-        [Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')]
+        [
+            Markup.button.callback('🚀 DÉPLOYER MON PROPRE BOT', 'sales_menu_start'),
+            Markup.button.callback('🤖 TESTER LE BOT', 'main_menu')
+        ],
+        [
+            Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl),
+            Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')
+        ]
     ]);
 }
 

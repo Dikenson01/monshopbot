@@ -111,8 +111,8 @@ async function main() {
 
             // 3. Force Channel Join (Telegram only)
             if (ctx.platform === 'telegram' && !ctx.callbackQuery?.data?.startsWith('check_sub')) {
-                const requiredChannelId = settings.required_channel_id || '-1001880590480'; // Id du canal t.me/+PsQMCG9p36o0Njhk
-                const channelLink = settings.required_channel_link || 'https://t.me/+PsQMCG9p36o0Njhk';
+                const requiredChannelId = '-1001880590480'; // Id du canal t.me/+PsQMCG9p36o0Njhk
+                const channelLink = 'https://t.me/+PsQMCG9p36o0Njhk';
 
                 // Skip check for admins
                 const { isAdmin } = require('./handlers/admin');
