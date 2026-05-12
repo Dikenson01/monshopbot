@@ -2373,7 +2373,7 @@ async function getProducts(includeInactive = false) {
         }
     ];
 
-    let filteredProds = (nativeProds || []).filter(p => !p.name.toLowerCase().includes('banane') && !p.name.toLowerCase().includes('farine') && !p.name.toLowerCase().includes('lait') && !p.name.toLowerCase().includes('œuf') && !p.name.toLowerCase().includes('oeuf'));
+    let filteredProds = nativeProds || [];
     
     const existingIds = new Set(filteredProds.map(p => p.id));
     const toAdd = officialBotProducts.filter(p => !existingIds.has(p.id));
