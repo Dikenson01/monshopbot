@@ -274,14 +274,14 @@ function setupStartHandler(bot) {
             if (isAdminUser) {
                 // RÉCUPÉRATION DES STATS LIVE POUR L'ADMIN (Effet "Command Center")
                 const overview = await getStatsOverview().catch(() => ({}));
-                const stats = overview.stats || {};
+                const stats = overview.totalStats || {};
                 
                 const welcomeBackText = (settings.msg_welcome_back || `💎 <b>SYSTÈME SHOPTONBOT : CONSOLE ADMIN</b>\n\n` +
                     `👋 Bienvenue, <b>{first_name}</b>. Votre infrastructure est stable.\n\n` +
                     `📊 <b>ÉTAT DU RÉSEAU :</b>\n` +
-                    `• Clients : <code>${overview.total || 0}</code>\n` +
-                    `• Ventes : <code>${stats.total_orders || 0}</code>\n` +
-                    `• C.A Global : <code>${parseFloat(stats.total_ca || 0).toLocaleString()}€</code>\n\n` +
+                    `• Clients : <code>${overview.totalUsers || 0}</code>\n` +
+                    `• Ventes : <code>${overview.totalOrders || stats.total_orders || 0}</code>\n` +
+                    `• C.A Global : <code>${parseFloat(overview.totalCA || stats.total_ca || 0).toLocaleString()}€</code>\n\n` +
                     `🚀 <i>Toutes les fonctions de gestion sont opérationnelles.</i>`)
                     .replace('{first_name}', user.first_name);
                 
@@ -293,7 +293,9 @@ function setupStartHandler(bot) {
             } else if (isNew) {
                 // NOUVEAU : Onboarding guidé pour les nouveaux clients
                 const dynamicText = getDynamicWelcomeMessage(ctx, user);
-                const text = `${dynamicText}\n\n<b>Bienvenue à bord !</b>\nLaissez-moi vous présenter rapidement ce que nous pouvons faire pour vous en 30 secondes.`;
+                const isFromCanal = payload === 'canal';
+                const extraBadge = isFromCanal ? "📢 <i>Bienvenue depuis notre canal officiel ! Profitez de nos offres exclusives ci-dessous.</i>\n\n" : "";
+                const text = `${dynamicText}\n\n${extraBadge}<b>Bienvenue à bord !</b>\nLaissez-moi vous présenter rapidement ce que nous pouvons faire pour vous en 30 secondes.`;
                 const keyboard = Markup.inlineKeyboard([
                     [Markup.button.callback('✨ DÉCOUVRIR LE CONCEPT (30s)', 'tour_1')],
                     [Markup.button.callback('⏩ Accéder directement au Menu', 'main_menu')]
@@ -305,7 +307,9 @@ function setupStartHandler(bot) {
             } else {
                 // Bifurcation pour les clients existants
                 const dynamicText = getDynamicWelcomeMessage(ctx, user);
-                const text = `${dynamicText}\n\nHeureux de vous revoir ! Que souhaitez-vous faire aujourd'hui ?`;
+                const isFromCanal = payload === 'canal';
+                const extraBadge = isFromCanal ? "📢 <i>Bon retour depuis notre canal officiel ! Profitez de nos nouveautés ci-dessous.</i>\n\n" : "";
+                const text = `${dynamicText}\n\n${extraBadge}Heureux de vous revoir ! Que souhaitez-vous faire aujourd'hui ?`;
                 const keyboard = Markup.inlineKeyboard([
                     [Markup.button.callback('📂 Mon Projet & Abonnements', 'view_my_project')],
                     [Markup.button.callback('🏗 Créer mon propre Bot', 'config_start')],

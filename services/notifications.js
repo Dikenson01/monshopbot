@@ -306,4 +306,52 @@ async function sendTelegramMessage(userId, message, options = {}) {
     return res;
 }
 
-module.exports = { notifyAdmins, notifyLivreurs, notifySuppliers, sendTelegramMessage, sendMessageToUser };
+/**
+ * Publier automatiquement une nouveauté ou mise à jour sur le canal officiel du bot
+ * avec un lien de retour pointant directement vers le bot.
+ */
+async function publishToOfficialChannel(bot, messageText, options = {}) {
+    try {
+        const settings = await getAppSettings();
+        const channelId = settings.force_subscribe_channel_id || '-1001880590480';
+        
+        let realBot = getBotForNotification(bot);
+        if (!realBot || !realBot.telegram) {
+            console.error('[Publish-Channel] Bot instance introuvable');
+            return null;
+        }
+
+        const botInfo = realBot.botInfo || await realBot.telegram.getMe().catch(() => ({ username: 'monshopbot' }));
+        const botUsername = botInfo.username || 'monshopbot';
+        const botLink = `https://t.me/${botUsername}?start=canal`;
+
+        // Construire un superbe bouton de retour
+        const extra = {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '👉 Découvrir dans le Bot ✨', url: botLink }]
+                ]
+            }
+        };
+
+        let sent;
+        if (options.photo || (options.mediaUrls && options.mediaUrls[0]?.type === 'photo')) {
+            const photoObj = options.photo || options.mediaUrls[0].file_id || options.mediaUrls[0].url;
+            sent = await realBot.telegram.sendPhoto(channelId, photoObj, { caption: messageText, ...extra });
+        } else if (options.video || (options.mediaUrls && options.mediaUrls[0]?.type === 'video')) {
+            const videoObj = options.video || options.mediaUrls[0].file_id || options.mediaUrls[0].url;
+            sent = await realBot.telegram.sendVideo(channelId, videoObj, { caption: messageText, ...extra });
+        } else {
+            sent = await realBot.telegram.sendMessage(channelId, messageText, extra);
+        }
+
+        console.log(`[Publish-Channel] ✅ Publié avec succès sur le canal ${channelId}`);
+        return sent;
+    } catch (e) {
+        console.error('[Publish-Channel] ❌ Erreur lors de la publication sur le canal:', e.message);
+        return null;
+    }
+}
+
+module.exports = { notifyAdmins, notifyLivreurs, notifySuppliers, sendTelegramMessage, sendMessageToUser, publishToOfficialChannel };

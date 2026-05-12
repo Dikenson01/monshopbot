@@ -2,6 +2,7 @@ const { Markup } = require('telegraf');
 const { safeEdit, cleanupUserChat } = require('../services/utils');
 
 const pendingTicketInfo = new Map();
+const pendingCouponInput = new Map();
 
 function setupHotlineHandlers(bot) {
 
@@ -435,31 +436,104 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
         await ctx.answerCbQuery().catch(() => {});
 
         const planMap = {
-            'bronze': '🥉 Bronze 350€ (TG)',
-            'wa': '🟧 WhatsApp 450€',
-            'standard': '🥈 Standard 550€ (TG+WA)',
-            'premium': '🥇 Premium 650€'
+            'bronze': { name: '🥉 Bronze 350€ (TG)', discount: 10 },
+            'wa': { name: '🟧 WhatsApp 450€', discount: 20 },
+            'standard': { name: '🥈 Standard 550€ (TG+WA)', discount: 30 },
+            'premium': { name: '🥇 Premium 650€', discount: 50 }
         };
 
-        const planName = planMap[planKey] || 'Plan inconnu';
-        pendingTicketInfo.set(ctx.from.id, { reason: `Intéressé par : ${planName}`, type: 'sales' });
+        const planObj = planMap[planKey] || { name: 'Plan inconnu', discount: 0 };
+        pendingTicketInfo.set(ctx.from.id, { planKey, reason: `Intéressé par : ${planObj.name}`, type: 'sales', discount: planObj.discount });
 
-        const text = `💎 Vous avez choisi : <b>${planName}</b>\n\n⚠️ <b>Obligatoire :</b> Afin que notre équipe puisse finaliser votre commande et vous contacter, veuillez envoyer votre <b>@username Telegram</b> ci-dessous :`;
+        const text = `💎 Vous avez choisi la formule : <b>${planObj.name}</b>\n\n` +
+                     `🎁 <b>Avantage Parrainage / Promo :</b>\n` +
+                     `En saisissant le code d'un parrain ou un code promo, vous bénéficiez instantanément d'une réduction de <b>${planObj.discount}€</b> sur ce pack !\n\n` +
+                     `👇 <i>Souhaitez-vous appliquer un code de réduction ?</i>`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('🎟️ Saisir un code de réduction', `enter_coupon_${planKey}`)],
+            [Markup.button.callback('➡️ Continuer sans code', `confirm_plan_${planKey}`)],
+            [Markup.button.callback('◀️ Annuler', 'show_pricing')]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action(/^enter_coupon_(.+)$/, async (ctx) => {
+        const planKey = ctx.match[1];
+        await ctx.answerCbQuery().catch(() => {});
+        pendingCouponInput.set(ctx.from.id, planKey);
+
+        const text = `🎟️ <b>SAISIE DU CODE PROMO / PARRAINAGE</b>\n\n` +
+                     `Veuillez écrire votre <b>Code Promo</b> ou <b>Code Parrain</b> dans le chat ci-dessous :`;
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('➡️ Continuer sans code', `confirm_plan_${planKey}`)],
+            [Markup.button.callback('◀️ Retour', `select_plan_${planKey}`)]
+        ]);
+        return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+    });
+
+    bot.action(/^confirm_plan_(.+)$/, async (ctx) => {
+        const planKey = ctx.match[1];
+        await ctx.answerCbQuery().catch(() => {});
+        pendingCouponInput.delete(ctx.from.id);
+
+        const ticketData = pendingTicketInfo.get(ctx.from.id);
+        if (!ticketData) return safeEdit(ctx, "❌ Session expirée.", Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'show_pricing')]]));
+
+        const text = `💎 Formule choisie : <b>${ticketData.applied_discount ? ticketData.reason_with_discount : ticketData.reason}</b>\n\n` +
+                     `⚠️ <b>Obligatoire :</b> Afin que notre équipe puisse finaliser votre commande et vous contacter, veuillez envoyer votre <b>@username Telegram</b> ou numéro WhatsApp ci-dessous :`;
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('◀️ Annuler', 'show_pricing')]
         ]);
         return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
     });
 
-    // Handle text input for username
+    // Handle text input for username and coupon codes
     bot.on('text', async (ctx, next) => {
         const userId = ctx.from.id;
+
+        // 1. Interception de saisie du code promo
+        if (pendingCouponInput.has(userId)) {
+            const planKey = pendingCouponInput.get(userId);
+            pendingCouponInput.delete(userId);
+            const codeInput = ctx.message.text.trim().toUpperCase();
+
+            const ticketData = pendingTicketInfo.get(userId);
+            if (!ticketData) return next();
+
+            if (codeInput.length >= 3) {
+                const discount = ticketData.discount || 10;
+                ticketData.applied_discount = discount;
+                ticketData.coupon_code = codeInput;
+                ticketData.reason_with_discount = `${ticketData.reason}\n🏷️ Réduction appliquée : -${discount}€ (Code: ${codeInput})`;
+                pendingTicketInfo.set(userId, ticketData);
+
+                const text = `✅ <b>Félicitations ! Le code "${codeInput}" a été validé avec succès.</b>\n\n` +
+                             `🏷️ Réduction immédiate de <b>${discount}€</b> appliquée sur votre formule !\n\n` +
+                             `⚠️ <b>Obligatoire :</b> Afin que notre équipe finalise l'activation de votre bot, veuillez envoyer votre <b>@username Telegram</b> ou numéro de contact ci-dessous :`;
+                
+                await ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Annuler', 'show_pricing')]]) });
+            } else {
+                await ctx.reply(`❌ <b>Code invalide.</b>\n\nVeuillez réessayer ou continuer sans code.`, {
+                    parse_mode: 'HTML',
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback('🎟️ Réessayer', `enter_coupon_${planKey}`)],
+                        [Markup.button.callback('➡️ Continuer sans code', `confirm_plan_${planKey}`)]
+                    ])
+                });
+            }
+            return;
+        }
+
+        // 2. Interception du contact/username
         if (pendingTicketInfo.has(userId)) {
             const ticketData = pendingTicketInfo.get(userId);
             const usernameInput = ctx.message.text.trim();
             pendingTicketInfo.delete(userId);
 
-            const finalReason = `${ticketData.reason}\n\n👤 <b>Contact fourni par l'utilisateur :</b> ${usernameInput}`;
+            const finalReason = ticketData.applied_discount ? 
+                `${ticketData.reason_with_discount}\n\n👤 <b>Contact fourni par l'utilisateur :</b> ${usernameInput}` :
+                `${ticketData.reason}\n\n👤 <b>Contact fourni par l'utilisateur :</b> ${usernameInput}`;
 
             // Save to bot_support_logs
             const { supabase } = require('../services/database');
@@ -502,14 +576,14 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
                 return ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour à l\'accueil', 'start_welcome')]]) });
             } else {
-                const text = `🎉 <b>Excellent choix !</b>\n\nUn ticket a été ouvert. Notre équipe vous contactera très vite sur votre compte Telegram <b>${usernameInput}</b> pour finaliser votre commande !`;
+                const text = `🎉 <b>Excellent choix !</b>\n\nUn ticket a été ouvert. Notre équipe vous contactera très vite sur votre compte de contact <b>${usernameInput}</b> pour finaliser l'activation de votre bot !`;
                 
                 // NOTIFICATION SALES
                 const { notifyAdmins } = require('../services/notifications');
-                const adminMsg = `💰 <b>NOUVEAU TICKET VENTE</b>\n\n` +
+                const adminMsg = `💰 <b>NOUVEAU TICKET VENTE (BaaS)</b>\n\n` +
                     `👤 Client : ${ctx.from.first_name} (@${ctx.from.username || 'N/A'})\n` +
                     `🆔 ID : <code>${userId}</code>\n` +
-                    `🏗 Intérêt : <b>${ticketData.reason}</b>\n` +
+                    `🏗 Intérêt : <b>${ticketData.applied_discount ? ticketData.reason_with_discount : ticketData.reason}</b>\n` +
                     `📱 Contact : <b>${usernameInput}</b>`;
                 
                 await notifyAdmins(ctx.bot || bot, adminMsg, {
@@ -679,4 +753,4 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
     }
 }
 
-module.exports = { setupHotlineHandlers, pendingTicketInfo };
+module.exports = { setupHotlineHandlers, pendingTicketInfo, pendingCouponInput };

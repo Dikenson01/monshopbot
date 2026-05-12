@@ -12,33 +12,33 @@ async function getMarketingTemplates() {
         return settings.marketing_templates;
     }
     return [
-        // PROSPECTS (New Users)
+        // PROSPECTS (Curieux / Présentation Bot)
         {
             segment: "prospect",
-            title: "💎 DÉCOUVREZ LE LUXE ACCESSIBLE",
-            message: "Bonjour {first_name}, bienvenue sur notre plateforme ! Profitez de produits exclusifs au meilleur prix.\n\n🚀 <b>Votre première commande livrée en 30min !</b>\n\n👇 Découvrez le catalogue :",
-            action: "VOIR LE CATALOGUE",
+            title: "🚀 CRÉEZ VOTRE BOT PROFESSIONNEL",
+            message: "Bonjour {first_name}, sublimez votre activité avec un bot sur-mesure de présentation ou de vente automatisée sur Telegram et WhatsApp.\n\n✨ <b>De 10€ à 50€ de réduction immédiate</b> sur nos formules grâce à votre code parrainage ou code promo !\n\n👇 Découvrez nos solutions BaaS :",
+            action: "DÉCOUVRIR LES SOLUTIONS",
             type: "catalog"
         },
-        // CLIENTS (Already Ordered)
+        // CLIENTS (Déjà possesseurs d'un bot / Intéressés par les modules)
         {
             segment: "client",
-            title: "🛰 MISE À JOUR DISPONIBLE",
-            message: "Bonjour {first_name}, en tant que client privilégié, nous vous informons que de nouvelles fonctionnalités sont disponibles !\n\n✅ <b>Interface Mini App v5.0</b>\n✅ <b>Suivi temps réel</b>\n\n👇 Tester les nouveautés :",
-            action: "OUVRIR MINI APP",
+            title: "⚙️ BOOSTEZ VOTRE BOT EXISTANT",
+            message: "Bonjour {first_name}, optimisez la rentabilité et la fidélisation de votre bot avec nos nouvelles fonctionnalités avancées (Mini-App native, relances automatiques, multi-vendeurs, paiements intégrés).\n\n👇 Découvrir les modules additionnels :",
+            action: "VOIR LES MODULES",
             type: "catalog"
         },
         {
             segment: "prospect",
-            title: "💰 GAGNEZ SANS DÉPENSER",
-            message: "Hey {first_name}, saviez-vous que vous pouvez gagner 5€ par ami parrainé ?\n\n🎁 <b>Idéal pour financer votre première commande !</b>\n\n👇 Mon lien :",
-            action: "MON PARRAINAGE",
+            title: "🤝 PARRAINEZ ET GAGNEZ GROS",
+            message: "Partagez votre excellence ! Recommandez nos bots à votre réseau et offrez-leur une réduction immédiate de <b>10€ à 50€</b> sur leur formule de lancement.\n\nEn retour, touchez des commissions élevées pour chaque bot activé !\n\n👇 Obtenir mon code parrainage :",
+            action: "MON CODE PARRAIN",
             type: "referral"
         },
         {
             segment: "client",
-            title: "🎁 RÉCOMPENSE FIDÉLITÉ",
-            message: "Merci pour votre fidélité {first_name}. Nous avons ajouté un bonus exclusif sur votre compte pour votre prochaine commande !\n\n👇 Vérifier mon solde :",
+            title: "🎁 VOS MODULES COMPLÉMENTAIRES",
+            message: "Merci pour votre confiance {first_name}. En tant que client privilégié ayant acquis de nouvelles fonctionnalités, découvrez en avant-première nos intégrations exclusives pour piloter vos flux de commandes !\n\n👇 Consulter mon tableau de bord :",
             action: "MON PROFIL",
             type: "loyalty"
         }

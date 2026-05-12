@@ -10,7 +10,7 @@ const {
     logSupportMessage
 } = require('../services/database');
 const { safeEdit, cleanupUserChat, esc } = require('../services/utils');
-const { notifyAdmins, sendTelegramMessage } = require('../services/notifications');
+const { notifyAdmins, sendTelegramMessage, publishToOfficialChannel } = require('../services/notifications');
 const { t } = require('../services/i18n'); // <--- ADDED
 const { awaitingAddressDetails, pendingOrderConfirmation } = require('./order_system'); // <--- ADDED
 require('dotenv').config();
@@ -131,7 +131,7 @@ async function showAdminMenu(ctx, isEdit = false) {
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
         [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders')],
         [Markup.button.callback('📥 Contact', 'admin_tickets')],
-        [Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast'), Markup.button.callback('📢 Marketing Auto', 'admin_trigger_marketing')],
+        [Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast'), Markup.button.callback('📢 Publier Canal', 'admin_publish_channel')],
         [Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
         [Markup.button.callback('◀️ Retour Menu', 'admin_menu')],
         [Markup.button.callback(t(user, 'btn_admin_features', '✨ Guide Bot'), 'admin_features')],
@@ -171,6 +171,18 @@ function setupAdminHandlers(bot) {
         } catch (e) {
             ctx.reply(`❌ Erreur : ${e.message}`);
         }
+    });
+
+    bot.command('broadcast_nouveautes', async (ctx) => {
+        if (!(await isAdmin(ctx))) return safeEdit(ctx, '❌ Accès réservé.');
+        const msg = ctx.message.text.replace('/broadcast_nouveautes', '').trim();
+        if (!msg) {
+            return ctx.reply('❌ Syntaxe : /broadcast_nouveautes Votre texte de nouveauté');
+        }
+        await ctx.reply('🚀 Diffusion simultanée dans le Bot et sur le Canal en cours...');
+        const res = await broadcastMessage('users', msg, { parse_mode: 'HTML' });
+        await publishToOfficialChannel(bot, `📢 <b>NOUVELLE ANNONCE</b>\n\n${msg}`, { parse_mode: 'HTML' }).catch(() => {});
+        return ctx.reply(`✅ Nouveauté propulsée sur tous les canaux !\n\n📊 Cibles Bot : ${res.success}\n📢 Publié sur le Canal Officiel.`);
     });
 
     /**
@@ -1034,6 +1046,7 @@ function setupAdminHandlers(bot) {
 
     // Broadcast — inline prompt
     const pendingBroadcasts = new Set();
+    const pendingChannelPublish = new Set();
 
     bot.action('admin_broadcast', async (ctx) => {
         await ctx.answerCbQuery().catch(() => {});
@@ -1044,6 +1057,17 @@ function setupAdminHandlers(bot) {
             `Il sera diffusé à tous les utilisateurs actifs.\n\n` +
             `<b>Note :</b> Vous pouvez joindre une Photo ou Vidéo.\n\n` +
             `<i>Ou utilisez /broadcast Votre Message</i>`,
+            Markup.inlineKeyboard([[Markup.button.callback('❌ Annuler', 'admin_menu')]])
+        );
+    });
+
+    bot.action('admin_publish_channel', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => {});
+        pendingChannelPublish.add(ctx.from.id);
+        await safeEdit(ctx,
+            `📢 <b>Publication sur le Canal Officiel</b>\n\n` +
+            `Envoyez la nouveauté, photo ou vidéo que vous souhaitez publier sur votre canal.\n\n` +
+            `✨ <i>Un bouton stylisé <b>"👉 Découvrir dans le Bot"</b> sera automatiquement ajouté sous votre publication pour ramener les abonnés vers votre boutique !</i>`,
             Markup.inlineKeyboard([[Markup.button.callback('❌ Annuler', 'admin_menu')]])
         );
     });
@@ -1126,6 +1150,32 @@ function setupAdminHandlers(bot) {
             }
         }
 
+        // 1bis. Publication Directe Canal
+        if (pendingChannelPublish.has(ctx.from.id) && (await isAdmin(ctx))) {
+            pendingChannelPublish.delete(ctx.from.id);
+            const messageText = ctx.message.text || ctx.message.caption || '';
+            const options = {};
+
+            if (ctx.message.photo) {
+                const photo = ctx.message.photo[ctx.message.photo.length - 1];
+                options.photo = photo.file_id;
+            } else if (ctx.message.video) {
+                options.video = ctx.message.video.file_id;
+            }
+
+            if (!messageText && !options.photo && !options.video) {
+                return safeEdit(ctx, '❌ Contenu vide.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_publish_channel')]]));
+            }
+
+            await safeEdit(ctx, '🚀 Publication sur le canal en cours...');
+            const sent = await publishToOfficialChannel(bot, messageText, options);
+            if (sent) {
+                return safeEdit(ctx, '✅ <b>Nouveauté publiée avec succès sur le canal !</b>\n\n✨ <i>Le bouton d\'invitation vers le bot a été attaché.</i>', Markup.inlineKeyboard([[Markup.button.callback('◀️ Menu Admin', 'admin_menu')]]));
+            } else {
+                return safeEdit(ctx, '❌ <b>Échec de la publication.</b> Vérifiez que le bot est bien administrateur du canal avec le droit de publier des messages.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Menu Admin', 'admin_menu')]]));
+            }
+        }
+
         // 2. Broadcast Logic (Only if not in chat)
         if (pendingBroadcasts.has(ctx.from.id) && (await isAdmin(ctx))) {
             pendingBroadcasts.delete(ctx.from.id);
@@ -1137,10 +1187,10 @@ function setupAdminHandlers(bot) {
             if (ctx.message.photo) {
                 const photo = ctx.message.photo[ctx.message.photo.length - 1];
                 const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-                options.mediaUrls = [{ url: fileLink.href, type: 'photo' }];
+                options.mediaUrls = [{ url: fileLink.href, file_id: photo.file_id, type: 'photo' }];
             } else if (ctx.message.video) {
                 const fileLink = await ctx.telegram.getFileLink(ctx.message.video.file_id);
-                options.mediaUrls = [{ url: fileLink.href, type: 'video' }];
+                options.mediaUrls = [{ url: fileLink.href, file_id: ctx.message.video.file_id, type: 'video' }];
             }
 
             if (!message && !options.mediaUrls) {
@@ -1149,6 +1199,8 @@ function setupAdminHandlers(bot) {
 
             await safeEdit(ctx, '🚀 Diffusion en cours...');
             const res = await broadcastMessage('users', message, options);
+            // Publication simultanée sur le canal
+            publishToOfficialChannel(bot, `📢 <b>NOUVELLE ANNONCE</b>\n\n${message}`, options).catch(() => {});
             return safeEdit(ctx, `✅ Diffusion terminée !\n\n📊 Cibles : ${res.total}\n✅ Succès : ${res.success}\n❌ Échecs : ${res.failed}`, Markup.inlineKeyboard([[Markup.button.callback('◀️ Menu Admin', 'admin_menu')]]));
         }
 
@@ -1173,14 +1225,16 @@ function setupAdminHandlers(bot) {
             if (ctx.message.photo) {
                 const photo = ctx.message.photo[ctx.message.photo.length - 1];
                 const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-                options.mediaUrls = [{ url: fileLink.href, type: 'photo' }];
+                options.mediaUrls = [{ url: fileLink.href, file_id: photo.file_id, type: 'photo' }];
             } else if (ctx.message.video) {
                 const fileLink = await ctx.telegram.getFileLink(ctx.message.video.file_id);
-                options.mediaUrls = [{ url: fileLink.href, type: 'video' }];
+                options.mediaUrls = [{ url: fileLink.href, file_id: ctx.message.video.file_id, type: 'video' }];
             }
 
             await ctx.reply('🚀 Lancement de l\'annonce premium...');
             const res = await broadcastMessage('users', finalMsg, options);
+            // Publication simultanée sur le canal
+            publishToOfficialChannel(bot, finalMsg, options).catch(() => {});
             return ctx.reply(`✅ Annonce terminée !\n\n📊 Envoyé à ${res.success} utilisateurs.`);
         }
         
@@ -1205,12 +1259,31 @@ function setupAdminHandlers(bot) {
         const userId = `${ctx.platform}_${ctx.from.id}`;
         const isCurrentlyOrdering = awaitingAddressDetails.has(userId) || pendingOrderConfirmation.has(userId);
 
-        const isSupportMessage = activeUserSessions.has(uKey) || 
+        // Importation dynamique sécurisée des états de discussion, retards et hotline/coupons
+        let isReplyingToOrderOrHotline = false;
+        try {
+            const orderSys = require('./order_system');
+            const hotlineSys = require('./hotline');
+            const numericId = ctx.from.id;
+            
+            const inChatReply = orderSys.awaitingChatReply && orderSys.awaitingChatReply.has(userId);
+            const inDelayReason = orderSys.awaitingDelayReason && orderSys.awaitingDelayReason.has(userId);
+            const inReviewText = orderSys.awaitingReviewText && orderSys.awaitingReviewText.has(userId);
+            const inHotlineTicket = hotlineSys.pendingTicketInfo && hotlineSys.pendingTicketInfo.has(numericId);
+            const inCouponInput = hotlineSys.pendingCouponInput && hotlineSys.pendingCouponInput.has(numericId);
+            
+            if (inChatReply || inDelayReason || inReviewText || inHotlineTicket || inCouponInput) {
+                isReplyingToOrderOrHotline = true;
+            }
+        } catch (e) {}
+
+        const isSupportMessage = !isReplyingToOrderOrHotline && (
+                                 activeUserSessions.has(uKey) || 
                                  awaitingUserSupportReply.has(uKey) || 
                                  (ctx.platform === 'whatsapp' && 
                                   !isCurrentlyOrdering &&
                                   !ctx.message?.text?.startsWith('/') && 
-                                  !['menu', 'catalog', 'orders'].includes(ctx.message?.text?.toLowerCase()));
+                                  !['menu', 'catalog', 'orders'].includes(ctx.message?.text?.toLowerCase())));
 
         if (isSupportMessage && !(await isAdmin(ctx))) {
              // Enregistrer dans la liste d'attente pour l'admin
@@ -1259,9 +1332,8 @@ function setupAdminHandlers(bot) {
                 // Here we keep broadcast to all staff but we could refine
                 await notifyAdmins(bot, reportMsg, options);
                 
-                if (ctx.platform === 'whatsapp') {
-                    await ctx.reply(`✅ <b>Votre message a été transmis à l'administrateur.</b>\n\nIl vous répondra directement ici.`, { parse_mode: 'HTML' });
-                }
+                // Toujours accuser réception auprès du client (Telegram et WhatsApp) pour une parfaite clarté
+                await ctx.reply(`✅ <b>Votre message a bien été transmis à l'administrateur.</b>\n\nIl vous répondra directement ici.`, { parse_mode: 'HTML' }).catch(() => {});
                 return;
             } catch (e) {
                 console.error(`[Admin-Relay-Error] FAILED to relay from ${uKey}:`, e.message);

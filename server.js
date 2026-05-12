@@ -560,17 +560,20 @@ function createServer() {
 
     app.post('/api/mini-app/create-order', async (req, res) => {
         try {
-            const { userId, items, total, address, note, platform, discount } = req.body;
+            const { userId, items, total, address, note, platform, discount, promoCode, promoDiscount, walletDiscount } = req.body;
             const { createOrder, getUser, updateUserWallet } = require('./services/database');
             const { notifyAdmins } = require('./services/notifications');
             
             const user = await getUser(userId);
             
-            // Validation du discount
-            let appliedDiscount = parseFloat(discount) || 0;
-            if (appliedDiscount > 0) {
-                if (!user || !user.wallet_balance || user.wallet_balance < appliedDiscount) {
-                    return res.status(400).json({ error: "Solde insuffisant pour cette réduction." });
+            // Validation des réductions
+            let appliedWalletDiscount = parseFloat(walletDiscount) || (!promoCode ? parseFloat(discount) || 0 : 0);
+            let appliedPromoDiscount = parseFloat(promoDiscount) || (promoCode ? parseFloat(discount) || 0 : 0);
+            let totalAppliedDiscount = appliedWalletDiscount + appliedPromoDiscount;
+
+            if (appliedWalletDiscount > 0) {
+                if (!user || !user.wallet_balance || user.wallet_balance < appliedWalletDiscount) {
+                    return res.status(400).json({ error: "Solde de portefeuille insuffisant pour cette réduction." });
                 }
             }
 
@@ -584,7 +587,7 @@ function createServer() {
                 quantity: totalQty,
                 cart: items,
                 total_price: total,
-                discount_applied: appliedDiscount,
+                discount_applied: totalAppliedDiscount,
                 address: note ? `${address} (Note: ${note})` : address,
                 platform: platform || 'telegram',
                 status: 'pending',
@@ -605,19 +608,20 @@ function createServer() {
                 }
             }
 
-            // DEDUCT WALLET BALANCE
-            if (appliedDiscount > 0) {
-                const newBalance = user.wallet_balance - appliedDiscount;
+            // DEDUCT WALLET BALANCE ONLY FOR WALLET DISCOUNT
+            if (appliedWalletDiscount > 0) {
+                const newBalance = user.wallet_balance - appliedWalletDiscount;
                 await updateUserWallet(user.id, newBalance);
             }
 
             // Notification Admin & User
             const bot = getBotInstance();
             if (bot) {
+                const promoStr = promoCode ? `\n🏷️ Code Promo : <b>${promoCode}</b> (-${appliedPromoDiscount}€)` : '';
                 const adminMsg = `🛒 <b>NOUVELLE COMMANDE (MINI APP)</b>\n\n` +
                                  `👤 Client : ${user?.first_name || userId}\n` +
                                  `📦 Produits : ${productListStr}\n` +
-                                 `💰 Total : <b>${total}€</b>\n` +
+                                 `💰 Total à payer : <b>${total}€</b>` + promoStr + `\n` +
                                  `📍 Adresse : <i>${address}</i>\n` +
                                  `📝 Note : ${note || 'Aucune'}\n\n` +
                                  `#${order.id.slice(-5)}`;
@@ -753,9 +757,9 @@ function createServer() {
     app.post('/api/user-address', async (req, res) => {
         try {
             const { userId, address } = req.body;
-            const { supabase } = require('./services/database');
-            // Mettre à jour l'adresse dans la table bot_users (colonne 'address')
-            const { error } = await supabase.from('bot_users').update({ address: address }).eq('id', userId);
+            const { updateUser } = require('./services/database');
+            // Mettre à jour l'adresse via updateUser pour invalider correctement le cache utilisateur
+            const { error } = await updateUser(userId, { address: address });
             if (error) throw error;
             res.json({ success: true });
         } catch (e) {

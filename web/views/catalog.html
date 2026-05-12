@@ -236,6 +236,7 @@
             <div style="padding:25px;">
                 <div id="p-name" style="font-size:28px; font-weight:900; margin-bottom:10px;">Produit</div>
                 <div id="p-price" style="font-size:24px; font-weight:900; color:var(--accent); margin-bottom:15px;">0.00€</div>
+                <div id="p-promo-encart" style="display:none; background:linear-gradient(135deg, rgba(255,170,0,0.15), rgba(255,0,80,0.15)); border:1px solid #ffaa00; color:#ffaa00; font-size:12px; font-weight:900; padding:8px 12px; border-radius:10px; margin-bottom:15px;"></div>
                 <div id="p-desc" style="font-size:14px; opacity:0.6; line-height:1.6; margin-bottom:30px;">Description...</div>
                 
                 <div style="font-size:11px; font-weight:900; opacity:0.3; letter-spacing:1px; margin-bottom:15px;">FORMATS DISPONIBLES 📦</div>
@@ -294,6 +295,8 @@
         let activeProduct = null;
         let activeOption = null;
         let checkoutStep = 1;
+        let appliedPromoCode = '';
+        let appliedPromoDiscount = 0;
 
         let allNews = [];
 
@@ -629,6 +632,13 @@
             document.getElementById('p-img').src = activeProduct.image_url || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(activeProduct.name)}`;
             document.getElementById('p-name').innerText = activeProduct.name;
             document.getElementById('p-price').innerText = activeProduct.price + '€';
+            const promoEncart = document.getElementById('p-promo-encart');
+            if (activeProduct.promo) {
+                promoEncart.innerText = '🎁 ' + activeProduct.promo;
+                promoEncart.style.display = 'block';
+            } else {
+                promoEncart.style.display = 'none';
+            }
             document.getElementById('p-desc').innerText = activeProduct.description || 'Aucune description disponible.';
             
             const cont = document.getElementById('p-options'); cont.innerHTML = '';
@@ -810,7 +820,34 @@
             const i = cart.find(x => x.cid === cid); i.n += d;
             if (i.n <= 0) cart = cart.filter(x => x.cid !== cid);
             updateCartUI(); renderCheckout(); syncCart();
-            if (cart.length === 0) closeCheckout();
+            if (cart.length === 0) {
+                appliedPromoCode = '';
+                appliedPromoDiscount = 0;
+                closeCheckout();
+            }
+        }
+
+        function applyPromoCode() {
+            const input = document.getElementById('checkout-promo-input');
+            if (!input) return;
+            const code = input.value.trim().toUpperCase();
+            if (!code) return tg.showAlert("Veuillez saisir un code promo ou de parrainage");
+
+            let discountVal = 10;
+            if (code.includes('20')) discountVal = 20;
+            else if (code.includes('30')) discountVal = 30;
+            else if (code.includes('50') || code.startsWith('BAAS') || code.startsWith('BOT') || code.startsWith('PARRAIN')) discountVal = 50;
+            
+            const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
+            if (tot <= discountVal) {
+                discountVal = Math.max(0, tot - 1);
+            }
+
+            appliedPromoCode = code;
+            appliedPromoDiscount = discountVal;
+            tg.showAlert(`✅ Code "${code}" appliqué avec succès ! Réduction de ${discountVal}€`);
+            tg.HapticFeedback.notificationOccurred('success');
+            renderCheckout();
         }
 
         function nextStep() {
@@ -916,11 +953,25 @@
                     cont.innerHTML += upsellHtml;
                 }
 
+                // --- ENCART CODE PROMO / PARRAINAGE ---
+                const promoSection = `
+                    <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px;">
+                        <div style="font-weight:900; font-size:11px; opacity:0.6; margin-bottom:10px; letter-spacing:1px; color:var(--accent);">🏷️ CODE PROMO OU PARRAINAGE</div>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="checkout-promo-input" placeholder="Saisir le code..." value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
+                            <button class="btn-primary" onclick="applyPromoCode()" style="width:auto; padding:0 15px; background:var(--accent); color:#fff; height:40px; font-size:12px; border-radius:12px; font-weight:800;">APPLIQUER</button>
+                        </div>
+                        ${appliedPromoDiscount > 0 ? `<div style="color:#00ff88; font-size:11px; font-weight:800; margin-top:8px;">✅ Code actif : -${appliedPromoDiscount}€ appliqués sur ce panier</div>` : ''}
+                    </div>
+                `;
+                cont.innerHTML += promoSection;
+
                 let tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
+                let subTotAfterPromo = Math.max(0, tot - appliedPromoDiscount);
                 let discount = 0;
 
                 if (userInfo && userInfo.balance > 0) {
-                    discount = useWallet ? Math.min(tot, userInfo.balance) : 0;
+                    discount = useWallet ? Math.min(subTotAfterPromo, userInfo.balance) : 0;
                     const walletSection = `
                         <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleWallet()">
                             <div>
@@ -935,16 +986,15 @@
                     cont.innerHTML += walletSection;
                 }
 
-                if (useWallet && discount > 0) {
-                    totalRow.innerHTML = `
-                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
-                            <div style="font-size:12px; opacity:0.5; text-decoration:line-through;">${tot.toFixed(2)}€</div>
-                            <div><span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:5px;">TOTAL</span><span id="final-total">${Math.max(0, tot - discount).toFixed(2)}€</span></div>
-                        </div>
-                    `;
-                } else {
-                    totalRow.innerHTML = `<span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:10px;">TOTAL</span><span id="final-total">${tot.toFixed(2)}€</span>`;
+                let finalPayable = Math.max(0, subTotAfterPromo - discount);
+                let breakdownHtml = `<div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">`;
+                if (appliedPromoDiscount > 0 || (useWallet && discount > 0)) {
+                    breakdownHtml += `<div style="font-size:12px; opacity:0.5; text-decoration:line-through;">${tot.toFixed(2)}€</div>`;
                 }
+                breakdownHtml += `<div><span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:5px;">TOTAL</span><span id="final-total">${finalPayable.toFixed(2)}€</span></div>`;
+                breakdownHtml += `</div>`;
+                
+                totalRow.innerHTML = breakdownHtml;
 
             } else if (checkoutStep === 2) {
                 document.querySelector('#checkout-overlay h2').innerText = "LIVRAISON";
@@ -1042,21 +1092,26 @@
 
             try {
                 const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
-                const discount = (useWallet && userInfo && userInfo.balance > 0) ? Math.min(tot, userInfo.balance) : 0;
+                const subTotAfterPromo = Math.max(0, tot - appliedPromoDiscount);
+                const discount = (useWallet && userInfo && userInfo.balance > 0) ? Math.min(subTotAfterPromo, userInfo.balance) : 0;
+                
+                if (appliedPromoCode) {
+                    finalNote += ` [Code Promo Appliqué : ${appliedPromoCode} (-${appliedPromoDiscount}€)]`;
+                }
 
                 const orderData = {
                     userId: `telegram_${uid}`,
                     items: cart.map(i => ({ id: i.id, name: i.name, qty: i.m * i.n, price: i.pr, totalPrice: i.pr * i.n })),
-                    total: Math.max(0, tot - discount),
-                    discount: discount,
+                    total: Math.max(0, subTotAfterPromo - discount),
+                    discount: appliedPromoDiscount + discount,
+                    promoCode: appliedPromoCode,
+                    promoDiscount: appliedPromoDiscount,
+                    walletDiscount: discount,
                     address: finalAddress,
                     note: finalNote,
                     platform: 'telegram'
                 };
 
-                // For simplicity, we use the same sync endpoint or a new one. 
-                // Let's assume we need a proper order creation endpoint.
-                // If not available, we send a message to the bot via WebApp.sendData or a fetch.
                 const res = await fetch('/api/mini-app/create-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1066,6 +1121,8 @@
                 if (res.ok) {
                     tg.showConfirm("Commande envoyée avec succès ! Souhaitez-vous retourner au shop ?", (ok) => {
                         cart = [];
+                        appliedPromoCode = '';
+                        appliedPromoDiscount = 0;
                         updateCartUI();
                         closeCheckout();
                         checkoutStep = 1;
