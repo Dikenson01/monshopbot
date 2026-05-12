@@ -231,14 +231,19 @@ function setupStartHandler(bot) {
                             `👇 <b>Liens prioritaires :</b>\n` +
                             (settings.private_contact_wa_url ? `• *WhatsApp Admin :* ${settings.private_contact_wa_url}\n` : '') +
                             (settings.private_contact_url ? `• *Telegram Admin :* ${settings.private_contact_url}\n` : '') +
-                            (settings.channel_url ? `• *Notre Canal :* ${settings.channel_url}\n` : '') : 
+                            `• *Notre Canal :* https://t.me/+PsQMCG9p36o0Njhk\n` : 
                             `👇 <b>Utilisez les boutons ci-dessous pour accélérer le processus :</b>`);
                 
                 const b = [];
-                if (settings.private_contact_url) b.push([Markup.button.url('✉️ Telegram : Admin', settings.private_contact_url)]);
-                if (settings.private_contact_wa_url) b.push([Markup.button.url('✉️ WhatsApp : Admin', settings.private_contact_wa_url)]);
-                b.push([Markup.button.url('📢 S’abonner au canal', settings.channel_url || 'https://t.me/channel')]);
-                b.push([Markup.button.callback('🔄 Rafraîchir mon statut', 'start')]);
+                const topRow = [];
+                if (settings.private_contact_url) topRow.push(Markup.button.url('✉️ Telegram : Admin', settings.private_contact_url));
+                if (settings.private_contact_wa_url) topRow.push(Markup.button.url('✉️ WhatsApp : Admin', settings.private_contact_wa_url));
+                if (topRow.length > 0) b.push(topRow);
+
+                b.push([
+                    Markup.button.url('📢 S’abonner au canal', 'https://t.me/+PsQMCG9p36o0Njhk'),
+                    Markup.button.callback('🔄 Rafraîchir mon statut', 'start')
+                ]);
                 
                 const restrictedKeyboard = Markup.inlineKeyboard(b);
 

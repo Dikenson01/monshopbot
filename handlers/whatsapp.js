@@ -71,7 +71,7 @@ async function handleWhatsAppAction(channel, from, name, action, settings, user)
             return channel.sendMessage(from, `📱 *Contact privé :*\n${settings.private_contact_url}`);
             
         case 'channel':
-            return channel.sendMessage(from, `📢 *Canal :*\n${settings.channel_url}`);
+            return channel.sendMessage(from, `📢 *Canal :*\nhttps://t.me/+PsQMCG9p36o0Njhk`);
             
         case 'referrals':
             const refLink = `https://wa.me/${channel.phoneNumberId}?text=${user.referral_code}`;
@@ -86,7 +86,7 @@ async function handleWhatsAppAction(channel, from, name, action, settings, user)
             return channel.sendMessage(from, 
                 `👟 *Catalogue*\n\n` +
                 `Pour voir nos produits, utilisez notre bot Telegram :\n` +
-                `${settings.channel_url || '@Lejardinidf'}`
+                `https://t.me/+PsQMCG9p36o0Njhk`
             );
             
         case 'orders':
