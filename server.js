@@ -468,8 +468,20 @@ function createServer() {
             
             if (!user) return res.status(404).json({ error: 'User not found' });
             
+            let addressStr = user.address || '';
+            if (!addressStr && Array.isArray(user.data?.addresses) && user.data.addresses.length > 0) {
+                try {
+                    addressStr = JSON.stringify(user.data.addresses.map((a, i) => ({
+                        id: String(Date.now() + i),
+                        name: 'Adresse ' + (i + 1),
+                        address: a
+                    })));
+                } catch(e) {}
+            }
+
             res.json({
                 ...user,
+                address: addressStr,
                 isLivreur: !!user.is_livreur,
                 isAdmin: !!user.is_admin,
                 isAvailable: !!user.is_available,
@@ -745,9 +757,8 @@ function createServer() {
     app.post('/api/delete-account', async (req, res) => {
         try {
             const { userId } = req.body;
-            const { supabase } = require('./services/database');
-            const { error } = await supabase.from('bot_users').delete().eq('id', userId);
-            if (error) throw error;
+            const { deleteUser } = require('./services/database');
+            await deleteUser(userId);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });

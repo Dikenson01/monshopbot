@@ -421,13 +421,22 @@ async function markUserUnblocked(docId) {
     _userCache.delete(docId);
 }
 async function deleteUser(docId) {
-    await supabase.from(COL_USERS).delete().eq('id', docId);
-    if (_userCache) _userCache.delete(docId);
+    const user = await getUser(docId);
+    const targetId = user ? (user.doc_id || user.id) : docId;
+    await supabase.from(COL_USERS).delete().eq('id', targetId);
+    if (_userCache) {
+        _userCache.delete(docId);
+        _userCache.delete(targetId);
+    }
 }
 async function incrementOrderCount(docId) {
     const user = await getUser(docId);
-    if (user) await supabase.from(COL_USERS).update({ order_count: (user.order_count || 0) + 1 }).eq('id', docId);
-    _userCache.delete(docId);
+    if (user) {
+        const targetId = user.doc_id || user.id;
+        await supabase.from(COL_USERS).update({ order_count: (user.order_count || 0) + 1 }).eq('id', targetId);
+        _userCache.delete(docId);
+        _userCache.delete(targetId);
+    }
 }
 
 async function updateUserWallet(docId, amount) {
@@ -703,14 +712,15 @@ async function saveUserAddress(docId, address) {
     let data = user.data || {};
     let addresses = data.addresses || [];
 
-    // On normalise l'adresse pour éviter les doublons stupides (espaces, casse)
     const normalized = address.trim();
     if (!addresses.includes(normalized)) {
         addresses.push(normalized);
         data.addresses = addresses;
 
-        await supabase.from(COL_USERS).update({ data }).eq('id', docId);
+        const targetId = user.doc_id || user.id;
+        await supabase.from(COL_USERS).update({ data }).eq('id', targetId);
         _userCache.delete(docId);
+        _userCache.delete(targetId);
     }
 }
 
@@ -1082,6 +1092,7 @@ async function getLivreurOrders(livreurId) {
 }
 
 async function getUser(docId) {
+    if (!docId) return null;
     if (_userCache.has(docId)) {
         const cached = _userCache.get(docId);
         if (Date.now() < cached.expire) {
@@ -1089,11 +1100,21 @@ async function getUser(docId) {
         }
     }
 
-    const { data } = await supabase.from(COL_USERS).select('*').eq('id', docId).abortSignal(AbortSignal.timeout(DB_TIMEOUT)).limit(1);
-    const rawData = data && data.length > 0 ? data[0] : null;
+    let { data } = await supabase.from(COL_USERS).select('*').eq('id', docId).abortSignal(AbortSignal.timeout(DB_TIMEOUT)).limit(1);
+    let rawData = data && data.length > 0 ? data[0] : null;
+
+    if (!rawData) {
+        const cleanId = String(docId).replace('telegram_', '').replace('whatsapp_', '');
+        const { data: altData } = await supabase.from(COL_USERS).select('*')
+            .or(`id.eq.${cleanId},platform_id.eq.${cleanId}`)
+            .limit(1);
+        rawData = altData && altData.length > 0 ? altData[0] : null;
+    }
 
     if (rawData) {
-        _userCache.set(docId, { data: rawData, expire: Date.now() + 300000 }); // 5 minutes cache
+        const nowMs = Date.now();
+        _userCache.set(docId, { data: rawData, expire: nowMs + 300000 });
+        _userCache.set(rawData.id, { data: rawData, expire: nowMs + 300000 });
         return decryptUser(rawData);
     }
     return null;
@@ -3136,8 +3157,26 @@ async function saveUser(user) {
  */
 async function updateUser(userId, data) {
     if (!userId) return { error: 'Missing userId' };
-    const { error } = await supabase.from(COL_USERS).update(data).eq('id', userId);
-    if (!error) clearUserCache(userId);
+    const user = await getUser(userId);
+    const targetId = user ? (user.doc_id || user.id) : userId;
+
+    let updatePayload = { ...data };
+    if (updatePayload.address !== undefined && user) {
+        let meta = user.data || {};
+        try {
+            const parsed = JSON.parse(updatePayload.address);
+            if (Array.isArray(parsed)) {
+                meta.addresses = parsed.map(a => a.address).filter(Boolean);
+                updatePayload.data = meta;
+            }
+        } catch(e) {}
+    }
+
+    const { error } = await supabase.from(COL_USERS).update(updatePayload).eq('id', targetId);
+    if (!error) {
+        clearUserCache(userId);
+        if (user) clearUserCache(user.doc_id || user.id);
+    }
     return { error };
 }
 
