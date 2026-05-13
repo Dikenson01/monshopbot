@@ -2078,7 +2078,13 @@ function setupOrderSystem(bot) {
         const targetId = isLivreur ? order.user_id : order.livreur_id;
         const targetRole = isLivreur ? "client" : "livreur";
 
-        awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { orderId, targetId, role: targetRole });
+        // Sauvegarde de l'ID du message de prompt pour effacer proprement le clavier inline une fois répondu
+        awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { 
+            orderId, 
+            targetId, 
+            role: targetRole,
+            promptMsgId: ctx.callbackQuery?.message?.message_id 
+        });
 
         const backBtnTarget = isLivreur ? `view_active_${orderId}` : `view_order_${orderId}`;
         const chatHist = activeChatHistory.get(orderId);
@@ -2095,49 +2101,33 @@ function setupOrderSystem(bot) {
             `Saisissez et envoyez votre message ci-dessous :`;
 
         let contactButtons = [];
-        const seenUrls = new Set();
-        const addContactBtn = (label, url) => {
-            if (!seenUrls.has(url)) {
-                seenUrls.add(url);
-                contactButtons.push(Markup.button.url(label, url));
-            }
-        };
+        // Règle de confidentialité stricte : le livreur ne doit JAMAIS voir le profil ou les coordonnées directes du client
+        if (!isLivreur) {
+            const seenUrls = new Set();
+            const addContactBtn = (label, url) => {
+                if (!seenUrls.has(url)) {
+                    seenUrls.add(url);
+                    contactButtons.push(Markup.button.url(label, url));
+                }
+            };
 
-        if (targetId) {
-            const targetUKey = targetId.includes('@') || targetId.startsWith('whatsapp') ? targetId : `telegram_${targetId.replace('telegram_', '')}`;
-            const targetUser = await getUser(targetUKey);
-            if (targetUser) {
-                const cleanId = String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '');
-                if (!isNaN(cleanId) && !cleanId.includes('@')) {
-                    addContactBtn(isLivreur ? '✈️ Telegram Client' : '✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
-                }
-                let phoneNum = targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber;
-                if (!phoneNum && targetUser.platform === 'whatsapp') {
-                    phoneNum = String(targetUser.platform_id || '').split('@')[0].split(':')[0];
-                }
-                if (phoneNum) {
-                    const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
-                    if (cleanPhone.length >= 8) {
-                        addContactBtn('📞 Appeler directement', `tel:${cleanPhone}`);
+            if (targetId) {
+                const targetUKey = targetId.includes('@') || targetId.startsWith('whatsapp') ? targetId : `telegram_${targetId.replace('telegram_', '')}`;
+                const targetUser = await getUser(targetUKey);
+                if (targetUser) {
+                    const cleanId = String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '');
+                    if (!isNaN(cleanId) && !cleanId.includes('@')) {
+                        addContactBtn('✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
                     }
-                }
-            }
-        }
-
-        if (isLivreur) {
-            if (order.phone && order.phone !== 'Non spécifié') {
-                const cleanPhone = order.phone.replace(/[^\d+]/g, '');
-                if (cleanPhone.length >= 8) {
-                    addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
-                }
-            }
-            if (order.username && order.username !== 'Non spécifié') {
-                if (order.username.startsWith('@')) {
-                    addContactBtn('✈️ Telegram Client', `https://t.me/${order.username.substring(1)}`);
-                } else {
-                    const cleanPhone = order.username.replace(/[^\d+]/g, '');
-                    if (cleanPhone.length >= 8) {
-                        addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
+                    let phoneNum = targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber;
+                    if (!phoneNum && targetUser.platform === 'whatsapp') {
+                        phoneNum = String(targetUser.platform_id || '').split('@')[0].split(':')[0];
+                    }
+                    if (phoneNum) {
+                        const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
+                        if (cleanPhone.length >= 8) {
+                            addContactBtn('📞 Appeler le livreur', `tel:${cleanPhone}`);
+                        }
                     }
                 }
             }
@@ -2850,7 +2840,20 @@ function setupOrderSystem(bot) {
 
                     const targetRoleLabel = isLivreur ? "client" : "livreur";
                     const successIcon = settings ? (settings.ui_icon_success || '✅') : '✅';
-                    await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`).catch(() => { });
+                    const backAction = isLivreur ? `view_active_${orderId}` : `view_order_${orderId}`;
+                    const successKeyboard = Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour à la commande', backAction)]]);
+
+                    if (chatData.promptMsgId) {
+                        // Remplacement de l'ancien message de prompt par la confirmation pour effacer proprement le menu obsolète
+                        bot.telegram.editMessageText(ctx.from.id, chatData.promptMsgId, null, 
+                            `${successIcon} <b>Message ${newCount}/6 transmis au ${targetRoleLabel}.</b>\n\n"<i>${safeHtml(reply)}</i>"`, 
+                            { parse_mode: 'HTML', ...successKeyboard }
+                        ).catch(() => {});
+                        // Suppression native de la bulle de saisie de l'utilisateur pour un rendu irréprochable
+                        ctx.deleteMessage().catch(() => {});
+                    } else {
+                        await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`, { parse_mode: 'HTML', ...successKeyboard }).catch(() => { });
+                    }
                 } else {
                     await ctx.reply("❌ Commande introuvable pour ce chat.").catch(() => { });
                 }
@@ -2946,63 +2949,7 @@ function setupOrderSystem(bot) {
                 `"<i>${chatHist.lastMessage}</i>"\n\n`;
         }
 
-        // Boutons d'appel direct / contact mis en priorité absolue
-        let contactButtons = [];
-        const seenUrls = new Set();
-        const addContactBtn = (label, url) => {
-            if (!seenUrls.has(url)) {
-                seenUrls.add(url);
-                contactButtons.push(Markup.button.url(label, url));
-            }
-        };
-
-        if (order.user_id) {
-            const clientUKey = order.user_id.includes('@') || order.user_id.startsWith('whatsapp') ? order.user_id : `telegram_${order.user_id.replace('telegram_', '')}`;
-            const clientUser = await getUser(clientUKey);
-            if (clientUser) {
-                const cleanId = String(clientUser.id).replace('telegram_', '').replace('whatsapp_', '');
-                if (!isNaN(cleanId) && !cleanId.includes('@')) {
-                    addContactBtn('✈️ Telegram Client', `tg://user?id=${cleanId}`);
-                }
-                let phoneNum = clientUser.phone || clientUser.data?.phone || clientUser.data?.phoneNumber;
-                if (!phoneNum && clientUser.platform === 'whatsapp') {
-                    phoneNum = String(clientUser.platform_id || '').split('@')[0].split(':')[0];
-                }
-                if (phoneNum) {
-                    const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
-                    if (cleanPhone.length >= 8) {
-                        addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
-                    }
-                }
-            }
-        }
-
-        if (order.phone && order.phone !== 'Non spécifié') {
-            const cleanPhone = order.phone.replace(/[^\d+]/g, '');
-            if (cleanPhone.length >= 8) {
-                addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
-            }
-        }
-        if (order.username && order.username !== 'Non spécifié') {
-            if (order.username.startsWith('@')) {
-                addContactBtn('✈️ Contacter Telegram', `https://t.me/${order.username.substring(1)}`);
-            } else {
-                const cleanPhone = order.username.replace(/[^\d+]/g, '');
-                if (cleanPhone.length >= 8) {
-                    addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
-                }
-            }
-        }
-
-        const actionButtons = [];
-        // On place les boutons de contact en tout premier pour qu'ils soient immanquables
-        if (contactButtons.length > 0) {
-            for (let i = 0; i < contactButtons.length; i += 2) {
-                actionButtons.push(contactButtons.slice(i, i + 2));
-            }
-        }
-
-        actionButtons.push(
+        const actionButtons = [
             [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
             [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
             [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
@@ -3011,7 +2958,7 @@ function setupOrderSystem(bot) {
             [Markup.button.callback(settings.btn_abandon_delivery || '❌ Abandonner la livraison', `abandon_${orderId}`)],
             [Markup.button.callback('🚩 ANNULER LA COMMANDE', `cancel_order_livreur_${orderId}`)],
             [Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'active_deliveries')]
-        );
+        ];
 
         await safeEdit(ctx, detailText + `Utilisez les boutons ci-dessous pour avancer :`,
             {
