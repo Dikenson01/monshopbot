@@ -2851,8 +2851,10 @@ function setupOrderSystem(bot) {
                         ).catch(() => {});
                         // Suppression native de la bulle de saisie de l'utilisateur pour un rendu irréprochable
                         ctx.deleteMessage().catch(() => {});
+                        addMessageToTrack(userId, chatData.promptMsgId, true).catch(() => {});
                     } else {
-                        await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`, { parse_mode: 'HTML', ...successKeyboard }).catch(() => { });
+                        const fb = await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`, { parse_mode: 'HTML', ...successKeyboard }).catch(() => { });
+                        if (fb && fb.message_id) addMessageToTrack(userId, fb.message_id, true).catch(() => {});
                     }
                 } else {
                     await ctx.reply("❌ Commande introuvable pour ce chat.").catch(() => { });

@@ -262,6 +262,27 @@ async function sendMessageToUser(userId, message, options = {}, providedBot = nu
         if (options.parse_mode) extra.parse_mode = options.parse_mode;
         if (options.protect_content !== undefined) extra.protect_content = options.protect_content;
 
+        // RÈGLE D'ARCHITECTURE ABSOLUE : "Il ne doit y avoir qu'un module dans le bot et rien d'autre, tous les anciens menus doivent disparaître"
+        // Nettoyage atomique universel de tous les anciens messages/menus de l'utilisateur avant d'afficher le nouveau
+        try {
+            const { getUser } = require('./database');
+            const targetUser = await getUser(userId);
+            if (targetUser) {
+                const toDelete = new Set();
+                if (targetUser.last_menu_id) toDelete.add(targetUser.last_menu_id);
+                if (Array.isArray(targetUser.tracked_messages)) {
+                    targetUser.tracked_messages.forEach(id => toDelete.add(id));
+                }
+                if (toDelete.size > 0) {
+                    for (const oldId of toDelete) {
+                        realBot.telegram.deleteMessage(cleanId, oldId).catch(() => {});
+                    }
+                }
+            }
+        } catch (cleanErr) {
+            console.error('[MSG-CLEANUP] Failed to eradicate old menus:', cleanErr.message);
+        }
+
         let sent;
         try {
             if (options.photo) {
@@ -284,8 +305,16 @@ async function sendMessageToUser(userId, message, options = {}, providedBot = nu
             trackIntermediateMessage(userId, sent.message_id).catch(() => {});
             
             try {
-                const { addMessageToTrack } = require('./database');
-                addMessageToTrack(userId, sent.message_id, false).catch(() => {});
+                const { addMessageToTrack, supabase, COL_USERS } = require('./database');
+                // Synchronisation parfaite : on enregistre ce message comme l'UNIQUE module/menu actif du bot
+                if (supabase && COL_USERS) {
+                    supabase.from(COL_USERS).update({
+                        tracked_messages: [sent.message_id],
+                        last_menu_id: sent.message_id
+                    }).eq('id', userId).then(() => {}).catch(() => {});
+                } else {
+                    addMessageToTrack(userId, sent.message_id, true).catch(() => {});
+                }
             } catch (e) {}
         }
         return sent;
