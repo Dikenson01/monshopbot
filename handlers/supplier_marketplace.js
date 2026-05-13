@@ -1483,4 +1483,21 @@ function setupMarketplaceHandlers(bot) {
     return { handleMarketplaceText, handleMarketplacePhoto, handleMarketplaceVideo };
 }
 
-module.exports = { setupMarketplaceHandlers, initMarketplaceState, clearAllAwaitingMaps };
+module.exports = { 
+    setupMarketplaceHandlers, 
+    initMarketplaceState, 
+    clearAllAwaitingMaps,
+    hasActiveMarketplaceState: (userId) => {
+        const id = String(userId);
+        // On check à la fois avec le format complet (ex: telegram_12345) et purement numérique (12345)
+        const numericId = id.replace(/\D/g, '');
+        return awaitingProductName.has(id) || awaitingProductName.has(numericId) ||
+               awaitingProductPrice.has(id) || awaitingProductPrice.has(numericId) ||
+               awaitingProductDesc.has(id) || awaitingProductDesc.has(numericId) ||
+               awaitingProductPhoto.has(id) || awaitingProductPhoto.has(numericId) ||
+               awaitingProductStock.has(id) || awaitingProductStock.has(numericId) ||
+               awaitingProductCategory.has(id) || awaitingProductCategory.has(numericId) ||
+               awaitingProductEdit.has(id) || awaitingProductEdit.has(numericId) ||
+               awaitingSupplierAdminChat.has(id) || awaitingSupplierAdminChat.has(numericId);
+    }
+};

@@ -228,6 +228,55 @@ async function safeEdit(ctx, text, opts = {}) {
             }
 
             // CAS 2 : Type différent (texte→media ou media→texte) → Delete ancien + Send nouveau
+            // Éradication atomique préventive universelle : garantit qu'un seul module actif/visible subsiste
+            const eradicatePreviousModules = async () => {
+                try {
+                    const { getUser, supabase, COL_USERS, _userCache } = require('./database');
+                    const targetUser = await getUser(userId);
+                    if (targetUser) {
+                        const toDelete = new Set();
+                        if (targetUser.last_menu_id) toDelete.add(targetUser.last_menu_id);
+                        if (Array.isArray(targetUser.tracked_messages)) {
+                            targetUser.tracked_messages.forEach(id => toDelete.add(id));
+                        }
+                        const cached = _trackedCache.get(userId) || [];
+                        cached.forEach(id => toDelete.add(id));
+
+                        if (toDelete.size > 0) {
+                            const { registry } = require('../channels/ChannelRegistry');
+                            if (ctx.platform === 'telegram') {
+                                const tgCh = registry.query('telegram');
+                                const realBot = tgCh?.getBotInstance?.();
+                                if (realBot) {
+                                    const cleanId = String(chatId || userId).replace(/^(telegram_|whatsapp_)/, '').split('@')[0];
+                                    for (const oldId of toDelete) {
+                                        if (currentMsg && String(oldId) === String(currentMsg.message_id)) continue;
+                                        realBot.telegram.deleteMessage(cleanId, oldId).catch(() => {});
+                                    }
+                                }
+                            } else if (ctx.platform === 'whatsapp') {
+                                const waCh = registry.query('whatsapp');
+                                if (waCh) {
+                                    const waTarget = String(chatId || userId);
+                                    for (const oldId of toDelete) {
+                                        waCh.deleteMessage(waTarget, oldId).catch(() => {});
+                                    }
+                                }
+                            }
+                            
+                            // Purge immédiate du cache et base pour éviter toute accumulation ou course asynchrone
+                            _trackedCache.set(userId, []);
+                            if (_userCache) _userCache.delete(userId);
+                            try {
+                                await supabase.from(COL_USERS).update({ tracked_messages: [] }).eq('id', userId);
+                            } catch (dbE) {}
+                        }
+                    }
+                } catch (eradicateErr) {}
+            };
+
+            await eradicatePreviousModules();
+
             let newMsg;
             try {
                 if (photo || video) {
@@ -265,6 +314,54 @@ async function safeEdit(ctx, text, opts = {}) {
         // B. PAS DE CALLBACK (premier envoi, ou WhatsApp)
         //    → Send nouveau + supprimer l'ancien menu
         // ═══════════════════════════════════════════════════
+        // Éradication atomique préventive universelle : garantit qu'un seul module actif/visible subsiste
+        const eradicatePreviousModulesBlockB = async () => {
+            try {
+                const { getUser, supabase, COL_USERS, _userCache } = require('./database');
+                const targetUser = await getUser(userId);
+                if (targetUser) {
+                    const toDelete = new Set();
+                    if (targetUser.last_menu_id) toDelete.add(targetUser.last_menu_id);
+                    if (Array.isArray(targetUser.tracked_messages)) {
+                        targetUser.tracked_messages.forEach(id => toDelete.add(id));
+                    }
+                    const cached = _trackedCache.get(userId) || [];
+                    cached.forEach(id => toDelete.add(id));
+
+                    if (toDelete.size > 0) {
+                        const { registry } = require('../channels/ChannelRegistry');
+                        if (ctx.platform === 'telegram') {
+                            const tgCh = registry.query('telegram');
+                            const realBot = tgCh?.getBotInstance?.();
+                            if (realBot) {
+                                const cleanId = String(chatId || userId).replace(/^(telegram_|whatsapp_)/, '').split('@')[0];
+                                for (const oldId of toDelete) {
+                                    realBot.telegram.deleteMessage(cleanId, oldId).catch(() => {});
+                                }
+                            }
+                        } else if (ctx.platform === 'whatsapp') {
+                            const waCh = registry.query('whatsapp');
+                            if (waCh) {
+                                const waTarget = String(chatId || userId);
+                                for (const oldId of toDelete) {
+                                    waCh.deleteMessage(waTarget, oldId).catch(() => {});
+                                }
+                            }
+                        }
+                        
+                        // Purge immédiate du cache et base
+                        _trackedCache.set(userId, []);
+                        if (_userCache) _userCache.delete(userId);
+                        try {
+                            await supabase.from(COL_USERS).update({ tracked_messages: [] }).eq('id', userId);
+                        } catch (dbE) {}
+                    }
+                }
+            } catch (eradicateErr) {}
+        };
+
+        await eradicatePreviousModulesBlockB();
+
         let newMsg;
         if (photo || video) {
             try {

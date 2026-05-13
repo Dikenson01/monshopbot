@@ -130,7 +130,7 @@ function setupStartHandler(bot) {
 
             if (initMsg) {
                 const mid = initMsg.message_id || initMsg.messageId;
-                addMessageToTrack(docId, mid).catch(() => {});
+                addMessageToTrack(docId, mid, false).catch(() => {});
                 
                 const steps = [
                     { p: 35, s: 'Bypassing security protocols...' },

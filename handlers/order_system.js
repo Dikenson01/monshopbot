@@ -3381,8 +3381,20 @@ module.exports = {
     pendingOrderConfirmation,
     awaitingDelayReason,
     awaitingChatReply,
+    awaitingReviewText,
     checkAbandonedCarts,
     userLastActivity,
     awaitingPaymentProof,
-    activeChatHistory
+    activeChatHistory,
+    hasActiveOrderState: (userId) => {
+        const id = String(userId);
+        const numericId = id.replace(/\D/g, '');
+        return awaitingAddressDetails.has(id) || awaitingAddressDetails.has(numericId) ||
+               pendingOrderConfirmation.has(id) || pendingOrderConfirmation.has(numericId) ||
+               pendingOrders.has(id) || pendingOrders.has(numericId) ||
+               awaitingDelayReason.has(id) || awaitingDelayReason.has(numericId) ||
+               awaitingChatReply.has(id) || awaitingChatReply.has(numericId) ||
+               awaitingReviewText.has(id) || awaitingReviewText.has(numericId) ||
+               awaitingPaymentProof.has(id) || awaitingPaymentProof.has(numericId);
+    }
 };
