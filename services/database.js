@@ -47,6 +47,21 @@ function decryptUser(userData) {
     if (!meta || typeof meta !== 'object') meta = {};
     decrypted.data = meta;
 
+    // Restauration complète des adresses sauvegardées depuis le JSONB
+    if (meta.saved_addresses_blob) {
+        decrypted.address = meta.saved_addresses_blob;
+    } else if (Array.isArray(meta.addresses) && meta.addresses.length > 0) {
+        try {
+            decrypted.address = JSON.stringify(meta.addresses.map((a, i) => ({
+                id: String(Date.now() + i),
+                name: 'Adresse ' + (i + 1),
+                address: a
+            })));
+        } catch(e) {}
+    } else {
+        decrypted.address = '';
+    }
+
     // is_available: JSONB wins, then root column, then false
     if (meta.is_available !== undefined) {
         decrypted.is_available = !!meta.is_available;
@@ -716,6 +731,23 @@ async function saveUserAddress(docId, address) {
     if (!addresses.includes(normalized)) {
         addresses.push(normalized);
         data.addresses = addresses;
+
+        let blobArr = [];
+        try {
+            if (data.saved_addresses_blob) {
+                const parsed = JSON.parse(data.saved_addresses_blob);
+                if (Array.isArray(parsed)) blobArr = parsed;
+            }
+        } catch(e) {}
+        
+        if (!blobArr.some(a => (a.address || '').trim() === normalized)) {
+            blobArr.push({
+                id: String(Date.now()),
+                name: 'Adresse ' + (blobArr.length + 1),
+                address: normalized
+            });
+            data.saved_addresses_blob = JSON.stringify(blobArr);
+        }
 
         const targetId = user.doc_id || user.id;
         await supabase.from(COL_USERS).update({ data }).eq('id', targetId);
@@ -3161,15 +3193,17 @@ async function updateUser(userId, data) {
     const targetId = user ? (user.doc_id || user.id) : userId;
 
     let updatePayload = { ...data };
-    if (updatePayload.address !== undefined && user) {
-        let meta = user.data || {};
+    if (updatePayload.address !== undefined) {
+        let meta = user ? { ...(user.data || {}) } : {};
+        meta.saved_addresses_blob = updatePayload.address;
         try {
             const parsed = JSON.parse(updatePayload.address);
             if (Array.isArray(parsed)) {
                 meta.addresses = parsed.map(a => a.address).filter(Boolean);
-                updatePayload.data = meta;
             }
         } catch(e) {}
+        updatePayload.data = meta;
+        delete updatePayload.address;
     }
 
     const { error } = await supabase.from(COL_USERS).update(updatePayload).eq('id', targetId);
