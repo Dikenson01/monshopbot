@@ -1110,20 +1110,35 @@
                 let addresses = parseAddresses(userInfo?.address);
                 let addrHtml = '';
                 if(addresses.length > 0) {
-                    addrHtml = addresses.map((a, i) => `
-                        <label style="display:flex; align-items:flex-start; gap:10px; background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-bottom:10px;">
-                            <input type="radio" name="checkout_addr" value="${a.id}" ${i === 0 ? 'checked' : ''} style="margin-top:2px; accent-color:var(--accent);">
-                            <div>
+                    addrHtml = `<div style="font-size:11px; font-weight:800; opacity:0.6; margin-bottom:8px;">MES ADRESSES ENREGISTRÉES</div>`;
+                    addrHtml += addresses.map((a, i) => `
+                        <label style="display:flex; align-items:flex-start; gap:10px; background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-bottom:10px; cursor:pointer;">
+                            <input type="radio" name="checkout_addr" value="${a.id}" ${i === 0 ? 'checked' : ''} style="margin-top:2px; accent-color:var(--accent);" onchange="const sec=document.getElementById('new-addr-section'); if(sec) sec.style.opacity='0.4';">
+                            <div style="flex:1;">
                                 <div style="font-weight:900; font-size:14px; margin-bottom:2px;">${a.name}</div>
                                 <div style="font-size:12px; opacity:0.7;">${a.address}</div>
                                 ${a.digicode ? `<div style="font-size:11px; opacity:0.5; margin-top:2px;">Infos: ${a.digicode}</div>` : ''}
                             </div>
                         </label>
                     `).join('');
+                    
+                    addrHtml += `
+                        <label style="display:flex; align-items:center; gap:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:12px 15px; border-radius:15px; margin-top:15px; margin-bottom:10px; cursor:pointer;">
+                            <input type="radio" name="checkout_addr" value="new" style="accent-color:var(--accent);" onchange="const sec=document.getElementById('new-addr-section'); if(sec) sec.style.opacity='1';">
+                            <span style="font-size:13px; font-weight:800; color:var(--accent);">➕ Saisir une autre adresse</span>
+                        </label>
+                        <div id="new-addr-section" style="opacity:0.4; transition:0.3s; padding-left:5px;">
+                            <textarea id="order-address" placeholder="Saisir la rue, ville... (Autocomplétion)" oninput="handleAddressAutocomplete(this.value, 'order-address')" autocomplete="shipping street-address" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:70px; outline:none; margin-bottom:5px; box-sizing:border-box;"></textarea>
+                            <div id="address-suggestions-order-address" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
+                            <input id="order-note" type="text" placeholder="Interphone, digicode..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; box-sizing:border-box;">
+                        </div>
+                    `;
                 } else {
                     addrHtml = `
-                        <textarea id="order-address" placeholder="Rue, Ville, Code Postal..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:80px; outline:none; margin-bottom:10px;"></textarea>
-                        <input id="order-note" type="text" placeholder="Interphone, digicode..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none;">
+                        <textarea id="order-address" placeholder="Saisir la rue, ville... (Autocomplétion en temps réel)" oninput="handleAddressAutocomplete(this.value, 'order-address')" autocomplete="shipping street-address" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:80px; outline:none; margin-bottom:5px; box-sizing:border-box;"></textarea>
+                        <div id="address-suggestions-order-address" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
+                        <input id="order-note" type="text" placeholder="Interphone, digicode..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; box-sizing:border-box;">
+                        <input type="radio" name="checkout_addr" value="new" checked style="display:none;">
                     `;
                 }
 
@@ -1161,7 +1176,7 @@
             let finalNote = '';
             
             const radio = document.querySelector('input[name="checkout_addr"]:checked');
-            if (radio) {
+            if (radio && radio.value !== 'new') {
                 const addrs = parseAddresses(userInfo?.address);
                 const selected = addrs.find(a => a.id === radio.value);
                 if (selected) {
@@ -1171,6 +1186,18 @@
             } else {
                 finalAddress = document.getElementById('order-address')?.value?.trim();
                 finalNote = document.getElementById('order-note')?.value?.trim();
+                if (finalAddress) {
+                    savedAddresses = parseAddresses(userInfo?.address);
+                    if (!savedAddresses.some(a => a.address.toLowerCase() === finalAddress.toLowerCase())) {
+                        savedAddresses.push({
+                            id: Date.now().toString(),
+                            name: 'Adresse ' + (savedAddresses.length + 1),
+                            address: finalAddress,
+                            digicode: finalNote || ''
+                        });
+                        await syncAddressesToServer();
+                    }
+                }
             }
 
             if (!finalAddress) return tg.showAlert("Veuillez choisir ou saisir une adresse");
@@ -1295,10 +1322,51 @@
             openCustomModal('MES ADRESSES', html);
         }
 
+        let addressAutocompleteTimeout;
+        async function handleAddressAutocomplete(query, targetId) {
+            const container = document.getElementById(`address-suggestions-${targetId}`);
+            if (!container) return;
+            if (!query || query.length < 3) {
+                container.style.display = 'none';
+                return;
+            }
+            clearTimeout(addressAutocompleteTimeout);
+            addressAutocompleteTimeout = setTimeout(async () => {
+                try {
+                    const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`);
+                    const data = await res.json();
+                    if (data && data.features && data.features.length > 0) {
+                        container.innerHTML = data.features.map(f => `
+                            <div style="padding:10px 12px; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; color:rgba(255,255,255,0.95); text-align:left;" 
+                                 onclick="selectAddressSuggestion('${f.properties.label.replace(/'/g, "\\'")}', '${targetId}')">
+                                📍 ${f.properties.label}
+                            </div>
+                        `).join('');
+                        container.style.display = 'block';
+                    } else {
+                        container.style.display = 'none';
+                    }
+                } catch(e) {
+                    container.style.display = 'none';
+                }
+            }, 300);
+        }
+
+        function selectAddressSuggestion(label, targetId) {
+            const input = document.getElementById(targetId);
+            if (input) {
+                input.value = label;
+            }
+            const container = document.getElementById(`address-suggestions-${targetId}`);
+            if (container) container.style.display = 'none';
+            try { tg.HapticFeedback.impactOccurred('light'); } catch(e){}
+        }
+
         function showAddAddressForm() {
             const html = `
                 <input type="text" id="new-addr-name" placeholder="Nom (ex: Domicile, Bureau)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box;">
-                <textarea id="new-addr-val" placeholder="Adresse complète (Rue, Ville...)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box; height:80px;"></textarea>
+                <textarea id="new-addr-val" placeholder="Adresse complète (Autocomplétion en temps réel)" oninput="handleAddressAutocomplete(this.value, 'new-addr-val')" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:5px; box-sizing:border-box; height:80px;"></textarea>
+                <div id="address-suggestions-new-addr-val" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
                 <input type="text" id="new-addr-digicode" placeholder="Digicode / Instructions (optionnel)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
                 
                 <button class="btn-primary" style="background:var(--accent); color:#fff;" onclick="saveNewAddress()"><i class="ph-fill ph-floppy-disk"></i> ENREGISTRER</button>
