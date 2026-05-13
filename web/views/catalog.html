@@ -1300,10 +1300,12 @@
         }
 
         function renderAddressModal() {
-            let listHtml = savedAddresses.map(a => `
-                <div style="background:var(--card); border:1px solid var(--border); border-radius:15px; padding:15px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div style="font-weight:900; font-size:14px; margin-bottom:2px;">${a.name}</div>
+            let listHtml = savedAddresses.map((a, idx) => `
+                <div style="background:var(--card); border:1px solid ${idx === 0 ? 'var(--accent)' : 'var(--border)'}; border-radius:15px; padding:15px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="flex:1; cursor:pointer;" onclick="showAddressActions('${a.id}')">
+                        <div style="font-weight:900; font-size:14px; margin-bottom:2px; display:flex; align-items:center; gap:5px;">
+                            ${a.name} ${idx === 0 ? '<span style="font-size:9px; background:var(--accent); color:#fff; padding:2px 5px; border-radius:4px;">PAR DÉFAUT</span>' : ''}
+                        </div>
                         <div style="font-size:12px; opacity:0.7;">${a.address}</div>
                         ${a.digicode ? `<div style="font-size:11px; opacity:0.5; margin-top:2px;">Infos: ${a.digicode}</div>` : ''}
                     </div>
@@ -1315,11 +1317,66 @@
 
             const html = `
                 <div style="max-height:40vh; overflow-y:auto; margin-bottom:20px;">
+                    <div style="font-size:11px; font-weight:800; opacity:0.5; margin-bottom:10px; text-align:center;">💡 Cliquez sur une adresse pour l'éditer ou la définir par défaut</div>
                     ${listHtml}
                 </div>
                 <button class="btn-primary" style="background:none; border:1px solid var(--border); color:#fff; margin-bottom:10px;" onclick="showAddAddressForm()"><i class="ph-bold ph-plus"></i> AJOUTER UNE ADRESSE</button>
             `;
             openCustomModal('MES ADRESSES', html);
+        }
+
+        function showAddressActions(id) {
+            const addr = savedAddresses.find(a => a.id === id);
+            if (!addr) return;
+            const html = `
+                <div style="font-size:14px; font-weight:800; margin-bottom:15px; color:var(--accent); text-align:center;">${addr.name}</div>
+                <button class="btn-primary" style="background:var(--card); border:1px solid var(--border); color:#fff; margin-bottom:10px; font-weight:800;" onclick="editAddress('${addr.id}')"><i class="ph-bold ph-pencil"></i> ÉDITER L'ADRESSE</button>
+                <button class="btn-primary" style="background:var(--card); border:1px solid var(--accent); color:var(--accent); margin-bottom:10px; font-weight:800;" onclick="setAddressDefault('${addr.id}')"><i class="ph-bold ph-star"></i> DÉFINIR PAR DÉFAUT</button>
+                <button class="btn-primary" style="background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.3); color:#ff0050; margin-bottom:10px; font-weight:800;" onclick="removeAddress('${addr.id}')"><i class="ph-bold ph-trash"></i> SUPPRIMER</button>
+                <button class="btn-primary" style="background:none; border:none; color:#fff; opacity:0.5; margin-top:5px;" onclick="renderAddressModal()">ANNULER</button>
+            `;
+            openCustomModal('OPTIONS ADRESSE', html);
+        }
+
+        function editAddress(id) {
+            const addr = savedAddresses.find(a => a.id === id);
+            if (!addr) return;
+            const html = `
+                <input type="text" id="edit-addr-name" placeholder="Nom (ex: Domicile)" value="${addr.name.replace(/"/g, '&quot;')}" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box;">
+                <textarea id="edit-addr-val" placeholder="Adresse complète" oninput="handleAddressAutocomplete(this.value, 'edit-addr-val')" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:5px; box-sizing:border-box; height:80px;">${addr.address.replace(/"/g, '&quot;')}</textarea>
+                <div id="address-suggestions-edit-addr-val" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
+                <input type="text" id="edit-addr-digicode" placeholder="Digicode / Instructions" value="${(addr.digicode || '').replace(/"/g, '&quot;')}" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
+                
+                <button class="btn-primary" style="background:var(--accent); color:#fff;" onclick="saveEditedAddress('${addr.id}')"><i class="ph-fill ph-floppy-disk"></i> METTRE À JOUR</button>
+                <button class="btn-primary" style="background:none; border:none; color:#fff; opacity:0.5; margin-top:10px;" onclick="showAddressActions('${addr.id}')">RETOUR</button>
+            `;
+            openCustomModal('ÉDITER ADRESSE', html);
+        }
+
+        async function saveEditedAddress(id) {
+            const name = document.getElementById('edit-addr-name').value.trim();
+            const address = document.getElementById('edit-addr-val').value.trim();
+            const digicode = document.getElementById('edit-addr-digicode').value.trim();
+            
+            if(!name || !address) return tg.showAlert("Nom et Adresse sont requis.");
+            
+            const idx = savedAddresses.findIndex(a => a.id === id);
+            if (idx !== -1) {
+                savedAddresses[idx] = { ...savedAddresses[idx], name, address, digicode };
+                await syncAddressesToServer();
+            }
+            renderAddressModal();
+        }
+
+        async function setAddressDefault(id) {
+            const idx = savedAddresses.findIndex(a => a.id === id);
+            if (idx > 0) {
+                const [item] = savedAddresses.splice(idx, 1);
+                savedAddresses.unshift(item);
+                await syncAddressesToServer();
+            }
+            renderAddressModal();
+            try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
         }
 
         let addressAutocompleteTimeout;
@@ -1453,6 +1510,11 @@
                 if (n.id === focusId) d.scrollIntoView();
             });
             document.getElementById('notifications-modal').classList.add('open');
+            const dot = document.getElementById('news-dot');
+            if (dot) {
+                dot.style.display = 'none';
+                dot.innerText = '0';
+            }
             tg.HapticFeedback.impactOccurred('medium');
         }
 

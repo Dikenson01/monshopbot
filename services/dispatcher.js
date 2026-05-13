@@ -540,8 +540,18 @@ class Dispatcher {
             console.log(`[${platform}] ⚠️ Commande /${cmd} inconnue`);
         }
 
-        // 3. Fallback: mots-clés courants → menu principal
-        if (['menu', 'hi', 'bonjour', 'salut', 'hello', 'hey', 'yo', 'coucou', 'start', 'boutique', 'catalogue', 'commander', 'commande', 'aide', 'help'].includes(lowerText)) {
+        // Vérification de l'état d'occupation utilisateur pour éviter d'intercepter les réponses de chat par un /start
+        let isBusy = false;
+        try {
+            const { hasActiveOrderState } = require('../handlers/order_system');
+            const docIdKey = `${ctx.channel?.type || ctx.platform}_${userId}`;
+            if (hasActiveOrderState(docIdKey) || hasActiveOrderState(userId)) {
+                isBusy = true;
+            }
+        } catch(e) {}
+
+        // 3. Fallback: mots-clés courants → menu principal (uniquement si l'utilisateur n'est pas en pleine session interactive/chat)
+        if (!isBusy && ['menu', 'hi', 'bonjour', 'salut', 'hello', 'hey', 'yo', 'coucou', 'start', 'boutique', 'catalogue', 'commander', 'commande', 'aide', 'help'].includes(lowerText)) {
             console.log(`[${platform}] 🏠 Mot-clé menu → /start`);
             if (this.commands.has('start')) return await this.commands.get('start')(ctx);
         }

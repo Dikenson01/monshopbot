@@ -1929,6 +1929,17 @@ function setupOrderSystem(bot) {
             if (!isNaN(lIdClean) && !lIdClean.includes('@')) {
                 contactButtons.push(Markup.button.url('✈️ Profil Livreur', `tg://user?id=${lIdClean}`));
             }
+            const livreurUser = await getUser(order.livreur_id);
+            let phoneNum = livreurUser ? (livreurUser.phone || livreurUser.data?.phone || livreurUser.data?.phoneNumber) : null;
+            if (!phoneNum && String(order.livreur_id).includes('@s.whatsapp.net')) {
+                phoneNum = String(order.livreur_id).split('@')[0];
+            }
+            if (phoneNum) {
+                const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
+                if (cleanPhone.length >= 8) {
+                    contactButtons.push(Markup.button.url('📞 Appeler le livreur', `tel:${cleanPhone}`));
+                }
+            }
         }
 
         const feedbackBtn = order.status === 'delivered' ? [Markup.button.callback(t(user, 'btn_leave_review', '⭐ Laisser un avis'), `rate_order_${orderId}`)] : [];
@@ -2101,34 +2112,38 @@ function setupOrderSystem(bot) {
             `Saisissez et envoyez votre message ci-dessous :`;
 
         let contactButtons = [];
-        // Règle de confidentialité stricte : le livreur ne doit JAMAIS voir le profil ou les coordonnées directes du client
-        if (!isLivreur) {
-            const seenUrls = new Set();
-            const addContactBtn = (label, url) => {
-                if (!seenUrls.has(url)) {
-                    seenUrls.add(url);
-                    contactButtons.push(Markup.button.url(label, url));
-                }
-            };
+        const seenUrls = new Set();
+        const addContactBtn = (label, url) => {
+            if (!seenUrls.has(url)) {
+                seenUrls.add(url);
+                contactButtons.push(Markup.button.url(label, url));
+            }
+        };
 
-            if (targetId) {
-                const targetUKey = targetId.includes('@') || targetId.startsWith('whatsapp') ? targetId : `telegram_${targetId.replace('telegram_', '')}`;
-                const targetUser = await getUser(targetUKey);
-                if (targetUser) {
-                    const cleanId = String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '');
-                    if (!isNaN(cleanId) && !cleanId.includes('@')) {
-                        addContactBtn('✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
-                    }
-                    let phoneNum = targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber;
-                    if (!phoneNum && targetUser.platform === 'whatsapp') {
-                        phoneNum = String(targetUser.platform_id || '').split('@')[0].split(':')[0];
-                    }
-                    if (phoneNum) {
-                        const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
-                        if (cleanPhone.length >= 8) {
-                            addContactBtn('📞 Appeler le livreur', `tel:${cleanPhone}`);
-                        }
-                    }
+        if (targetId) {
+            const targetUKey = targetId.includes('@') || targetId.startsWith('whatsapp') ? targetId : `telegram_${targetId.replace('telegram_', '')}`;
+            const targetUser = await getUser(targetUKey);
+            
+            const cleanId = targetUser ? String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '') : targetId.replace('telegram_', '').replace('whatsapp_', '');
+            if (!isNaN(cleanId) && !cleanId.includes('@')) {
+                addContactBtn(isLivreur ? '✈️ Telegram Client' : '✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
+            }
+
+            let phoneNum = targetUser ? (targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber) : null;
+            if (!phoneNum && isLivreur && order.phone) {
+                phoneNum = order.phone;
+            }
+            if (!phoneNum && targetUser?.platform === 'whatsapp') {
+                phoneNum = String(targetUser.platform_id || '').split('@')[0].split(':')[0];
+            }
+            if (!phoneNum && targetId.includes('@s.whatsapp.net')) {
+                phoneNum = targetId.split('@')[0];
+            }
+            
+            if (phoneNum) {
+                const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
+                if (cleanPhone.length >= 8) {
+                    addContactBtn(isLivreur ? '📞 Appeler le client' : '📞 Appeler le livreur', `tel:${cleanPhone}`);
                 }
             }
         }
