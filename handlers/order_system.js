@@ -2059,16 +2059,16 @@ function setupOrderSystem(bot) {
         const count = parseInt(order?.chat_count) || 0;
         const isLivreur = `${ctx.platform}_${ctx.from.id}` === order.livreur_id;
 
-        // Validation stricte du schéma : 1. Client -> 2. Livreur -> 3. Client ... -> 6
+        // Validation stricte du schéma sans créer de bulles textuelles inutiles
         if (count >= 6) {
-            return ctx.reply("⚠️ <b>Limite d'échanges atteinte.</b>\n\nLe chat est clôturé (6/6).", { parse_mode: 'HTML' });
+            return ctx.answerCbQuery("⚠️ Limite d'échanges atteinte (6/6). Le chat est clôturé.", true);
         }
 
         if (count % 2 === 1 && !isLivreur) {
-            return ctx.reply(`⏳ <b>Attendez la réponse du livreur.</b> (Message ${count}/6 déjà envoyé)`, { parse_mode: 'HTML' });
+            return ctx.answerCbQuery(`⏳ Attendez la réponse du livreur. (Message ${count}/6 déjà envoyé)`, true);
         }
         if (count % 2 === 0 && count > 0 && isLivreur) {
-            return ctx.reply(`✅ <b>Vous avez déjà répondu.</b>\n\nLe client doit renvoyer un message (${count}/6).`, { parse_mode: 'HTML' });
+            return ctx.answerCbQuery(`✅ Vous avez déjà répondu. Le client doit renvoyer un message (${count}/6).`, true);
         }
 
         // Nettoyage des autres états
@@ -2080,10 +2080,78 @@ function setupOrderSystem(bot) {
 
         awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { orderId, targetId, role: targetRole });
 
-        let promptText = `💬 <b>Message (${count + 1}/6)</b>\nEnvoyez votre message :`;
-        if (count === 5) promptText = "💬 <b>Dernier message de conclusion (6/6)</b>\nEnvoyez votre message final :";
+        const backBtnTarget = isLivreur ? `view_active_${orderId}` : `view_order_${orderId}`;
+        const chatHist = activeChatHistory.get(orderId);
+        
+        let promptText = `💬 <b>SESSION DE CHAT (${count}/6)</b>\n\n`;
+        if (chatHist) {
+            promptText += `📜 <b>Dernier échange :</b>\n` +
+                `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
+                `"<i>${chatHist.lastMessage}</i>"\n\n`;
+        }
 
-        await ctx.reply(promptText, { parse_mode: 'HTML' });
+        promptText += `👉 <b>À votre tour :</b>\n` +
+            (count === 5 ? "⚠️ <i>Ceci est le dernier message de conclusion (6/6).</i>\n" : "") +
+            `Saisissez et envoyez votre message ci-dessous :`;
+
+        let contactButtons = [];
+        const seenUrls = new Set();
+        const addContactBtn = (label, url) => {
+            if (!seenUrls.has(url)) {
+                seenUrls.add(url);
+                contactButtons.push(Markup.button.url(label, url));
+            }
+        };
+
+        if (targetId) {
+            const targetUKey = targetId.includes('@') || targetId.startsWith('whatsapp') ? targetId : `telegram_${targetId.replace('telegram_', '')}`;
+            const targetUser = await getUser(targetUKey);
+            if (targetUser) {
+                const cleanId = String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '');
+                if (!isNaN(cleanId) && !cleanId.includes('@')) {
+                    addContactBtn(isLivreur ? '✈️ Telegram Client' : '✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
+                }
+                let phoneNum = targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber;
+                if (!phoneNum && targetUser.platform === 'whatsapp') {
+                    phoneNum = String(targetUser.platform_id || '').split('@')[0].split(':')[0];
+                }
+                if (phoneNum) {
+                    const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
+                    if (cleanPhone.length >= 8) {
+                        addContactBtn('📞 Appeler directement', `tel:${cleanPhone}`);
+                    }
+                }
+            }
+        }
+
+        if (isLivreur) {
+            if (order.phone && order.phone !== 'Non spécifié') {
+                const cleanPhone = order.phone.replace(/[^\d+]/g, '');
+                if (cleanPhone.length >= 8) {
+                    addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
+                }
+            }
+            if (order.username && order.username !== 'Non spécifié') {
+                if (order.username.startsWith('@')) {
+                    addContactBtn('✈️ Telegram Client', `https://t.me/${order.username.substring(1)}`);
+                } else {
+                    const cleanPhone = order.username.replace(/[^\d+]/g, '');
+                    if (cleanPhone.length >= 8) {
+                        addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
+                    }
+                }
+            }
+        }
+
+        const buttons = [];
+        if (contactButtons.length > 0) {
+            for (let i = 0; i < contactButtons.length; i += 2) {
+                buttons.push(contactButtons.slice(i, i + 2));
+            }
+        }
+        buttons.push([Markup.button.callback('◀️ Retour aux détails', backBtnTarget)]);
+
+        await safeEdit(ctx, promptText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
     });
 
     bot.action(/^abandon_(.+)$/, async (ctx) => {
@@ -2878,7 +2946,7 @@ function setupOrderSystem(bot) {
                 `"<i>${chatHist.lastMessage}</i>"\n\n`;
         }
 
-        // Boutons d'appel direct / contact
+        // Boutons d'appel direct / contact mis en priorité absolue
         let contactButtons = [];
         const seenUrls = new Set();
         const addContactBtn = (label, url) => {
@@ -2887,6 +2955,27 @@ function setupOrderSystem(bot) {
                 contactButtons.push(Markup.button.url(label, url));
             }
         };
+
+        if (order.user_id) {
+            const clientUKey = order.user_id.includes('@') || order.user_id.startsWith('whatsapp') ? order.user_id : `telegram_${order.user_id.replace('telegram_', '')}`;
+            const clientUser = await getUser(clientUKey);
+            if (clientUser) {
+                const cleanId = String(clientUser.id).replace('telegram_', '').replace('whatsapp_', '');
+                if (!isNaN(cleanId) && !cleanId.includes('@')) {
+                    addContactBtn('✈️ Telegram Client', `tg://user?id=${cleanId}`);
+                }
+                let phoneNum = clientUser.phone || clientUser.data?.phone || clientUser.data?.phoneNumber;
+                if (!phoneNum && clientUser.platform === 'whatsapp') {
+                    phoneNum = String(clientUser.platform_id || '').split('@')[0].split(':')[0];
+                }
+                if (phoneNum) {
+                    const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
+                    if (cleanPhone.length >= 8) {
+                        addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
+                    }
+                }
+            }
+        }
 
         if (order.phone && order.phone !== 'Non spécifié') {
             const cleanPhone = order.phone.replace(/[^\d+]/g, '');
@@ -2905,13 +2994,8 @@ function setupOrderSystem(bot) {
             }
         }
 
-        const actionButtons = [
-            [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
-            [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
-            [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
-            [Markup.button.callback(chatHist ? '💬 Répondre au client' : '💬 Parler au client', `chat_livreur_${orderId}`)]
-        ];
-
+        const actionButtons = [];
+        // On place les boutons de contact en tout premier pour qu'ils soient immanquables
         if (contactButtons.length > 0) {
             for (let i = 0; i < contactButtons.length; i += 2) {
                 actionButtons.push(contactButtons.slice(i, i + 2));
@@ -2919,6 +3003,10 @@ function setupOrderSystem(bot) {
         }
 
         actionButtons.push(
+            [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
+            [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
+            [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
+            [Markup.button.callback(chatHist ? '💬 Répondre au client' : '💬 Parler au client', `chat_livreur_${orderId}`)],
             [Markup.button.callback(`${settings.ui_icon_success} MARQUER COMME LIVRÉE`, `finish_${orderId}`)],
             [Markup.button.callback(settings.btn_abandon_delivery || '❌ Abandonner la livraison', `abandon_${orderId}`)],
             [Markup.button.callback('🚩 ANNULER LA COMMANDE', `cancel_order_livreur_${orderId}`)],
