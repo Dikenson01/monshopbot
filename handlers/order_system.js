@@ -969,6 +969,12 @@ function setupOrderSystem(bot) {
 
 
         if (!ctx.message.text || ctx.message.text.startsWith('/')) return next();
+
+        // SÉCURITÉ : Ne pas intercepter comme adresse si l'utilisateur est en train de chatter ou de laisser un avis
+        if (awaitingChatReply.has(userId) || awaitingDelayReason.has(userId) || awaitingReviewText.has(userId)) {
+            return next();
+        }
+
         const addrState = awaitingAddressDetails.get(userId);
 
         // Step 1: Address Validation -> Suite vers SCHEDULING
@@ -2049,6 +2055,7 @@ function setupOrderSystem(bot) {
 
         // Nettoyage des autres états
         awaitingDelayReason.delete(userId);
+        awaitingAddressDetails.delete(userId);
 
         const targetId = isLivreur ? order.user_id : order.livreur_id;
         const targetRole = isLivreur ? "client" : "livreur";

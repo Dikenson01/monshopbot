@@ -405,6 +405,68 @@ function setupAdminHandlers(bot) {
         return showAdminTickets(ctx);
     });
 
+    bot.action(/^admin_ticket_close_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const ticketId = ctx.match[1];
+        const { supabase } = require('../services/database');
+        try {
+            const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
+            if (ticket) {
+                let parsed = {};
+                try { 
+                    parsed = JSON.parse(ticket.message); 
+                    if (typeof parsed !== 'object') throw new Error('Not an object');
+                } catch (e) { 
+                    parsed = { reason: ticket.message }; 
+                }
+                parsed.status = 'closed';
+                parsed.closed_at = new Date().toISOString();
+                await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
+                
+                // Notifier le client si possible
+                const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+                const { sendTelegramMessage } = require('../services/notifications');
+                await sendTelegramMessage(`${platformPrefix}${ticket.user_id}`, `✅ <b>Votre ticket a été marqué comme résolu et clôturé par un administrateur.</b>\n\nMerci de votre confiance !`);
+            }
+            await ctx.answerCbQuery('Ticket clôturé avec succès.');
+            return showAdminTickets(ctx);
+        } catch (e) {
+            console.error('[TicketClose] Error:', e);
+            await ctx.answerCbQuery('⚠️ Erreur lors de la clôture.');
+        }
+    });
+
+    bot.action(/^admin_ticket_open_(.+)$/, async (ctx) => {
+        if (!(await isAdmin(ctx))) return;
+        const ticketId = ctx.match[1];
+        const { supabase } = require('../services/database');
+        try {
+            const { data: ticket } = await supabase.from('bot_support_logs').select('*').eq('id', ticketId).single();
+            if (ticket) {
+                let parsed = {};
+                try { 
+                    parsed = JSON.parse(ticket.message); 
+                    if (typeof parsed !== 'object') throw new Error('Not an object');
+                } catch (e) { 
+                    parsed = { reason: ticket.message }; 
+                }
+                parsed.status = 'open';
+                delete parsed.closed_at;
+                await supabase.from('bot_support_logs').update({ message: JSON.stringify(parsed) }).eq('id', ticketId);
+                
+                // Notifier le client si possible
+                const platformPrefix = ticket.user_id.includes('@') || ticket.user_id.startsWith('whatsapp') ? '' : 'telegram_';
+                const { sendTelegramMessage } = require('../services/notifications');
+                await sendTelegramMessage(`${platformPrefix}${ticket.user_id}`, `🔓 <b>Votre ticket a été réouvert par un administrateur.</b>`);
+            }
+            await ctx.answerCbQuery('Ticket réouvert avec succès.');
+            return showAdminTickets(ctx);
+        } catch (e) {
+            console.error('[TicketOpen] Error:', e);
+            await ctx.answerCbQuery('⚠️ Erreur lors de la réouverture.');
+        }
+    });
+
     const pendingTicketPrice = new Map();
     bot.action(/^admin_ticket_price_(.+)$/, async (ctx) => {
         if (!(await isAdmin(ctx))) return;
@@ -734,7 +796,7 @@ function setupAdminHandlers(bot) {
     });
     
     // Support Chat - Admin vers Client
-    bot.action(/^admin_chat_user_(.+)$/, async (ctx) => {
+    bot.action(/^admin_chat_(?:user|reply)_(.+)$/, async (ctx) => {
         if (!(await isStaff(ctx))) return;
         let targetIdString = ctx.match[1];
         const adminId = String(ctx.from.id);
