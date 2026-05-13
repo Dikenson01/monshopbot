@@ -26,6 +26,7 @@ const awaitingDelayReason = createPersistentMap('awaitingDelay');
 const awaitingChatReply = createPersistentMap('awaitingChat');
 const awaitingReviewText = createPersistentMap('awaitingReview');
 const awaitingPaymentProof = createPersistentMap('awaitingPaymentProof'); // User ID -> { orderData, method }
+const activeChatHistory = createPersistentMap('activeChatHistory'); // Order ID -> { lastMessage: "...", senderRole: "...", timestamp: "..." }
 // État éphémère (pas besoin de persister)
 const userLastActivity = new Map();
 
@@ -82,7 +83,7 @@ async function initOrderState() {
         userCarts.load(), pendingOrders.load(), awaitingAddressDetails.load(),
         pendingOrderConfirmation.load(), awaitingDelayReason.load(),
         awaitingChatReply.load(), awaitingReviewText.load(),
-        awaitingPaymentProof.load()
+        awaitingPaymentProof.load(), activeChatHistory.load()
     ]);
     console.log('[State] Tous les états order_system chargés');
 }
@@ -1914,12 +1915,29 @@ function setupOrderSystem(bot) {
             text += t(user, 'label_livreur', `👤 Livreur :`) + ` <b>${order.livreur_name}</b>\n`;
         }
         
+        // Section historique du chat en cours pour le client
+        const chatHist = activeChatHistory.get(orderId);
+        if (chatHist) {
+            text += `\n💬 <b>CHAT EN COURS (${chatHist.count || 0}/6) :</b>\n` +
+                `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
+                `"<i>${chatHist.lastMessage}</i>"\n`;
+        }
+
+        let contactButtons = [];
+        if (order.status === 'taken' && order.livreur_id) {
+            const lIdClean = String(order.livreur_id).replace('telegram_', '').replace('whatsapp_', '');
+            if (!isNaN(lIdClean) && !lIdClean.includes('@')) {
+                contactButtons.push(Markup.button.url('✈️ Profil Livreur', `tg://user?id=${lIdClean}`));
+            }
+        }
+
         const feedbackBtn = order.status === 'delivered' ? [Markup.button.callback(t(user, 'btn_leave_review', '⭐ Laisser un avis'), `rate_order_${orderId}`)] : [];
         const cancelBtn = (order.status === 'pending' || order.status === 'taken' || order.status === 'supplier_pending') ? [Markup.button.callback(t(user, 'btn_cancel_order_label', '❌ Annuler la commande'), `cancel_order_client_${orderId}`)] : [];
-        const chatBtn = (order.status === 'taken') ? [Markup.button.callback(t(user, 'btn_chat_livreur', '💬 Parler au livreur'), `chat_livreur_${orderId}`)] : [];
+        const chatBtn = (order.status === 'taken') ? [Markup.button.callback(chatHist ? '💬 Répondre au livreur' : t(user, 'btn_chat_livreur', '💬 Parler au livreur'), `chat_livreur_${orderId}`)] : [];
 
         const buttons = [];
         if (chatBtn.length) buttons.push(chatBtn);
+        if (contactButtons.length) buttons.push(contactButtons);
         if (cancelBtn.length) buttons.push(cancelBtn);
         if (feedbackBtn.length) buttons.push(feedbackBtn);
         buttons.push([Markup.button.callback(t(user, 'btn_back_orders', '◀️ Retour mes commandes'), 'my_orders')]);
@@ -2076,6 +2094,7 @@ function setupOrderSystem(bot) {
         if (!order) return safeEdit(ctx, settings.msg_order_not_found || '❌ Commande introuvable.');
 
         await updateOrderStatus(orderId, 'validated', { livreur_id: null, livreur_name: null });
+        activeChatHistory.delete(orderId);
         await safeEdit(ctx, `⚠️ <b>COMMANDE ABANDONNÉE</b>\n\nLa commande #${orderId.slice(-5)} a été remise dans le pool.`, {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Retour Menu', 'livreur_menu')]])
@@ -2098,6 +2117,7 @@ function setupOrderSystem(bot) {
             livreur_name: ctx.from.first_name
         });
         await incrementOrderCount(`${ctx.platform}_${ctx.from.id}`);
+        activeChatHistory.delete(orderId);
 
         await safeEdit(ctx, `✅ Commande <b>#${orderId.slice(-5)}</b> marquée comme LIVRÉE !\nFélicitations pour votre livraison.`, {
             parse_mode: 'HTML',
@@ -2133,6 +2153,7 @@ function setupOrderSystem(bot) {
         }
 
         await updateOrderStatus(orderId, 'cancelled');
+        activeChatHistory.delete(orderId);
         await ctx.answerCbQuery('Votre commande a été annulée. ❌', true);
 
         const shortId = orderId.slice(-5);
@@ -2158,6 +2179,7 @@ function setupOrderSystem(bot) {
         }
 
         await updateOrderStatus(orderId, 'cancelled');
+        activeChatHistory.delete(orderId);
         await ctx.answerCbQuery('La commande a été annulée. ❌', true);
 
         const shortId = orderId.slice(-5);
@@ -2744,6 +2766,16 @@ function setupOrderSystem(bot) {
                     );
                     if (chatMsg) addMessageToTrack(targetId, chatMsg.message_id).catch(() => { });
 
+                    // Sauvegarder l'historique du dernier message en cours
+                    activeChatHistory.set(orderId, {
+                        lastMessage: reply,
+                        senderRole: roleLabel,
+                        senderName: ctx.from.first_name,
+                        timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                        count: newCount
+                    });
+                    saveClientReply(orderId, reply).catch(() => {});
+
                     // Alerte aux admins via service central
                     const alertMsg = `💬 <b>CHAT ${roleLabel.toUpperCase()}</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 De : ${safeHtml(ctx.from.first_name)}\n📝 Message : "<i>${safeHtml(reply)}</i>"`;
                     await notifyAdmins(bot, alertMsg);
@@ -2838,19 +2870,65 @@ function setupOrderSystem(bot) {
             detailText = `🚀 <b>LIVRAISON IMMÉDIATE (ASAP)</b>\n\n` + detailText;
         }
 
+        // Section historique du chat en cours
+        const chatHist = activeChatHistory.get(orderId);
+        if (chatHist) {
+            detailText += `💬 <b>CHAT EN COURS (${chatHist.count || 0}/6) :</b>\n` +
+                `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
+                `"<i>${chatHist.lastMessage}</i>"\n\n`;
+        }
+
+        // Boutons d'appel direct / contact
+        let contactButtons = [];
+        const seenUrls = new Set();
+        const addContactBtn = (label, url) => {
+            if (!seenUrls.has(url)) {
+                seenUrls.add(url);
+                contactButtons.push(Markup.button.url(label, url));
+            }
+        };
+
+        if (order.phone && order.phone !== 'Non spécifié') {
+            const cleanPhone = order.phone.replace(/[^\d+]/g, '');
+            if (cleanPhone.length >= 8) {
+                addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
+            }
+        }
+        if (order.username && order.username !== 'Non spécifié') {
+            if (order.username.startsWith('@')) {
+                addContactBtn('✈️ Contacter Telegram', `https://t.me/${order.username.substring(1)}`);
+            } else {
+                const cleanPhone = order.username.replace(/[^\d+]/g, '');
+                if (cleanPhone.length >= 8) {
+                    addContactBtn('📞 Appeler le client', `tel:${cleanPhone}`);
+                }
+            }
+        }
+
+        const actionButtons = [
+            [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
+            [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
+            [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
+            [Markup.button.callback(chatHist ? '💬 Répondre au client' : '💬 Parler au client', `chat_livreur_${orderId}`)]
+        ];
+
+        if (contactButtons.length > 0) {
+            for (let i = 0; i < contactButtons.length; i += 2) {
+                actionButtons.push(contactButtons.slice(i, i + 2));
+            }
+        }
+
+        actionButtons.push(
+            [Markup.button.callback(`${settings.ui_icon_success} MARQUER COMME LIVRÉE`, `finish_${orderId}`)],
+            [Markup.button.callback(settings.btn_abandon_delivery || '❌ Abandonner la livraison', `abandon_${orderId}`)],
+            [Markup.button.callback('🚩 ANNULER LA COMMANDE', `cancel_order_livreur_${orderId}`)],
+            [Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'active_deliveries')]
+        );
+
         await safeEdit(ctx, detailText + `Utilisez les boutons ci-dessous pour avancer :`,
             {
                 parse_mode: 'HTML',
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
-                    [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
-                    [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
-                    [Markup.button.callback('💬 Parler au client', `chat_livreur_${orderId}`)],
-                    [Markup.button.callback(`${settings.ui_icon_success} MARQUER COMME LIVRÉE`, `finish_${orderId}`)],
-                    [Markup.button.callback(settings.btn_abandon_delivery || '❌ Abandonner la livraison', `abandon_${orderId}`)],
-                    [Markup.button.callback('🚩 ANNULER LA COMMANDE', `cancel_order_livreur_${orderId}`)],
-                    [Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'active_deliveries')]
-                ])
+                ...Markup.inlineKeyboard(actionButtons)
             }
         );
     });
@@ -3268,5 +3346,6 @@ module.exports = {
     awaitingChatReply,
     checkAbandonedCarts,
     userLastActivity,
-    awaitingPaymentProof
+    awaitingPaymentProof,
+    activeChatHistory
 };

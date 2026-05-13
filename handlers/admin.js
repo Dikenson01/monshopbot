@@ -382,12 +382,37 @@ function setupAdminHandlers(bot) {
             `🕒 Créé le : <code>${new Date(ticket.created_at).toLocaleString('fr-FR')}</code>\n\n` +
             `<b>ACTIONS DISPONIBLES :</b>`;
 
+        let contactButtons = [];
+        if (u) {
+            const cleanId = String(u.id).replace('telegram_', '').replace('whatsapp_', '');
+            if (!isNaN(cleanId) && !cleanId.includes('@')) {
+                contactButtons.push(Markup.button.url('✈️ Telegram Client', `tg://user?id=${cleanId}`));
+            }
+            let phoneNum = u.phone || u.data?.phone || u.data?.phoneNumber;
+            if (!phoneNum && u.platform === 'whatsapp') {
+                phoneNum = String(u.platform_id || '').split('@')[0].split(':')[0];
+            }
+            if (phoneNum) {
+                const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
+                if (cleanPhone.length >= 8) {
+                    contactButtons.push(Markup.button.url('📞 Appeler Client', `tel:${cleanPhone}`));
+                }
+            }
+        }
+
         const buttons = [
-            [Markup.button.callback('💬 Répondre (Chat Direct)', `admin_chat_user_${platformPrefix}${ticket.user_id}`)],
+            [Markup.button.callback('💬 Répondre (Chat Direct)', `admin_chat_user_${platformPrefix}${ticket.user_id}`)]
+        ];
+
+        if (contactButtons.length > 0) {
+            buttons.push(contactButtons);
+        }
+
+        buttons.push(
             [Markup.button.callback('📝 Réponses Rapides', `admin_ticket_quick_${ticketId}`)],
             [Markup.button.callback('📜 Historique Client', `admin_user_history_${ticket.user_id}`)],
             [Markup.button.callback('💰 Fixer un prix', `admin_ticket_price_${ticketId}`)]
-        ];
+        );
 
         if (status === 'closed') {
             buttons.push([Markup.button.callback('🔓 RÉOUVRIR LE TICKET', `admin_ticket_open_${ticketId}`)]);
