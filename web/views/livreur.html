@@ -51,7 +51,6 @@
             margin-bottom: 15px; border: 1px solid var(--border);
             transition: 0.3s;
         }
-        .order-card:active { transform: scale(0.98); background: #1a1a1a; }
 
         .order-header { display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; }
         .order-id { font-weight: 900; font-size: 16px; }
@@ -73,6 +72,54 @@
         .btn-primary { background: var(--accent); color: #fff; }
         .btn-secondary { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid var(--border); }
         .btn-full { grid-column: span 2; }
+
+        /* Module de chat intégré */
+        .chat-module {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px dashed var(--border);
+            display: none;
+        }
+        .chat-history-box {
+            background: rgba(0,0,0,0.4);
+            border-radius: 15px;
+            padding: 12px;
+            font-size: 12px;
+            max-height: 120px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.03);
+            line-height: 1.4;
+        }
+        .chat-input-group {
+            display: flex;
+            gap: 8px;
+        }
+        .chat-input {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0 12px;
+            color: #fff;
+            font-size: 12px;
+            outline: none;
+            height: 40px;
+        }
+        .chat-input:focus {
+            border-color: var(--accent);
+        }
+        .btn-send {
+            background: var(--accent);
+            border: none;
+            border-radius: 12px;
+            padding: 0 15px;
+            color: #fff;
+            font-weight: 900;
+            font-size: 11px;
+            cursor: pointer;
+            height: 40px;
+        }
 
         #loading-screen {
             position: fixed; inset: 0; background: #000; z-index: 10000;
@@ -229,11 +276,62 @@
             } catch(e){}
         }
 
+        function safeQuote(str) {
+            return (str || '').replace(/"/g, '&quot;');
+        }
+
         function renderActive(list) {
             const cont = document.getElementById('active-orders-list');
-            cont.innerHTML = list.length ? '' : '<div class="empty-state">Aucune livraison en cours.</div>';
+            if (!list.length) {
+                cont.innerHTML = '<div class="empty-state">Aucune livraison en cours.</div>';
+                return;
+            }
+
+            // Mémorisation de l'état des modules de chat ouverts et du texte saisi pour éviter les coupures de focus
+            const stateMap = {};
+            const existingCards = cont.querySelectorAll('.order-card');
+            existingCards.forEach(d => {
+                const oid = d.getAttribute('data-id');
+                const mod = document.getElementById(`chat-module-${oid}`);
+                const inp = document.getElementById(`chat-input-${oid}`);
+                if (oid && mod && inp) {
+                    stateMap[oid] = {
+                        isOpen: mod.style.display === 'block',
+                        text: inp.value,
+                        isFocused: document.activeElement === inp
+                    };
+                }
+            });
+
+            cont.innerHTML = '';
             list.forEach(o => {
                 const d = document.createElement('div'); d.className = 'order-card';
+                d.setAttribute('data-id', o.id);
+                
+                const prevState = stateMap[o.id] || {};
+                const h = o.chatHistory;
+                const count = h ? h.count : (parseInt(o.chat_count) || 0);
+                
+                let chatSection = '';
+                if (h) {
+                    chatSection = `
+                        <div class="chat-history-box" id="chat-box-${o.id}">
+                            <span style="opacity:0.4; font-size:10px;">Dernier échange (${count}/6) :</span><br>
+                            <b style="color:${h.senderRole === 'client' ? '#00ff88' : 'var(--accent)'}">${h.senderRole === 'client' ? 'Client' : 'Vous'} :</b> <i>${h.lastMessage}</i>
+                        </div>
+                    `;
+                } else if (count > 0) {
+                    chatSection = `
+                        <div class="chat-history-box" id="chat-box-${o.id}">
+                            <span style="opacity:0.4; font-size:10px;">Discussion entamée (${count}/6)</span>
+                        </div>
+                    `;
+                } else {
+                    chatSection = `
+                        <div class="chat-history-box" id="chat-box-${o.id}" style="display:none;"></div>
+                    `;
+                }
+
                 d.innerHTML = `
                     <div class="order-header">
                         <div class="order-id">#${o.id.slice(-5)}</div>
@@ -241,20 +339,95 @@
                     </div>
                     <div class="order-address"><span>📍</span>${o.address}</div>
                     <div class="order-items">${o.product_name}</div>
-                    <div style="font-size:10px; font-weight:900; color:var(--accent); margin-bottom:8px; opacity:0.8; letter-spacing:1px;">NOTIFICATIONS CLIENT :</div>
-                    <div class="btn-group" style="margin-bottom:12px;">
+                    
+                    <div style="font-size:10px; font-weight:900; color:var(--accent); margin-bottom:8px; opacity:0.8; letter-spacing:1px;">APPROCHE CLIENT :</div>
+                    <div class="btn-group" style="grid-template-columns: repeat(3, 1fr); gap:6px; margin-bottom:8px;">
+                        <button class="btn-action btn-secondary" style="height:36px; font-size:11px;" onclick="notifyEta('${o.id}', '1h')">⏰ -1h</button>
+                        <button class="btn-action btn-secondary" style="height:36px; font-size:11px;" onclick="notifyEta('${o.id}', '30m')">⏳ 30m</button>
+                        <button class="btn-action btn-secondary" style="height:36px; font-size:11px;" onclick="notifyEta('${o.id}', '10m')">⏳ 10m</button>
+                    </div>
+                    <div class="btn-group" style="margin-bottom:15px;">
                         <button class="btn-action btn-secondary" onclick="notifyEta('${o.id}', '5m')">⚡ 5 MIN</button>
                         <button class="btn-action btn-secondary" onclick="notifyEta('${o.id}', 'here')">📍 ARRIVÉ</button>
                     </div>
-                    <div class="btn-group">
+
+                    <div class="btn-group" style="margin-bottom:10px;">
                         <button class="btn-action btn-primary btn-full" onclick="updateStatus('${o.id}', 'delivered')">✅ MARQUER LIVRÉ</button>
                         <button class="btn-action btn-secondary" onclick="openNav('${o.address}')">🗺 NAVIGUER</button>
-                        <button class="btn-action btn-secondary" onclick="startChat('${o.id}')">💬 CONTACTER</button>
-                        <button class="btn-action btn-secondary btn-full" style="color:#ff4444; border-color:rgba(255,68,68,0.2);" onclick="updateStatus('${o.id}', 'abandoned')">❌ ABANDONNER</button>
+                        <button class="btn-action btn-secondary" onclick="toggleChatModule('${o.id}')">💬 CHAT (${count}/6)</button>
+                    </div>
+                    
+                    <div class="btn-group" style="grid-template-columns:1fr 1fr; gap:10px;">
+                        <button class="btn-action btn-secondary" style="height:38px; font-size:11px; color:#ffaa00; border-color:rgba(255,170,0,0.2);" onclick="updateStatus('${o.id}', 'abandoned')">⚠️ REMETTRE</button>
+                        <button class="btn-action btn-secondary" style="height:38px; font-size:11px; color:#ff4444; border-color:rgba(255,68,68,0.2);" onclick="updateStatus('${o.id}', 'cancelled')">🚩 ANNULER</button>
+                    </div>
+
+                    <div class="chat-module" id="chat-module-${o.id}" style="display:${prevState.isOpen ? 'block' : 'none'};">
+                        <div style="font-size:10px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">MESSAGERIE ANONYME :</div>
+                        ${chatSection}
+                        <div class="chat-input-group">
+                            <input type="text" class="chat-input" id="chat-input-${o.id}" value="${safeQuote(prevState.text)}" placeholder="Votre message au client..." onkeydown="if(event.key==='Enter') sendChatMessage('${o.id}')">
+                            <button class="btn-send" onclick="sendChatMessage('${o.id}')">ENVOYER</button>
+                        </div>
+                        <div style="font-size:9px; opacity:0.3; margin-top:6px; text-align:center;">Le client verra ce message sans connaître votre numéro.</div>
                     </div>
                 `;
                 cont.appendChild(d);
+
+                if (prevState.isFocused) {
+                    setTimeout(() => {
+                        const inp = document.getElementById(`chat-input-${o.id}`);
+                        if (inp) {
+                            inp.focus();
+                            inp.selectionStart = inp.selectionEnd = inp.value.length;
+                        }
+                    }, 20);
+                }
             });
+        }
+
+        function toggleChatModule(id) {
+            const mod = document.getElementById(`chat-module-${id}`);
+            if (mod) {
+                const isHidden = window.getComputedStyle(mod).display === 'none';
+                mod.style.display = isHidden ? 'block' : 'none';
+                if (isHidden) {
+                    setTimeout(() => document.getElementById(`chat-input-${id}`)?.focus(), 50);
+                }
+                try { tg.HapticFeedback.selectionChanged(); } catch(e){}
+            }
+        }
+
+        async function sendChatMessage(id) {
+            const input = document.getElementById(`chat-input-${id}`);
+            const text = input?.value?.trim();
+            if (!text) return;
+
+            input.disabled = true;
+            try {
+                const res = await fetch('/api/livreur/send-chat-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: `telegram_${tg.initDataUnsafe?.user?.id}`,
+                        orderId: id,
+                        text: text
+                    })
+                });
+                const data = await res.json();
+                input.disabled = false;
+                
+                if (data.error) {
+                    tg.showAlert(data.error);
+                } else {
+                    input.value = '';
+                    try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
+                    refreshOrders();
+                }
+            } catch (e) {
+                input.disabled = false;
+                tg.showAlert("Erreur réseau lors de l'envoi.");
+            }
         }
 
         function renderAvailable(list) {
@@ -331,7 +504,8 @@
         async function updateStatus(id, status) {
             const msgs = {
                 'delivered': "Confirmer la livraison de cette commande ?",
-                'abandoned': "Abandonner cette livraison et la remettre en file d'attente ?"
+                'abandoned': "Remettre cette livraison dans la file d'attente globale ?",
+                'cancelled': "Annuler définitivement cette commande (incident/stock indisponible) ?"
             };
             tg.showConfirm(msgs[status] || "Confirmer l'action ?", async (ok) => {
                 if (!ok) return;
@@ -352,7 +526,13 @@
         }
 
         async function notifyEta(id, timeCode) {
-            const timeLabels = { '5m': '5 minutes', 'here': 'Arrivé sur place' };
+            const timeLabels = { 
+                '1h': "dans moins d'1h",
+                '30m': "dans 30 minutes",
+                '10m': "dans 10 minutes",
+                '5m': "dans 5 minutes", 
+                'here': "Arrivé sur place" 
+            };
             tg.showConfirm(`Informer le client : ${timeLabels[timeCode]} ?`, async (ok) => {
                 if (!ok) return;
                 try {
@@ -365,18 +545,6 @@
                     tg.showAlert("Notification d'approche envoyée au client avec succès !");
                 } catch(e){}
             });
-        }
-
-        async function startChat(id) {
-            try {
-                await fetch('/api/livreur/start-chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, orderId: id })
-                });
-                try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
-                tg.close();
-            } catch(e){}
         }
 
         function openNav(addr) {

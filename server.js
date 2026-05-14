@@ -672,8 +672,13 @@ function createServer() {
         try {
             const { userId } = req.query;
             const { getLivreurOrders } = require('./services/database');
+            const { activeChatHistory } = require('./handlers/order_system');
             const orders = await getLivreurOrders(userId);
-            res.json(orders);
+            const enriched = orders.map(o => ({
+                ...o,
+                chatHistory: activeChatHistory ? activeChatHistory.get(o.id) : null
+            }));
+            res.json(enriched);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
@@ -743,6 +748,21 @@ function createServer() {
                 if (activeChatHistory) activeChatHistory.delete(orderId);
                 if (bot) {
                     notifyAdmins(bot, `⚠️ <b>LIVREUR ABANDON (MINI APP)</b>\n\n🆔 Commande : <code>#${orderId.slice(-5)}</code>\nL'ordre est de nouveau disponible dans la file.`).catch(() => {});
+                }
+                return res.json({ success: true });
+            }
+
+            if (status === 'cancelled') {
+                if (activeChatHistory) activeChatHistory.delete(orderId);
+                const order = await getOrder(orderId);
+                const shortId = orderId.slice(-5);
+                await updateOrderStatus(orderId, 'cancelled');
+                if (bot) {
+                    notifyAdmins(bot, `🚩 <b>ANNULATION LIVREUR (MINI APP)</b>\n\nLa commande <b>#${shortId}</b> a été annulée par le livreur.`).catch(() => {});
+                }
+                if (order?.user_id) {
+                    const { sendTelegramMessage } = require('./services/notifications');
+                    sendTelegramMessage(order.user_id, `🚩 <b>COMMANDE ANNULÉE</b>\n\nVotre commande <b>#${shortId}</b> a été annulée par le livreur.\nMotif: Incident ou stock indisponible.`).catch(() => {});
                 }
                 return res.json({ success: true });
             }
@@ -860,6 +880,64 @@ function createServer() {
             }
 
             res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/livreur/send-chat-message', async (req, res) => {
+        try {
+            const { userId, orderId, text } = req.body;
+            const { getOrder, incrementChatCount, saveClientReply, getUser } = require('./services/database');
+            const { sendTelegramMessage, notifyAdmins } = require('./services/notifications');
+            const { activeChatHistory } = require('./handlers/order_system');
+            const { Markup } = require('telegraf');
+            const bot = getBotInstance();
+
+            const order = await getOrder(orderId);
+            if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+
+            const count = parseInt(order.chat_count) || 0;
+            if (count >= 6) {
+                return res.status(400).json({ error: "Limite d'échanges atteinte (6/6)." });
+            }
+
+            const newCount = await incrementChatCount(orderId);
+            const shortId = String(orderId).slice(-5);
+            const targetId = order.user_id;
+
+            const livreurUser = await getUser(userId);
+            const livreurName = livreurUser?.first_name || 'Livreur';
+
+            await sendTelegramMessage(targetId,
+                `💬 <b>Message du livreur (Commande #${shortId})</b>\n\n"<i>${text}</i>"\n\n` +
+                `📊 <i>Message ${newCount}/6</i>${newCount >= 6 ? '\n⚠️ <b>Dernier échange consommé.</b>' : ''}`,
+                {
+                    ...Markup.inlineKeyboard([
+                        ...(newCount < 6 ? [[Markup.button.callback(`💬 Répondre (Tour ${newCount + 1}/6)`, `chat_livreur_${orderId}`)]] : []),
+                        [Markup.button.callback('◀️ Menu principal', 'main_menu')]
+                    ])
+                }
+            );
+
+            const chatObj = {
+                lastMessage: text,
+                senderRole: 'livreur',
+                senderName: livreurName,
+                timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                count: newCount
+            };
+            if (activeChatHistory) {
+                activeChatHistory.set(orderId, chatObj);
+            }
+            saveClientReply(orderId, text).catch(() => {});
+
+            if (bot) {
+                const alertMsg = `💬 <b>CHAT LIVREUR (MINI APP)</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 De : ${livreurName}\n📝 Message : "<i>${text}</i>"`;
+                notifyAdmins(bot, alertMsg).catch(() => {});
+            }
+
+            res.json({ success: true, chatHistory: chatObj });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
