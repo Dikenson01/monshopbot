@@ -535,13 +535,18 @@ function createServer() {
         try {
             const { userId } = req.query;
             const { supabase } = require('./config/supabase');
+            const { activeChatHistory } = require('./handlers/order_system');
             const { data } = await supabase.from('bot_orders')
                 .select('*')
                 .eq('user_id', userId)
                 .order('created_at', { ascending: false })
                 .limit(20);
             
-            res.json(data || []);
+            const enriched = (data || []).map(o => ({
+                ...o,
+                chatHistory: activeChatHistory ? activeChatHistory.get(o.id) : null
+            }));
+            res.json(enriched);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
@@ -934,6 +939,66 @@ function createServer() {
 
             if (bot) {
                 const alertMsg = `💬 <b>CHAT LIVREUR (MINI APP)</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 De : ${livreurName}\n📝 Message : "<i>${text}</i>"`;
+                notifyAdmins(bot, alertMsg).catch(() => {});
+            }
+
+            res.json({ success: true, chatHistory: chatObj });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/mini-app/send-chat-message', async (req, res) => {
+        try {
+            const { userId, orderId, text } = req.body;
+            const { getOrder, incrementChatCount, saveClientReply, getUser } = require('./services/database');
+            const { sendTelegramMessage, notifyAdmins } = require('./services/notifications');
+            const { activeChatHistory } = require('./handlers/order_system');
+            const { Markup } = require('telegraf');
+            const bot = getBotInstance();
+
+            const order = await getOrder(orderId);
+            if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+
+            const count = parseInt(order.chat_count) || 0;
+            if (count >= 6) {
+                return res.status(400).json({ error: "Limite d'échanges atteinte (6/6)." });
+            }
+
+            const newCount = await incrementChatCount(orderId);
+            const shortId = String(orderId).slice(-5);
+            const targetId = order.livreur_id;
+
+            const clientUser = await getUser(userId);
+            const clientName = clientUser?.first_name || 'Client';
+
+            if (targetId) {
+                await sendTelegramMessage(targetId,
+                    `💬 <b>Message du client (Commande #${shortId})</b>\n\n"<i>${text}</i>"\n\n` +
+                    `📊 <i>Message ${newCount}/6</i>${newCount >= 6 ? '\n⚠️ <b>Dernier échange consommé.</b>' : ''}`,
+                    {
+                        ...Markup.inlineKeyboard([
+                            ...(newCount < 6 ? [[Markup.button.callback(`💬 Répondre (Tour ${newCount + 1}/6)`, `chat_livreur_${orderId}`)]] : []),
+                            [Markup.button.callback('◀️ Menu Livreur', 'livreur_menu')]
+                        ])
+                    }
+                ).catch(() => {});
+            }
+
+            const chatObj = {
+                lastMessage: text,
+                senderRole: 'client',
+                senderName: clientName,
+                timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                count: newCount
+            };
+            if (activeChatHistory) {
+                activeChatHistory.set(orderId, chatObj);
+            }
+            saveClientReply(orderId, text).catch(() => {});
+
+            if (bot) {
+                const alertMsg = `💬 <b>CHAT CLIENT (MINI APP)</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 De : ${clientName}\n📝 Message : "<i>${text}</i>"`;
                 notifyAdmins(bot, alertMsg).catch(() => {});
             }
 

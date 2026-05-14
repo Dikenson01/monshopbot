@@ -103,6 +103,54 @@
         .reorder-btn { margin-top: 15px; width: 100%; height: 44px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 14px; color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; transition: 0.3s; }
         .reorder-btn:active { background: #fff; color: #000; transform: scale(0.97); }
 
+        /* Module de chat intégré */
+        .chat-module {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px dashed var(--border);
+            display: none;
+        }
+        .chat-history-box {
+            background: rgba(0,0,0,0.4);
+            border-radius: 15px;
+            padding: 12px;
+            font-size: 12px;
+            max-height: 120px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.03);
+            line-height: 1.4;
+        }
+        .chat-input-group {
+            display: flex;
+            gap: 8px;
+        }
+        .chat-input {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0 12px;
+            color: #fff;
+            font-size: 12px;
+            outline: none;
+            height: 40px;
+        }
+        .chat-input:focus {
+            border-color: var(--accent);
+        }
+        .btn-send {
+            background: var(--accent);
+            border: none;
+            border-radius: 12px;
+            padding: 0 15px;
+            color: #fff;
+            font-weight: 900;
+            font-size: 11px;
+            cursor: pointer;
+            height: 40px;
+        }
+
         /* FLOAT CART */
         .cart-float {
             position: fixed; bottom: calc(105px + var(--safe-area-bottom)); left: 20px; right: 20px;
@@ -548,9 +596,12 @@
             });
         }
 
+        function safeQuote(str) {
+            return (str || '').replace(/"/g, '&quot;');
+        }
+
         async function loadOrders() {
             const cont = document.getElementById('orders-list');
-            cont.innerHTML = '<div class="empty-state">Chargement de votre historique...</div>';
             const uid = tg.initDataUnsafe?.user?.id;
             try {
                 const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
@@ -586,6 +637,22 @@
                     `;
                 }
 
+                // Mémorisation de l'état des modules de chat ouverts et du texte saisi pour éviter les coupures de focus
+                const stateMap = {};
+                const existingCards = cont.querySelectorAll('.order-card');
+                existingCards.forEach(d => {
+                    const oid = d.getAttribute('data-id');
+                    const mod = document.getElementById(`chat-module-${oid}`);
+                    const inp = document.getElementById(`chat-input-${oid}`);
+                    if (oid && mod && inp) {
+                        stateMap[oid] = {
+                            isOpen: mod.style.display === 'block',
+                            text: inp.value,
+                            isFocused: document.activeElement === inp
+                        };
+                    }
+                });
+
                 cont.innerHTML = orders.length ? statsHtml : '<div class="empty-state">Vous n\'avez pas encore de commandes.</div>';
                 
                 orders.forEach(o => {
@@ -608,12 +675,37 @@
                         </div>
                     ` : '';
 
-                    const btnContact = (o.status === 'taken') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="triggerChat('${o.id}')"><i class="ph-fill ph-phone-call"></i> SUIVRE LA LIVRAISON</button>` : '';
+                    const prevState = stateMap[o.id] || {};
+                    const h = o.chatHistory;
+                    const count = h ? h.count : (parseInt(o.chat_count) || 0);
+
+                    let chatSection = '';
+                    if (h) {
+                        chatSection = `
+                            <div class="chat-history-box" id="chat-box-${o.id}">
+                                <span style="opacity:0.4; font-size:10px;">Dernier échange (${count}/6) :</span><br>
+                                <b style="color:${h.senderRole === 'client' ? 'var(--accent)' : '#00ff88'}">${h.senderRole === 'client' ? 'Vous' : 'Livreur'} :</b> <i>${h.lastMessage}</i>
+                            </div>
+                        `;
+                    } else if (count > 0) {
+                        chatSection = `
+                            <div class="chat-history-box" id="chat-box-${o.id}">
+                                <span style="opacity:0.4; font-size:10px;">Discussion entamée (${count}/6)</span>
+                            </div>
+                        `;
+                    } else {
+                        chatSection = `
+                            <div class="chat-history-box" id="chat-box-${o.id}" style="display:none;"></div>
+                        `;
+                    }
+
+                    const btnContact = (o.status === 'taken' || o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="toggleChatModule('${o.id}')"><i class="ph-fill ph-chat-circle-dots"></i> CHAT ASSISTANCE (${count}/6)</button>` : '';
                     const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-primary" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="ph-fill ph-star"></i> NOTER</button>` : '';
                     const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
                     const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="ph-bold ph-x"></i> ANNULER</button>` : '';
 
                     const d = document.createElement('div'); d.className = 'order-card';
+                    d.setAttribute('data-id', o.id);
                     d.innerHTML = `
                         <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                             <div style="font-weight:900; font-size:14px;"><i class="ph-fill ph-receipt"></i> #${o.id.slice(-5).toUpperCase()}</div>
@@ -629,25 +721,73 @@
                         ${btnContact}
                         ${btnNoter}
                         ${btnReorder}
+
+                        <div class="chat-module" id="chat-module-${o.id}" style="display:${prevState.isOpen ? 'block' : 'none'};">
+                            <div style="font-size:10px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">MESSAGERIE SÉCURISÉE :</div>
+                            ${chatSection}
+                            <div class="chat-input-group">
+                                <input type="text" class="chat-input" id="chat-input-${o.id}" value="${safeQuote(prevState.text)}" placeholder="Votre message..." onkeydown="if(event.key==='Enter') sendChatMessage('${o.id}')">
+                                <button class="btn-send" onclick="sendChatMessage('${o.id}')">ENVOYER</button>
+                            </div>
+                            <div style="font-size:9px; opacity:0.3; margin-top:6px; text-align:center;">Échange direct avec l'équipe de livraison.</div>
+                        </div>
                     `;
                     cont.appendChild(d);
+
+                    if (prevState.isFocused) {
+                        setTimeout(() => {
+                            const inp = document.getElementById(`chat-input-${o.id}`);
+                            if (inp) {
+                                inp.focus();
+                                inp.selectionStart = inp.selectionEnd = inp.value.length;
+                            }
+                        }, 20);
+                    }
                 });
             } catch(e) { cont.innerHTML = '<div class="empty-state">Erreur de chargement.</div>'; }
         }
 
-        async function triggerChat(orderId) {
-            const uid = tg.initDataUnsafe?.user?.id;
-            if (!uid) return;
-            tg.HapticFeedback.impactOccurred('medium');
+        function toggleChatModule(id) {
+            const mod = document.getElementById(`chat-module-${id}`);
+            if (mod) {
+                const isHidden = window.getComputedStyle(mod).display === 'none';
+                mod.style.display = isHidden ? 'block' : 'none';
+                if (isHidden) {
+                    setTimeout(() => document.getElementById(`chat-input-${id}`)?.focus(), 50);
+                }
+                try { tg.HapticFeedback.selectionChanged(); } catch(e){}
+            }
+        }
+
+        async function sendChatMessage(id) {
+            const input = document.getElementById(`chat-input-${id}`);
+            const text = input?.value?.trim();
+            if (!text) return;
+
+            input.disabled = true;
             try {
-                await fetch('/api/mini-app/trigger-chat', {
+                const res = await fetch('/api/mini-app/send-chat-message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: `telegram_${uid}`, orderId })
+                    body: JSON.stringify({
+                        userId: `telegram_${tg.initDataUnsafe?.user?.id}`,
+                        orderId: id,
+                        text: text
+                    })
                 });
-                tg.close();
-            } catch(e) {
-                tg.showAlert("Erreur réseau");
+                const data = await res.json();
+                input.disabled = false;
+                
+                if (data.error) {
+                    tg.showAlert(data.error);
+                } else {
+                    input.value = '';
+                    try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
+                    loadOrders();
+                }
+            } catch (e) {
+                input.disabled = false;
+                tg.showAlert("Erreur réseau lors de l'envoi.");
             }
         }
 
@@ -1526,6 +1666,11 @@
         }
 
         init();
+        setInterval(() => {
+            if (document.getElementById('page-orders')?.style.display === 'block') {
+                loadOrders();
+            }
+        }, 30000);
     </script>
 </body>
 </html>
