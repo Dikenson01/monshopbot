@@ -129,7 +129,7 @@ async function showAdminMenu(ctx, isEdit = false) {
     const rows = [
         [Markup.button.webApp('🌐 ACCÈS MON SHOP (Web)', dashboardUrl)],
         [Markup.button.callback(t(user, 'btn_admin_stats', '📊 Statistiques'), 'admin_stats')],
-        [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders')],
+        [Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders'), Markup.button.callback('👥 Utilisateurs', 'admin_users')],
         [Markup.button.callback('📥 Contact', 'admin_tickets')],
         [Markup.button.callback(t(user, 'btn_admin_broadcast', '🔔 Diffusion'), 'admin_broadcast'), Markup.button.callback('📢 Publier Canal', 'admin_publish_channel')],
         [Markup.button.callback(t(user, 'btn_admin_settings', '⚙️ Paramètres'), 'admin_settings')],
@@ -1478,13 +1478,17 @@ function setupAdminHandlers(bot) {
             `💰 Bonus Parrainage : ${s.ref_bonus || 5}€\n\n` +
             `<i>Utilisez les boutons ci-dessous pour gérer les admins ou voir la config web complète.</i>`;
 
+        const adminToken = s.admin_password || process.env.ADMIN_PASSWORD || '1234';
+        const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
+        const dashboardUrl = `https://${baseDomain}/dashboard?token=${adminToken}#settings`;
+
         await safeEdit(ctx, msg, Markup.inlineKeyboard([
             [Markup.button.callback('👥 Gérer les Admins (+/-)', 'admin_manage_list')],
             [Markup.button.callback(s.maintenance_mode ? '🟢 Désactiver Maintenance' : '🔴 Activer Maintenance', 'admin_toggle_maintenance')],
             [Markup.button.callback(s.welcome_message_enabled !== false ? '👋 Désactiver Bienvenue' : '👋 Activer Bienvenue', 'admin_toggle_welcome')],
             [Markup.button.callback('📢 Changer Lien Canal', 'admin_set_channel')],
             [Markup.button.callback('📱 Changer Contact Admin', 'admin_set_contact')],
-            [Markup.button.url('🌐 Mon Shop', s.dashboard_url || 'https://google.com')],
+            [Markup.button.webApp('🌐 Mon Shop (Web)', dashboardUrl)],
             [Markup.button.callback('◀️ Retour', 'admin_menu')]
         ]));
     });
@@ -1533,10 +1537,20 @@ function setupAdminHandlers(bot) {
         let msg = `👥 <b>Gestion des administrateurs</b>\n\n` +
             `Cliquez sur <b>(-)</b> pour supprimer un admin,\nou sur <b>(+)</b> pour en ajouter un nouveau via son ID.\n\n`;
 
-        const buttons = admins.map(id => [
-            Markup.button.callback(`👤 Admin ${id}`, 'none'),
-            Markup.button.callback('❌ (-)', `admin_remove_${id}`)
-        ]);
+        const buttons = [];
+        const rootAdmin = s.admin_telegram_id ? String(s.admin_telegram_id).replace('telegram_', '') : null;
+        if (rootAdmin) {
+            buttons.push([
+                Markup.button.callback(`👑 Root : ${rootAdmin}`, 'none'),
+                Markup.button.callback('🔒 Principal', 'none')
+            ]);
+        }
+        admins.forEach(id => {
+            buttons.push([
+                Markup.button.callback(`👤 Admin ${id}`, 'none'),
+                Markup.button.callback('❌ (-)', `admin_remove_${id}`)
+            ]);
+        });
 
         buttons.push([Markup.button.callback('➕ AJOUTER UN ADMIN (+)', 'admin_add_prompt')]);
         buttons.push([Markup.button.callback('◀️ Retour', 'admin_settings')]);

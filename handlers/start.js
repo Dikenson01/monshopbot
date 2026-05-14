@@ -110,50 +110,11 @@ function setupStartHandler(bot) {
             const docId = `${ctx.platform}_${user.id}`;
             const settings = ctx.state?.settings || await getAppSettings();
 
-            // 1. EFFET "MATRIX INITIALIZATION" ANIMÉ (DU JAMAIS VU)
-            const matrixChars = '0123456789ABCDEF!@#$%^&*()';
-            const getMatrix = () => Array.from({length: 12}, () => matrixChars[Math.floor(Math.random() * matrixChars.length)]).join(' ');
-            
-            const getInitText = (pct, step) => `🛰 <b>SYSTEM DEPLOYMENT : SHOPTONBOT V5</b>\n\n` +
-                `<code>${getMatrix()}</code>\n` +
-                `<code>${getMatrix()}</code>\n\n` +
-                `<code>[${'▓'.repeat(Math.floor(pct/10))}${'░'.repeat(10-Math.floor(pct/10))}] ${pct}%</code>\n\n` +
-                `📡 <i>${step}</i>`;
-            
-            // Image premium pour l'onboarding
-            const onboardingPhoto = '/public/uploads/onboarding_logo.jpg';
-
-            const initMsg = await ctx.replyWithPhoto({ source: path.join(process.cwd(), 'web/public/uploads/onboarding_logo.jpg') }, { 
-                caption: getInitText(10, 'Establishing neural handshake...'), 
-                parse_mode: 'HTML' 
-            }).catch(() => ctx.reply(getInitText(10, 'Establishing neural handshake...'), { parse_mode: 'HTML' }));
-
-            if (initMsg) {
-                const mid = initMsg.message_id || initMsg.messageId;
-                addMessageToTrack(docId, mid, false).catch(() => {});
-                
-                const steps = [
-                    { p: 35, s: 'Bypassing security protocols...' },
-                    { p: 55, s: 'Injecting ShopTonBot-OS Core...' },
-                    { p: 75, s: 'Calibrating transaction nodes...' },
-                    { p: 95, s: 'Finalizing encrypted tunnel...' },
-                    { p: 100, s: 'SYSTEM DEPLOYED. READY.' }
-                ];
-
-                for (const step of steps) {
-                    await new Promise(r => setTimeout(r, 400));
-                    await ctx.telegram.editMessageCaption(ctx.chat.id, mid, null, getInitText(step.p, step.s), { parse_mode: 'HTML' }).catch(() => {});
-                }
-                
-                await new Promise(r => setTimeout(r, 300));
-            }
-
-            // Nettoyage agressif : Supprimer la commande /start de l'utilisateur + initMsg
+            // Nettoyage instantané et non bloquant de l'historique
             try { 
-                await ctx.deleteMessage().catch(() => {});
-                if (initMsg) await ctx.telegram.deleteMessage(ctx.chat.id, initMsg.message_id || initMsg.messageId).catch(() => {});
+                ctx.deleteMessage().catch(() => {});
                 clearActiveMediaGroup(docId); 
-                await cleanupUserChat(ctx); 
+                cleanupUserChat(ctx).catch(() => {}); 
             } catch(e) {}
 
             // Vérifier si un code de parrainage
@@ -324,16 +285,16 @@ function setupStartHandler(bot) {
             }
 
             if (ctx.telegram) {
-                console.log(`[TG-DEBUG] Setting commands for ${ctx.from.id}`);
-                ctx.telegram.setMyCommands([
-                    { command: 'start', description: '🏠 Lancer le bot / Accueil' },
-                    { command: 'menu', description: '🛒 Voir le catalogue' },
-                    { command: 'orders', description: '📦 Mes commandes' },
-                    { command: 'admin', description: '🔐 Console Admin' },
-                    { command: 'help', description: '❓ Aide et support' }
-                ]).catch(e => console.error('[TG-DEBUG] setMyCommands error:', e.message));
-                
-                ctx.telegram.setChatMenuButton(ctx.chat.id, { type: 'commands' }).catch(() => { });
+                setTimeout(() => {
+                    ctx.telegram.setMyCommands([
+                        { command: 'start', description: '🏠 Lancer le bot / Accueil' },
+                        { command: 'menu', description: '🛒 Voir le catalogue' },
+                        { command: 'orders', description: '📦 Mes commandes' },
+                        { command: 'admin', description: '🔐 Console Admin' },
+                        { command: 'help', description: '❓ Aide et support' }
+                    ]).catch(() => {});
+                    ctx.telegram.setChatMenuButton(ctx.chat.id, { type: 'commands' }).catch(() => {});
+                }, 100);
             }
 
         } catch (error) {

@@ -2126,7 +2126,9 @@ function setupOrderSystem(bot) {
             
             const cleanId = targetUser ? String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '') : targetId.replace('telegram_', '').replace('whatsapp_', '');
             if (!isNaN(cleanId) && !cleanId.includes('@')) {
-                addContactBtn(isLivreur ? '✈️ Telegram Client' : '✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
+                if (!isLivreur) {
+                    addContactBtn('✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
+                }
             }
 
             let phoneNum = targetUser ? (targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber) : null;
