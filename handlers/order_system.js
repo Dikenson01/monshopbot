@@ -2862,7 +2862,7 @@ function setupOrderSystem(bot) {
 
                     if (chatData.promptMsgId) {
                         // Remplacement de l'ancien message de prompt par la confirmation pour effacer proprement le menu obsolète
-                        bot.telegram.editMessageText(ctx.from.id, chatData.promptMsgId, null, 
+                        ctx.telegram.editMessageText(ctx.from.id, chatData.promptMsgId, null, 
                             `${successIcon} <b>Message ${newCount}/6 transmis au ${targetRoleLabel}.</b>\n\n"<i>${safeHtml(reply)}</i>"`, 
                             { parse_mode: 'HTML', ...successKeyboard }
                         ).catch(() => {});

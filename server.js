@@ -679,6 +679,17 @@ function createServer() {
         }
     });
 
+    app.get('/api/livreur/history', async (req, res) => {
+        try {
+            const { userId } = req.query;
+            const { getLivreurHistory } = require('./services/database');
+            const history = await getLivreurHistory(userId);
+            res.json(history);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.get('/api/livreur/available-orders', async (req, res) => {
         try {
             const { city } = req.query;
@@ -721,11 +732,133 @@ function createServer() {
 
     app.post('/api/livreur/update-status', async (req, res) => {
         try {
-            const { orderId, status, rating } = req.body;
-            const { updateOrderStatus } = require('./services/database');
+            const { orderId, status, rating, userId } = req.body;
+            const { updateOrderStatus, getOrder, getAppSettings } = require('./services/database');
+            const { notifyAdmins } = require('./services/notifications');
+            const { activeChatHistory } = require('./handlers/order_system');
+            const bot = getBotInstance();
+
+            if (status === 'abandoned') {
+                await updateOrderStatus(orderId, 'validated', { livreur_id: null, livreur_name: null });
+                if (activeChatHistory) activeChatHistory.delete(orderId);
+                if (bot) {
+                    notifyAdmins(bot, `⚠️ <b>LIVREUR ABANDON (MINI APP)</b>\n\n🆔 Commande : <code>#${orderId.slice(-5)}</code>\nL'ordre est de nouveau disponible dans la file.`).catch(() => {});
+                }
+                return res.json({ success: true });
+            }
+
             const extra = {};
             if (rating) extra.feedback_rating = rating;
             await updateOrderStatus(orderId, status, extra);
+            
+            if (status === 'delivered') {
+                if (activeChatHistory) activeChatHistory.delete(orderId);
+                if (userId) {
+                    const { getUser, incrementOrderCount } = require('./services/database');
+                    const u = await getUser(userId);
+                    await updateOrderStatus(orderId, 'delivered', {
+                        livreur_id: userId,
+                        livreur_name: u?.first_name || 'Livreur'
+                    });
+                    incrementOrderCount(userId).catch(() => {});
+                }
+            }
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/livreur/notify-eta', async (req, res) => {
+        try {
+            const { userId, orderId, timeCode } = req.body;
+            const { getOrder, getAppSettings, getUser } = require('./services/database');
+            const { sendTelegramMessage, notifyAdmins } = require('./services/notifications');
+            const { Markup } = require('telegraf');
+            const bot = getBotInstance();
+
+            const order = await getOrder(orderId);
+            if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+
+            let timeText = "";
+            if (timeCode === '1h') timeText = "⏰ dans - d'1h";
+            else if (timeCode === '30m') timeText = "⏳ dans 30 min";
+            else if (timeCode === '10m') timeText = "⏳ dans 10 min";
+            else if (timeCode === '5m') timeText = "⚡ dans 5 min";
+            else if (timeCode === 'here') timeText = "📍 Suis arrivé, descends";
+
+            const livreurUser = await getUser(userId);
+            const livreurName = livreurUser?.first_name || 'Votre livreur';
+
+            await sendTelegramMessage(order.user_id,
+                `🔔 <b>Mise à jour Livraison #${orderId.slice(-5)}</b>\n\n` +
+                `Votre livreur vous informe qu'il arrive : <b>${timeText}</b>\n\n` +
+                `<i>Restez joignable !</i>`,
+                {
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback('💬 Répondre au livreur', `chat_livreur_${orderId}`)],
+                        [Markup.button.callback('◀️ Menu principal', 'main_menu')]
+                    ])
+                }
+            );
+
+            if (bot) {
+                notifyAdmins(bot, `⏳ <b>ETA ENVOYÉ (MINI APP)</b>\n\n🆔 Commande : <code>#${orderId.slice(-5)}</code>\n👤 Livreur : ${livreurName}\n🕒 ETA : ${timeText}`).catch(() => {});
+            }
+
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/livreur/start-chat', async (req, res) => {
+        try {
+            const { userId, orderId } = req.body;
+            const { getOrder } = require('./services/database');
+            const { awaitingChatReply, activeChatHistory } = require('./handlers/order_system');
+            const bot = getBotInstance();
+
+            const order = await getOrder(orderId);
+            if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+
+            const count = parseInt(order.chat_count) || 0;
+            if (count >= 6) {
+                return res.status(400).json({ error: "Limite d'échanges atteinte (6/6)." });
+            }
+
+            const targetId = order.user_id;
+            const tgId = userId.replace('telegram_', '').replace('whatsapp_', '');
+
+            if (awaitingChatReply) {
+                awaitingChatReply.set(userId, {
+                    orderId,
+                    targetId,
+                    role: 'client',
+                    promptMsgId: null
+                });
+            }
+
+            const chatHist = activeChatHistory ? activeChatHistory.get(orderId) : null;
+            let promptText = `💬 <b>SESSION DE CHAT (${count}/6)</b>\n\n`;
+            if (chatHist) {
+                promptText += `📜 <b>Dernier échange :</b>\n` +
+                    `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
+                    `"<i>${chatHist.lastMessage}</i>"\n\n`;
+            }
+
+            promptText += `👉 <b>À votre tour :</b>\n` +
+                (count === 5 ? "⚠️ <i>Ceci est le dernier message de conclusion (6/6).</i>\n" : "") +
+                `Saisissez et envoyez votre message ci-dessous :`;
+
+            if (bot) {
+                const { Markup } = require('telegraf');
+                bot.telegram.sendMessage(tgId, promptText, {
+                    parse_mode: 'HTML',
+                    ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Annuler le chat', `view_active_${orderId}`)]])
+                }).catch(() => {});
+            }
+
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });
