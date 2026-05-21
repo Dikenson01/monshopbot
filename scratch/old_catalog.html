@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ShopTonBot</title>
+    <title>Farmstegridy</title>
     <script>
         window.addEventListener('error', function(e) {
             var err = e.error ? e.error.stack : e.message;
@@ -198,7 +198,7 @@
         <div style="margin-bottom:15px; text-align:center;">
             <img id="main-logo-1" class="app-dynamic-logo" src="/public/img/logo.png" style="width:100px; height:100px; object-fit:contain; border-radius:50%; margin-bottom:10px;" onerror="this.onerror=null; document.getElementById('loading-text-logo').style.display='block';">
             <div id="loading-text-logo" style="display:none; font-size:32px; font-weight:900; letter-spacing:-1px; margin-bottom:15px;">
-                <span style="color:#fff;" data-i18n="nav_shop" data-i18n="nav_shop" data-i18n="nav_shop">Shop</span><span style="color:var(--accent);">TonBot</span>
+                <span style="color:#fff;">Farm</span><span style="color:var(--accent);">stegridy</span>
             </div>
         </div>
         <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
@@ -227,10 +227,10 @@
             <div>
                 <div class="logo" style="display:flex; align-items:center; gap:10px;">
                     <img id="main-logo-2" class="app-dynamic-logo" src="/public/img/logo.png" style="height:32px; width:32px; object-fit:cover; border-radius:50%;" onerror="this.onerror=null; this.style.display='none';">
-                    <div id="header-text-logo" style="font-size:18px; font-weight:900; letter-spacing:-0.5px; display:block;"><span style="color:#fff;">Farm</span><span style="color:var(--accent);">estegridy</span></div>
+                    <div id="header-text-logo" style="font-size:18px; font-weight:900; letter-spacing:-0.5px; display:block;"><span style="color:#fff;">Farm</span><span style="color:var(--accent);">stegridy</span></div>
                 </div>
-                <div onclick="openAddressModal()" style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; font-weight:900; opacity:1; cursor:pointer; background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:12px;">
-                    <i class="ph-fill ph-map-pin" style="color:var(--accent); font-size:14px;"></i>
+                <div onclick="openAddressModal()" style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11px; font-weight:800; opacity:0.8; cursor:pointer;">
+                    <i class="ph-fill ph-map-pin" style="color:var(--accent);"></i>
                     <div style="max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Livraison à : <span id="shop-default-address" style="color:var(--text); opacity:0.9;">Chargement...</span></div>
                     <i class="ph-bold ph-caret-down" style="font-size:10px; opacity:0.5;"></i>
                 </div>
@@ -255,39 +255,12 @@
             <div class="carousel" id="featured-carousel"></div>
         </div>
 
-        <div class="search-area"><div class="search-bar"><i class="ph-bold ph-magnifying-glass"></i><input type="text" placeholder="Rechercher..." data-i18n="search" data-i18n="search" data-i18n="search" data-i18n="search" id="search-input" oninput="handleSearch()"></div></div>
+        <div class="search-area"><div class="search-bar"><i class="ph-bold ph-magnifying-glass"></i><input type="text" placeholder="Rechercher..." data-i18n="search" id="search-input" oninput="handleSearch()"></div></div>
 
         <div class="categories-scroll" id="categories"></div>
 
         <div class="main-grid" id="products"></div>
     </div>
-
-
-
-    <div id="page-bots" class="page" style="display:none;">
-        <div class="app-header">
-            <div>
-                <div class="logo">Offres<span data-i18n="nav_baas">BaaS</span></div>
-                <div style="font-size:10px; font-weight:800; opacity:0.5; margin-top:2px;">
-                    <span>✨ SOLUTIONS CLÉS EN MAIN & SUR MESURE</span>
-                </div>
-            </div>
-            <div class="header-actions">
-                <div class="cart-icon-btn" onclick="openCheckout()"><i class="ph-fill ph-shopping-cart"></i><div class="cart-badge-dot" id="cart-dot-bots"></div></div>
-            </div>
-        </div>
-
-        <div class="featured-section" style="margin-top:15px;">
-            <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;">LES FORMULES RECOMMANDÉES</div>
-            <div class="carousel" id="bots-featured-carousel"></div>
-        </div>
-
-        <div class="categories-scroll" id="bots-categories" style="margin-top:10px;"></div>
-
-        <div class="main-grid" id="bots-products"></div>
-    </div>
-
-
 
     <div id="page-orders" class="page" style="display:none; padding:30px 20px 150px 20px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -315,7 +288,7 @@
         <div style="display:flex; gap:10px; margin-bottom:30px;">
             <div onclick="switchPage('orders')" style="flex:1; background:var(--card); padding:15px; border-radius:18px; text-align:center; border:1px solid var(--border); cursor:pointer;">
                 <i class="ph-fill ph-receipt" style="font-size:24px; color:var(--text); margin-bottom:5px;"></i>
-                <div style="font-size:12px; font-weight:800;" data-i18n="orders"> data-i18n="orders">>Commandes</div>
+                <div style="font-size:12px; font-weight:800;" data-i18n="orders">>Commandes</div>
             </div>
             <div onclick="openAddressModal()" style="flex:1; background:var(--card); padding:15px; border-radius:18px; text-align:center; border:1px solid var(--border); cursor:pointer;">
                 <i class="ph-fill ph-map-pin" style="font-size:24px; color:var(--text); margin-bottom:5px;"></i>
@@ -384,10 +357,9 @@
     </div>
 
     <div class="bottom-nav">
-        <div class="nav-item active" onclick="switchPage('shop', this)"><div class="nav-icon"><i class="ph-fill ph-diamond"></i></div><div class="nav-label" data-i18n="nav_shop">Shop</div></div>
-        <div class="nav-item" onclick="switchPage('bots', this)"><div class="nav-icon" style="color:var(--secondary);"><i class="ph-fill ph-rocket"></i></div><div class="nav-label" data-i18n="nav_baas">BaaS</div></div>
-        <div class="nav-item" onclick="switchPage('orders', this)"><div class="nav-icon"><i class="ph-fill ph-package"></i></div><div class="nav-label" data-i18n="nav_tracking">Suivi</div></div>
-        <div class="nav-item" onclick="switchPage('profile', this)"><div class="nav-icon"><i class="ph-fill ph-user"></i></div><div class="nav-label" data-i18n="nav_profile">Profil</div></div>
+        <div class="nav-item active" onclick="switchPage('shop', this)"><div class="nav-icon"><i class="ph-fill ph-diamond"></i></div><div class="nav-label">Shop</div></div>
+        <div class="nav-item" onclick="switchPage('orders', this)"><div class="nav-icon"><i class="ph-fill ph-package"></i></div><div class="nav-label" data-i18n="orders">>Commandes</div></div>
+        <div class="nav-item" onclick="switchPage('profile', this)"><div class="nav-icon"><i class="ph-fill ph-user"></i></div><div class="nav-label" data-i18n="profile">>Profil</div></div>
     </div>
 
     <div class="sheet" id="selection-modal">
@@ -608,10 +580,17 @@
                 setLoader(80);
                 allProducts = await pRes.json();
                 allCategories = ['TOUT', 'FAVORIS ❤️', ...new Set(allProducts.map(p => p.category).filter(c => c))];
-                
                 if (uRes && uRes.ok) {
                     userInfo = await uRes.json();
                     
+                    if (userInfo && (userInfo.username || userInfo.first_name)) {
+                        const nameToDisplay = userInfo.username || userInfo.first_name;
+                        const pname = document.getElementById('profile-name');
+                        if (pname) pname.innerText = nameToDisplay;
+                        const pinit = document.getElementById('profile-initial');
+                        if (pinit) pinit.innerText = nameToDisplay.charAt(0).toUpperCase();
+                    }
+
                     if (userInfo && userInfo.mini_app_logo) {
                         updateAppLogo(userInfo.mini_app_logo);
                     }
@@ -627,17 +606,6 @@
                         }
                     }
                 }
-                
-                // Set the profile name directly from Telegram context
-                const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-                if (tgUser && (tgUser.username || tgUser.first_name)) {
-                    const nameToDisplay = tgUser.username || tgUser.first_name;
-                    const pname = document.getElementById('profile-name');
-                    if (pname) pname.innerText = nameToDisplay;
-                    const pinit = document.getElementById('profile-initial');
-                    if (pinit) pinit.innerText = nameToDisplay.charAt(0).toUpperCase();
-                }
-
                 if (ordersRes && ordersRes.ok) {
                     window.userOrdersCache = await ordersRes.json();
                 } else {
@@ -648,7 +616,6 @@
                 renderNews(allNews);
 
                 renderShop();
-            renderBots();
                 updateProfileUI();
                 setLoader(100);
                 setTimeout(() => { document.getElementById('loading-screen').style.opacity = '0'; setTimeout(() => document.getElementById('loading-screen').style.display='none', 500); }, 300);
@@ -716,8 +683,6 @@
             if (el) el.classList.add('active');
             if (p === 'orders') loadOrders();
             else if (p === 'shop') renderShop();
-            renderBots();
-            else if (p === 'bots') renderBots();
             tg.HapticFeedback.impactOccurred('medium');
             updateCartUI();
         }
@@ -746,41 +711,6 @@
             if (selectedDeliveryTags.includes(tagId)) selectedDeliveryTags = selectedDeliveryTags.filter(t => t !== tagId);
             else selectedDeliveryTags.push(tagId);
             tg.HapticFeedback.impactOccurred('light');
-        }
-
-                function renderBots() {
-            const botProducts = allProducts.filter(p => p.category && (p.category.includes('PACK') || p.category.includes('MODULE')));
-            const carousel = document.getElementById('bots-featured-carousel');
-            const featured = botProducts.filter(p => p.is_featured);
-            if (carousel) carousel.innerHTML = '';
-            
-            const displayFeatured = featured.length ? featured : botProducts.slice(0, 5);
-
-            displayFeatured.forEach(f => {
-                const d = document.createElement('div');
-                d.className = 'featured-item';
-                d.onclick = () => openProductModal(f.id);
-                const img = f.image_url || `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(f.name)}`;
-                d.innerHTML = `<div class="featured-thumb"><img src="${img}"></div><div class="featured-label">${f.name}</div>`;
-                if (carousel) carousel.appendChild(d);
-            });
-
-            const cats = ['TOUT', ...new Set(botProducts.map(p => p.category).filter(c => c))];
-            const catContainer = document.getElementById('bots-categories');
-            if (catContainer) catContainer.innerHTML = '';
-            cats.forEach(c => {
-                const d = document.createElement('div');
-                d.className = `cat-chip ${c === 'TOUT' ? 'active' : ''}`;
-                d.innerText = c.toUpperCase();
-                d.onclick = () => { 
-                    document.querySelectorAll('#bots-categories .cat-chip').forEach(t => t.classList.remove('active')); 
-                    d.classList.add('active'); 
-                    if (c === 'TOUT') renderGrid(botProducts, 'bots-products');
-                    else renderGrid(botProducts.filter(p => p.category === c), 'bots-products'); 
-                };
-                if (catContainer) catContainer.appendChild(d);
-            });
-            renderGrid(botProducts, 'bots-products');
         }
 
         function renderShop() {
@@ -1416,8 +1346,7 @@
             const count = cart.reduce((s, i) => s + i.n, 0);
             document.getElementById('cart-count').innerText = count;
             document.getElementById('cart-total').innerText = tot.toFixed(2) + '€';
-            document.getElementById('cart-dot').style.display = totalCount > 0 ? 'flex' : 'none';
-            const botDot = document.getElementById('cart-dot-bots'); if(botDot) botDot.style.display = count > 0 ? 'block' : 'none';
+            document.getElementById('cart-dot').style.display = count > 0 ? 'block' : 'none';
             const bar = document.getElementById('cart-bar');
             const isShop = document.getElementById('page-shop').style.display !== 'none';
             if (count > 0 && isShop) bar.classList.add('visible');
@@ -2151,14 +2080,12 @@
         }
 
         async function requestCourierRole() {
-            openCustomModal("DEMANDE DE LIVREUR", 
-                `<div style="text-align:center; padding:20px 0;">
-                    <div style="font-size:40px; margin-bottom:15px;">🚴</div>
-                    <div style="font-size:16px; font-weight:800; margin-bottom:10px;">Votre demande d'admission a bien été reçue par Farmestegridy !</div>
-                    <div style="font-size:13px; opacity:0.7;">Nous reviendrons vers vous très prochainement pour vous donner notre décision.</div>
-                </div>`
-            );
-            tg.HapticFeedback.notificationOccurred('success');
+            const msg = "Votre demande d'admission a bien été reçue par Farmstegridy. Nous reviendrons vers vous pour vous donner notre décision.";
+            if (tg && tg.showAlert) {
+                tg.showAlert(msg);
+            } else {
+                alert(msg);
+            }
             try {
                 if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
                     const uid = window.Telegram.WebApp.initDataUnsafe.user.id;
@@ -2489,43 +2416,5 @@
         }, 15000);
 
     </script>
-
-    <!-- Google Translate Injection -->
-    <style>
-        .goog-te-banner-frame.skiptranslate { display: none !important; }
-        body { top: 0px !important; }
-        #google_translate_element { display: none !important; }
-    </style>
-    <div id="google_translate_element"></div>
-    <script type="text/javascript">
-        function googleTranslateElementInit() {
-            new google.translate.TranslateElement({pageLanguage: 'fr', autoDisplay: false}, 'google_translate_element');
-        }
-    </script>
-    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
-    <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            let lang = urlParams.get('lang') || 'fr';
-            
-            // Map Telegram language codes to Google Translate codes
-            const langMap = { 'en': 'en', 'es': 'es', 'de': 'de', 'it': 'it', 'pt': 'pt', 'ru': 'ru', 'ar': 'ar' };
-            lang = langMap[lang] || lang;
-
-            if (lang !== 'fr') {
-                const interval = setInterval(() => {
-                    const select = document.querySelector('.goog-te-combo');
-                    if (select && select.options.length > 0) {
-                        select.value = lang;
-                        select.dispatchEvent(new Event('change'));
-                        clearInterval(interval);
-                    }
-                }, 300);
-                setTimeout(() => clearInterval(interval), 5000);
-            }
-        });
-    </script>
-    <!-- End Google Translate -->
-
 </body>
 </html>

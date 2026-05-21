@@ -59,10 +59,8 @@ function setupStartHandler(bot) {
         ctx.state.user.language_code = lang;
 
         // 2. Persister en base de données (attendu pour que le cache soit vidé après l'écriture)
-        await supabase.from(COL_USERS).update({ 
-            language_code: lang, 
-            data: { ...(ctx.state.user.data), language: lang } 
-        }).eq('id', docId);
+        const { error } = await supabase.from(COL_USERS).update({ language_code: lang, data: { ...(ctx.state.user.data), language: lang } }).eq('id', docId);
+        if (error) { await supabase.from(COL_USERS).update({ data: { ...(ctx.state.user.data), language: lang } }).eq('id', docId); }
         
         // 3. Vider le cache après la fin de l'écriture
         clearUserCache(docId);

@@ -190,6 +190,8 @@ function t(userOrContext, key, defaultText = '', variables = {}) {
             langCode = userOrContext.language_code;
         } else if (userOrContext.from && userOrContext.from.language_code) {
             langCode = userOrContext.from.language_code;
+        } else if (userOrContext.data && userOrContext.data.language) {
+            langCode = userOrContext.data.language;
         } else if (userOrContext.language) {
             langCode = userOrContext.language;
         }
