@@ -1930,7 +1930,7 @@ function setupOrderSystem(bot) {
         const targetId = isLivreur ? order.user_id : order.livreur_id;
         const targetRole = isLivreur ? "client" : "livreur";
 
-        awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { orderId, targetId, role: targetRole });
+        try { const { awaitingUserSupportReply } = require("./admin"); if (awaitingUserSupportReply) awaitingUserSupportReply.delete(`${ctx.platform}_${ctx.from.id}`); } catch(e) {} awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { orderId, targetId, role: targetRole });
 
         let promptText = `💬 <b>Message (${count + 1}/6)</b>\nEnvoyez votre message :`;
         if (count === 5) promptText = "💬 <b>Dernier message de conclusion (6/6)</b>\nEnvoyez votre message final :";
