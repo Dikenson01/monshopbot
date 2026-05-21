@@ -338,7 +338,7 @@ async function deleteUser(userId) {
 
 async function getAllUsersForBroadcast(platform = null, type = 'user') {
     // Note: 'platform_id' doesn't exist as a column - we use 'id' (format: telegram_XXXX)
-    let query = supabase.from(COL_USERS).select('id, username, first_name, last_name, is_blocked, is_livreur, platform');
+    let query = supabase.from(COL_USERS).select('id, telegram_id, username, first_name, last_name, is_blocked, is_livreur, platform');
     
     if (type === 'livreur' || type === 'livreurs') {
         query = query.eq('is_livreur', true);
@@ -1037,13 +1037,37 @@ async function adjustOrderStock(orderId, action) {
         const { logStockMovement } = require('./inventory_manager');
         
         for (const item of cart) {
-            const productId = item.productId;
+            const productId = item.productId || item.id;
             const qty = action === 'increment' ? item.qty : -item.qty;
             
             const { data: p } = await supabase.from(COL_PRODUCTS).select('id, stock, name').eq('id', productId).maybeSingle();
             if (p && typeof p.stock === 'number') {
                 const newStock = Math.max(0, p.stock + qty);
-                await supabase.from(COL_PRODUCTS).update({ stock: newStock }).eq('id', productId);
+                const updates = { stock: newStock };
+                
+                let alertMsg = null;
+                if (action === 'decrement') {
+                    if (newStock <= 0 && p.stock > 0) {
+                        updates.is_active = false;
+                        updates.is_available = false;
+                        alertMsg = `🚫 <b>Rupture de Stock</b>\nLe produit <b>${p.name}</b> est épuisé. Il a été automatiquement masqué du catalogue du bot.`;
+                    } else if (newStock <= 2 && p.stock > 2) {
+                        alertMsg = `⚠️ <b>Alerte Stock Critique (${newStock} restants)</b>\nLe produit <b>${p.name}</b> n'a plus que ${newStock} unités en stock ! Veuillez réapprovisionner au plus vite.`;
+                    } else if (newStock <= 5 && p.stock > 5) {
+                        alertMsg = `⚠️ <b>Alerte Stock Bas (${newStock} restants)</b>\nLe produit <b>${p.name}</b> n'a plus que ${newStock} unités en stock. Pensez à réapprovisionner !`;
+                    }
+                }
+                
+                await supabase.from(COL_PRODUCTS).update(updates).eq('id', productId);
+                
+                if (alertMsg) {
+                    try {
+                        const { notifyAdmins } = require('./notifications');
+                        await notifyAdmins(null, alertMsg);
+                    } catch(err) {
+                        console.error("Error sending stock alert from DB:", err.message);
+                    }
+                }
                 await logStockMovement(productId, qty, `order_${action}`, orderId);
             }
         }

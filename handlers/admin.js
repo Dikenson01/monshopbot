@@ -1266,4 +1266,4 @@ function setupAdminHandlers(bot) {
     });
 }
 
-module.exports = { setupAdminHandlers, isAdmin, initAdminState, clearAuthCache };
+module.exports = { setupAdminHandlers, isAdmin, initAdminState, clearAuthCache, awaitingUserSupportReply };
