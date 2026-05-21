@@ -4,82 +4,69 @@ const encryption = require('./encryption');
 const COL_USERS = 'bot_users';
 const COL_BROADCASTS = 'bot_broadcasts';
 const COL_STATS = 'bot_stats';
-const COL_REFERRALS = 'bot_referrals';
 const COL_SETTINGS = 'bot_settings';
 const COL_PRODUCTS = 'bot_products';
 const COL_ORDERS = 'bot_orders';
 const COL_DAILY_STATS = 'bot_daily_stats';
 const COL_REVIEWS = 'bot_reviews';
-const COL_SUPPLIER_PRODUCTS = 'supplier_marketplace';
-const COL_SUPPLIER_ORDERS = 'supplier_market_orders';
-const COL_SUPPORT_LOGS = 'bot_support_logs';
-const DB_TIMEOUT = 30000;
+const COL_REFERRALS = 'bot_referrals';
+const COL_SUPPLIERS = 'bot_suppliers';
 
+const DB_TIMEOUT = 10000;
 function ts() { return new Date().toISOString(); }
 
-// Simple server-side cache to avoid heavy DB scans on every refresh
+// TTL-based user cache to prevent stale role data (is_livreur, is_approved, etc.)
+const USER_CACHE_TTL = 10000; // 10 seconds
+const _userCache = new Map(); // Map<docId, { data, ts }>
+function _userCacheGet(docId) {
+    const entry = _userCache.get(docId);
+    if (!entry) return null;
+    if (Date.now() - entry.ts > USER_CACHE_TTL) { _userCache.delete(docId); return null; }
+    return entry.data;
+}
+function _userCacheSet(docId, data) { _userCache.set(docId, { data, ts: Date.now() }); }
+function _userCacheDelete(docId) { _userCache.delete(docId); }
+
 const _statsCache = {
     overview: null,
     analytics: null,
-    ttl: 120000, // 2 minutes (avoid heavy scans on every reload)
+    ttl: 30000,
     lastOverview: 0,
-    lastAnalytics: 0
+    lastAnalytics: 0,
+    settings: null,
+    lastSettings: 0
 };
 
-// Helper pour simplifier Supabase updates numériques
-const incr = (n = 1) => n;
+// --- CORE HELPERS ---
+
 function decryptUser(userData) {
     if (!userData) return null;
-    const decrypted = {
-        ...userData,
-        doc_id: userData.id,
-        username: encryption.decrypt(userData.username) || userData.username || '',
-        first_name: encryption.decrypt(userData.first_name) || userData.first_name || 'Utilisateur',
-        last_name: encryption.decrypt(userData.last_name) || userData.last_name || '',
-        platform: userData.platform || (String(userData.id).startsWith('whatsapp') ? 'whatsapp' : 'telegram')
-    };
-
-    // Parse JSONB data field
-    let meta = userData.data;
+    // Derive platform_id (raw numeric telegram ID) from the doc ID (telegram_XXXX)
+    const rawId = String(userData.id || '');
+    const platformId = rawId.includes('_') ? rawId.split('_').pop() : rawId;
+    
+    let meta = userData.data || {};
     if (typeof meta === 'string') {
         try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
     }
-    if (!meta || typeof meta !== 'object') meta = {};
-    decrypted.data = meta;
 
-    // Restauration complète des adresses sauvegardées depuis le JSONB
-    if (meta.saved_addresses_blob) {
-        decrypted.address = meta.saved_addresses_blob;
-    } else if (Array.isArray(meta.addresses) && meta.addresses.length > 0) {
-        try {
-            decrypted.address = JSON.stringify(meta.addresses.map((a, i) => ({
-                id: String(Date.now() + i),
-                name: 'Adresse ' + (i + 1),
-                address: a
-            })));
-        } catch(e) {}
-    } else {
-        decrypted.address = '';
-    }
-
-    // is_available: JSONB wins, then root column, then false
-    if (meta.is_available !== undefined) {
-        decrypted.is_available = !!meta.is_available;
-    } else {
-        decrypted.is_available = !!userData.is_available;
-    }
-
-    // current_city: JSONB wins, then root column, then null
-    if (meta.current_city) {
-        decrypted.current_city = meta.current_city;
-    } else if (userData.current_city) {
-        decrypted.current_city = userData.current_city;
-    } else {
-        decrypted.current_city = null;
-    }
+    const decrypted = {
+        ...userData,
+        doc_id: userData.id,
+        platform_id: userData.platform_id || platformId,
+        username: encryption.decrypt(userData.username) || userData.username || '',
+        first_name: encryption.decrypt(userData.first_name) || userData.first_name || 'Utilisateur',
+        last_name: encryption.decrypt(userData.last_name) || userData.last_name || '',
+        address: userData.address || meta.address || '',
+        platform: userData.platform || 'telegram',
+        data: meta,
+        is_available: !!(meta.is_available ?? userData.is_available),
+        current_city: meta.current_city || userData.current_city || null
+    };
 
     return decrypted;
 }
+
 function decryptOrder(order) {
     if (!order) return null;
     return {
@@ -92,1610 +79,639 @@ function decryptOrder(order) {
 
 function decryptReview(review) {
     if (!review) return null;
+    let decryptedText = encryption.decrypt(review.text) || review.text || '';
+    let parsedMedia = [];
+    let productId = review.product_id;
+    try {
+        const parsed = JSON.parse(decryptedText);
+        if (parsed && typeof parsed === 'object') {
+            if (parsed.text !== undefined || parsed.media !== undefined) {
+                decryptedText = parsed.text || '';
+                parsedMedia = parsed.media || [];
+                if (parsed.product_id) productId = parsed.product_id;
+            }
+        }
+    } catch(e) {}
+    
     return {
         ...review,
-        text: encryption.decrypt(review.text) || review.text || '',
+        text: decryptedText,
+        media: parsedMedia,
+        product_id: productId,
         first_name: encryption.decrypt(review.first_name) || review.first_name || '',
         username: encryption.decrypt(review.username) || review.username || '',
     };
 }
 
 function makeDocId(platform, platformId) { return `${platform}_${platformId}`; }
+function generateReferralCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
-async function activeUsersQuery(platform, type = null, limit = null) {
-    let q = supabase.from(COL_USERS).select('id, platform, platform_id, type, username, first_name, last_name, order_count, wallet_balance, points, date_inscription, is_livreur, is_available, is_blocked, current_city, data').eq('is_blocked', false);
-    if (platform && platform !== 'all') q = q.eq('platform', platform);
-    if (type === 'livreurs') {
-        q = q.eq('is_livreur', true);
-    } else if (type === 'user') {
-        // Inclure 'user' OU NULL (si non défini) mais exclure explicitement 'group'
-        q = q.or('type.is.null,type.eq.user');
-    } else if (type === 'group') {
-        q = q.eq('type', 'group');
-    } else if (type) {
-        q = q.eq('type', type);
+// --- INIT ---
+
+async function init() {
+    const fs = require('fs');
+    const path = require('path');
+    const logLine = (msg) => {
+        const line = `[${new Date().toISOString()}] ${msg}\n`;
+        try { fs.appendFileSync(path.join(process.cwd(), 'debug.log'), line); } catch (e) {}
+        console.log(msg);
+    };
+
+    logLine('📦 Initialisation Database (Supabase) - FARMSTEGRIDY BOT...');
+    logLine(`[DB-INIT] Target: ${process.env.SUPABASE_URL}`);
+    const key = process.env.SUPABASE_KEY || '';
+    logLine(`[DB-INIT] Key Masked: ${key.substring(0, 10)}...${key.substring(key.length - 10)}`);
+    logLine(`[DB-INIT] Project Ref: ${process.env.SUPABASE_URL?.match(/https:\/\/(.*?)\./)?.[1]}`);
+    try {
+        const { data, error } = await supabase.from(COL_STATS).select('id').eq('id', 1).maybeSingle();
+        if (error) throw error;
+        if (!data) {
+            await supabase.from(COL_STATS).insert({ id: 1, total_users: 0 });
+        }
+        console.log('✅ Database connection OK');
+    } catch (e) {
+        console.error('❌ Database init error:', e.message);
+        throw e;
     }
-    if (limit) q = q.limit(limit);
-    const { data } = await q;
-    return data || [];
 }
 
-const _userCache = new Map();
-function clearUserCache(docId) {
-    if (docId) _userCache.delete(docId);
+// --- LOCKING ---
+
+async function claimLock(resourceName, ownerId, ttlMs = 60000) {
+    const expires = new Date(Date.now() + ttlMs).toISOString();
+    const now = new Date().toISOString();
+    
+    try {
+        const { error } = await supabase
+            .from(COL_STATS)
+            .update({ 
+                tg_lock_owner: ownerId, 
+                tg_lock_expires: expires 
+            })
+            .eq('id', 1)
+            .or(`tg_lock_owner.is.null,tg_lock_expires.lt.${now},tg_lock_owner.eq.${ownerId}`);
+
+        if (error) {
+            if (error.message.includes('column') && (process.env.RAILWAY_REPLICA_COUNT || 1) <= 1) {
+                console.warn('[TG-LOCK] ⚠️ Columns missing in bot_stats but only 1 replica detected. Bypassing lock for stability.');
+                return true; 
+            }
+            console.error('[TG-LOCK] claimLock Error:', error.message);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error(`[TG-LOCK] claimLock Error:`, e.message);
+        return false;
+    }
+}
+
+async function checkLock(resourceName, ownerId) {
+    const { data } = await supabase.from(COL_STATS).select('tg_lock_owner, tg_lock_expires').eq('id', 1).single();
+    if (!data) return null;
+    return {
+        owner: data.tg_lock_owner,
+        expires: data.tg_lock_expires
+    };
+}
+
+async function releaseLock(resourceName, ownerId) {
+    await supabase.from(COL_STATS).update({ tg_lock_owner: null, tg_lock_expires: null }).eq('id', 1).eq('tg_lock_owner', ownerId);
+}
+
+async function isLockOwner(resourceName, ownerId) {
+    return await checkLock(resourceName, ownerId);
+}
+
+// --- USER MANAGEMENT ---
+
+async function getUser(tgId) {
+    // Handle both raw numeric IDs ('1183134641') and pre-formatted doc IDs ('telegram_1183134641')
+    const docId = String(tgId).startsWith('telegram_') ? String(tgId) : `telegram_${tgId}`;
+    const cached = _userCacheGet(docId);
+    if (cached) return cached;
+    const { data } = await supabase.from(COL_USERS).select('*').eq('id', docId).maybeSingle();
+    const user = decryptUser(data);
+    if (user) _userCacheSet(docId, user);
+    return user;
 }
 
 async function registerUser(platformUser, platform = 'telegram', referrerId = null) {
-    if (!platform) platform = 'telegram';
-    const settings = await getAppSettings();
     const docId = makeDocId(platform, platformUser.id);
-    const nowMs = Date.now();
-
-    let existing = null;
-    if (_userCache.has(docId)) {
-        existing = _userCache.get(docId).data;
-    } else {
-        // Recherche multi-index pour éviter les doublons (certains anciens utilisateurs n'ont peut-être pas le docId préfixé)
-        const { data: existingArray, error: fetchError } = await supabase.from(COL_USERS).select('*').eq('id', docId).limit(1);
-        
-        // Fallback: recherche par platform_id + platform si le docId ne match pas
-        existing = existingArray?.[0];
-        if (!existing && platformUser.id) {
-            const { data: altArray } = await supabase.from(COL_USERS).select('*').eq('platform_id', String(platformUser.id)).eq('platform', platform).limit(1);
-            existing = altArray?.[0];
-        }
-    }
-
-    // Déduplication WhatsApp : chercher le même numéro sous l'autre suffixe (@lid vs @s.whatsapp.net)
-    if (!existing && platform === 'whatsapp') {
-        const rawId = String(platformUser.id || '');
-        const phoneNum = rawId.split('@')[0].split(':')[0];
-        if (phoneNum) {
-            const altSuffix = rawId.includes('@lid') ? '@s.whatsapp.net' : '@lid';
-            const altId = `whatsapp_${phoneNum}${altSuffix}`;
-            const { data: altArray } = await supabase.from(COL_USERS).select('*').eq('id', altId).limit(1);
-            if (altArray && altArray.length > 0) {
-                existing = altArray[0];
-                _userCache.set(docId, { data: existing, expire: nowMs + 300000 });
-                console.log(`[WA-Dedup] Utilisateur trouvé sous ${altId} pour ${docId} — fusion par numéro`);
-            }
-        }
-
-        // Fallback par NOM (Nouveau : Regroupement automatique par identité textuelle)
-        if (!existing && platformUser.first_name && platformUser.first_name !== 'Utilisateur WhatsApp') {
-            const encryptedName = encryption.encrypt(platformUser.first_name);
-            // On cherche tous les utilisateurs WhatsApp avec ce nom (chiffré)
-            const { data: nameMatches } = await supabase.from(COL_USERS)
-                .select('*')
-                .eq('platform', 'whatsapp')
-                .eq('first_name', encryptedName)
-                .neq('id', docId); // Ne pas se matcher soi-même si l'ID a changé mais le nom est resté
-            
-            if (nameMatches && nameMatches.length > 0) {
-                // On prend le "meilleur" (plus de commandes ou plus vieux)
-                existing = nameMatches.sort((a, b) => (b.order_count || 0) - (a.order_count || 0) || new Date(a.date_inscription || 0) - new Date(b.date_inscription || 0))[0];
-                console.log(`[WA-Identity-Merged] Regroupement de ${docId} sur l'identité existante ${existing.id} (Nom: "${platformUser.first_name}")`);
-                
-                // On enregistre ce lien dans le cache pour éviter de refaire la recherche DB à chaque message
-                _userCache.set(docId, { data: existing, expire: nowMs + 300000 });
-                // L'utilisateur retrouvera son portefeuille, ses points et son historique
-            }
-        }
-    }
-
-    const isGroup = platformUser.type === 'group' || platformUser.type === 'supergroup';
-
-    // Si l'utilisateur existe déjà
-    if (existing) {
-        // Optimisation : Ne mettre à jour last_active en DB que toutes les 5 minutes
-        const lastUpdated = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
-        const needsDbUpdate = (nowMs - lastUpdated) > 300000; // 5 minutes
-        const needsTypeHealing = !existing.type;
-        const needsReferralCode = !existing.referral_code;
-
-        if (needsDbUpdate || needsTypeHealing || needsReferralCode) {
-            const updateData = {
-                last_active: ts(),
-                updated_at: ts(),
-                is_active: true
-            };
-
-            if (needsTypeHealing) updateData.type = isGroup ? 'group' : 'user';
-            if (needsReferralCode) {
-                updateData.referral_code = generateReferralCode(platform, platformUser.id || Date.now());
-            }
-
-            // Si on a des infos fraîches sur le nom/username
-            if (platformUser.username) updateData.username = !isGroup ? encryption.encrypt(platformUser.username) : platformUser.username;
-            if (platformUser.first_name) updateData.first_name = !isGroup ? encryption.encrypt(platformUser.first_name) : platformUser.first_name;
-
-            // Update en tâche de fond (background) pour ne pas ralentir le bot
-            supabase.from(COL_USERS).update(updateData).eq('id', docId).then(() => { }, () => { });
-
-            const updatedUser = { ...existing, ...updateData };
-            _userCache.set(docId, { data: updatedUser, expire: nowMs + 300000 });
-            _userCache.set(docId, { data: updatedUser, expire: nowMs + 300000 });
-
-            // Si cet utilisateur déjà inscrit clique sur un lien de parrainage et n'a PAS de parrain encore
-            if (referrerId && !existing.referred_by) {
-                processReferral(docId, referrerId).catch(console.error);
-            }
-
-            return { isNew: false, user: decryptUser(updatedUser) };
-        }
-
-        // Si l'utilisateur est connu mais clique sur un lien de parrainage et n'a PAS de parrain encore
-        if (referrerId && !existing.referred_by) {
-            processReferral(docId, referrerId).catch(console.error);
-        }
-
-        return { isNew: false, user: decryptUser(existing) };
-    }
-
-    // Nouvel utilisateur
-    const newUser = {
-        id: docId,
-        doc_id: docId,
-        platform,
-        platform_id: String(platformUser.id || ''),
-        type: isGroup ? 'group' : 'user',
-        username: !isGroup ? encryption.encrypt(platformUser.username || '') : (platformUser.username || ''),
-        first_name: !isGroup ? encryption.encrypt(platformUser.first_name || 'Utilisateur') : (platformUser.first_name || 'Utilisateur'),
-        last_name: !isGroup ? encryption.encrypt(platformUser.last_name || '') : '',
-        language_code: platformUser.language_code || 'fr',
-        phone: null,
-        date_inscription: ts(),
-        last_active: ts(),
-        updated_at: ts(),
-        is_active: true,
-        is_blocked: false,
-        is_approved: (() => {
-            const cleanId = String(platformUser.id).match(/\d+/g)?.[0] || '';
-            const adminIds = String(settings?.admin_telegram_id || '').match(/\d+/g) || [];
-            const envAdmin = String(process.env.ADMIN_TELEGRAM_ID || '').match(/\d+/g)?.[0] || '';
-            const isAdm = adminIds.includes(cleanId) || cleanId === envAdmin;
-            return isAdm || !!(settings?.auto_approve_new);
-        })(),
-        is_admin: (() => {
-             const cleanId = String(platformUser.id).match(/\d+/g)?.[0] || '';
-             const adminIds = String(settings?.admin_telegram_id || '').match(/\d+/g) || [];
-             const envAdmin = String(process.env.ADMIN_TELEGRAM_ID || '').match(/\d+/g)?.[0] || '';
-             return adminIds.includes(cleanId) || cleanId === envAdmin;
-        })(),
-        referred_by: referrerId || null,
-        referral_count: 0,
-        order_count: 0,
-        points: 0,
-        wallet_balance: 0,
-        is_available: false,
-        current_city: null,
-        data: {},
-        referral_code: generateReferralCode(platform, platformUser.id || Date.now())
-    };
-
-    const { error: insertError } = await supabase.from(COL_USERS).insert([newUser]);
-    if (insertError) {
-        if (insertError.code === '23505') {
-            const { data: updatedArray } = await supabase.from(COL_USERS).select('*').eq('id', docId).limit(1);
-            if (updatedArray && updatedArray.length > 0) {
-                return { isNew: false, user: decryptUser(updatedArray[0]) };
-            }
-        }
-        console.error(`❌ Échec INSERT user ${docId}:`, insertError.message);
-        throw new Error(`Impossible d'enregistrer l'utilisateur : ${insertError.message}`);
-    }
-
-    // Statistiques
-    await incrementStat('total_users').catch(() => { });
-    await incrementDailyStat('new_users').catch(() => { });
-
-    // Si nouvel utilisateur parrainé
-    if (referrerId) {
-        processReferral(docId, referrerId).catch(console.error);
-    }
-
-    _userCache.set(docId, { data: newUser, expire: nowMs + 300000 });
-
-    return { isNew: true, user: decryptUser(newUser) };
-}
-
-async function approveUser(userId) {
-    const { error } = await supabase.from(COL_USERS).update({ is_approved: true, updated_at: ts() }).eq('id', userId);
-    if (error) throw error;
-    _userCache.delete(userId);
-    return true;
-}
-
-/**
- * Traite l'attribution d'un parrainage.
- * @param {string} docId ID de l'utilisateur parrainé
- * @param {string} referralCode Code de parrainage (ex: ref_telegram_123_xyz)
- */
-async function processReferral(docId, referralCode) {
-    if (!referralCode) return;
+    const existing = await getUser(platformUser.id); 
+    const isNew = !existing;
+    
+    // 1. Charger les settings
+    let autoApprove = true; // Par défaut, on ne restreint pas l'accès
     try {
-        // Chercher le parrain par son code
-        const { data: refDocs } = await supabase.from(COL_USERS).select('*').eq('referral_code', referralCode).limit(1);
-        if (refDocs && refDocs.length > 0) {
-            const referrerDoc = refDocs[0];
-            
-            // Empêcher l'auto-parrainage (même ID platform)
-            const refPlatformId = String(referralCode).split('_')[2];
-            const myPlatformId = String(docId).split('_')[1];
-            if (refPlatformId === myPlatformId) return;
-
-            // Déjà parrainé ? (Double check DB)
-            const { data: me } = await supabase.from(COL_USERS).select('referred_by').eq('id', docId).single();
-            if (me && me.referred_by) return;
-
-            console.log(`[Referral] Attribution : ${docId} est parrainé par ${referrerDoc.id} (code: ${referralCode})`);
-
-            // Mettre à jour le compteur du parrain
-            await supabase.from(COL_USERS).update({
-                referral_count: (referrerDoc.referral_count || 0) + 1
-            }).eq('id', referrerDoc.id);
-
-            // Lier l'utilisateur au parrain
-            await supabase.from(COL_USERS).update({
-                referred_by: referrerDoc.id
-            }).eq('id', docId);
-
-            // Enregistrer dans la table dédiée
-            await supabase.from(COL_REFERRALS).insert([{
-                id: `${Date.now()}-${Math.round(Math.random() * 1000)}`,
-                referrer_id: referrerDoc.id,
-                referred_id: docId,
-                created_at: ts()
-            }]).catch(() => { });
-
-            await incrementStat('total_referrals').catch(() => { });
-
-            // Invalider les caches
-            _userCache.delete(referrerDoc.id);
-            _userCache.delete(docId);
-        } else {
-            console.log(`[Referral] Code ${referralCode} non trouvé dans la DB.`);
+        const settings = await getAppSettings();
+        if (settings && settings.private_mode !== undefined) {
+            autoApprove = !settings.private_mode;
+        }
+        if (settings && settings.auto_approve_new !== undefined) {
+            autoApprove = !!settings.auto_approve_new;
         }
     } catch (e) {
-        console.error("❌ processReferral error:", e.message);
+        console.error('[DB] Failed to check auto-approve settings:', e.message);
     }
-}
 
-async function getAllActiveUsers(platform = null, type = null) {
-    const list = await activeUsersQuery(platform, type);
-    console.log(`[DB] getAllActiveUsers(platform=${platform}, type=${type}) -> ${list.length} trouvés`);
-    return list.map(d => decryptUser(d));
-}
+    const encryptedData = {
+        id: docId,
+        telegram_id: String(platformUser.id),
+        platform: platform,
+        username: platformUser.username || '',
+        first_name: platformUser.first_name || 'Utilisateur',
+        last_name: platformUser.last_name || '',
+        referral_code: existing?.referral_code || generateReferralCode(),
+        referred_by: existing?.referred_by || referrerId,
+        is_approved: existing ? existing.is_approved : autoApprove,
+        created_at: existing?.created_at || ts()
+    };
 
-// Nouvelle fonction pour le broadcast : inclut TOUS les utilisateurs (même bloqués)
-async function getAllUsersForBroadcast(platform = null, type = null) {
-    let q = supabase.from(COL_USERS).select('id, platform, platform_id, type, username, first_name, last_name, order_count, wallet_balance, points, date_inscription, is_livreur, is_available, is_blocked, current_city, data');
+    if (existing) {
+        const needsUpdate = existing.username !== (platformUser.username || '') || existing.first_name !== (platformUser.first_name || 'Utilisateur');
+        if (!needsUpdate) return { user: existing, isNew: false };
+        // Update in background
+        supabase.from(COL_USERS).update(encryptedData).eq('id', docId).then(() => {
+            _userCacheSet(docId, decryptUser(encryptedData));
+        });
+        return { user: { ...existing, ...encryptedData }, isNew: false };
+    }
+    const { data, error } = await supabase.from(COL_USERS).upsert(encryptedData).select().single();
     
-    // Robust type filtering
-    if (type === 'livreurs') {
-        q = q.eq('is_livreur', true);
-    } else if (type === 'user' || !type) {
-        // En Supabase, si on veut filter par "user" ou NULL
-        q = q.or('type.is.null,type.eq.user');
-    } else if (type === 'group') {
-        q = q.eq('type', 'group');
-    } else if (type && type !== 'all') {
-        q = q.eq('type', type);
+    if (error) {
+        console.error('[DB] Register error:', error.message);
+        
+        // 2. Si l'erreur concerne 'created_at', on réessaie sans ce champ
+        if (error.message.includes('created_at')) {
+            console.log('[DB] Retrying register without created_at column...');
+            delete encryptedData.created_at;
+            const { data: data2, error: error2 } = await supabase.from(COL_USERS).upsert(encryptedData).select().single();
+            if (!error2) {
+                const user = data2;
+                if (user) _userCacheSet(docId, user);
+                return { user, isNew };
+            }
+        }
+
+        // Fallback sur l'existant si l'upsert échoue vraiment
+        if (existing) return { user: existing, isNew: false };
     }
 
-    const { data, error } = await q;
+    const user = data; 
+    if (user) _userCacheSet(docId, user);
+    
+    return { user, isNew };
+}
+
+async function updateUser(docId, data) {
+    if (data.address !== undefined) {
+        const user = await getUser(docId);
+        const currentData = user?.data || {};
+        data.data = { ...currentData, address: data.address };
+        delete data.address;
+    }
+    const { data: updated, error } = await supabase.from(COL_USERS).update(data).eq('id', docId).select().single();
+    if (updated) _userCacheSet(docId, decryptUser(updated));
+    return updated;
+}
+
+async function searchUsers(query = '', filter = 'all') {
+    let q = supabase.from(COL_USERS).select('*');
+    
+    if (filter === 'pending') {
+        q = q.eq('is_approved', false).eq('is_blocked', false);
+    } else if (filter === 'approved') {
+        q = q.eq('is_approved', true);
+    } else if (filter === 'blocked') {
+        q = q.eq('is_blocked', true);
+    } else if (filter === 'distributors' || filter === 'livreurs') {
+        q = q.eq('is_livreur', true);
+    }
+
+    // Since username and first_name are encrypted in the DB, we cannot use SQL .ilike for them.
+    // We fetch a larger batch, decrypt, and filter in JS.
+    const { data } = await q.order('created_at', { ascending: false }).limit(1000);
+    let users = (data || []).map(decryptUser);
+
+    if (query) {
+        const lowerQuery = query.toLowerCase().replace(/[@#]/g, '');
+        users = users.filter(u => {
+            const searchStr = `${u.id || ''} ${u.username || ''} ${u.first_name || ''}`.toLowerCase();
+            return searchStr.includes(lowerQuery);
+        });
+    }
+
+    return users.slice(0, 50); // limit the final results
+}
+
+async function approveUser(docId) {
+    return await updateUser(docId, { is_approved: true });
+}
+
+async function getRecentUsers(limit = 200) {
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_approved', true).eq('is_blocked', false).order('created_at', { ascending: false }).limit(limit);
+    return (data || []).map(decryptUser);
+}
+
+async function getBlockedUsers(limit = 100) {
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_blocked', true).order('created_at', { ascending: false }).limit(limit);
+    return (data || []).map(decryptUser);
+}
+
+async function getPendingUsers() {
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_approved', false).eq('is_blocked', false).order('created_at', { ascending: false });
+    return (data || []).map(decryptUser);
+}
+
+async function markUserBlocked(userId) {
+    return await updateUser(userId, { is_blocked: true });
+}
+
+async function markUserUnblocked(userId) {
+    return await updateUser(userId, { is_blocked: false });
+}
+
+async function deleteUser(userId) {
+    return await supabase.from(COL_USERS).delete().eq('id', userId);
+}
+
+async function getAllUsersForBroadcast(platform = null, type = 'user') {
+    // Note: 'platform_id' doesn't exist as a column - we use 'id' (format: telegram_XXXX)
+    let query = supabase.from(COL_USERS).select('id, telegram_id, username, first_name, last_name, is_blocked, is_livreur, platform');
+    
+    if (type === 'livreur' || type === 'livreurs') {
+        query = query.eq('is_livreur', true);
+    } else if (type === 'group') {
+        query = query.like('id', '%-%-'); // Groups have different ID format
+    } else if (type === 'user') {
+        // Only non-livreur users for targeted broadcast
+        query = query.eq('is_livreur', false);
+    }
+    // type === null means ALL users (livreurs + clients)
+
+    if (platform && platform !== 'all') {
+        query = query.eq('platform', platform);
+    }
+
+    const { data, error } = await query;
     if (error) {
-        console.error(`[DB-ERROR] getAllUsersForBroadcast:`, error.message);
-        // Fallback: Tentative sans filtre de type pour voir s'il y a au moins des gens sur la plateforme
-        const { data: fallbackData } = await supabase.from(COL_USERS).select('id, platform_id').eq('platform', platform || 'telegram').limit(5);
-        console.log(`[DB-FALLBACK] Problème de filtre? Top 5 users sur ${platform}:`, fallbackData?.length || 0);
+        console.error('[DB] getAllUsersForBroadcast error:', error.message);
         return [];
     }
+    // Derive platform_id from the doc id (telegram_1234 -> '1234')
+    return (data || []).map(u => ({
+        ...u,
+        platform_id: u.telegram_id || (String(u.id || '').includes('_') ? String(u.id).split('_').pop() : String(u.id || ''))
+    }));
+}
 
-    const list = data || [];
-    console.log(`[DB] getAllUsersForBroadcast(platform=${platform}, type=${type}) -> ${list.length} trouvés`);
+// --- PRODUCTS ---
 
-    if (list.length === 0) {
-        // Diagnostic profond
-        const { count } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true });
-        const { data: sample } = await supabase.from(COL_USERS).select('id, platform, type, is_livreur').limit(3);
-        console.log(`[DB-DIAGNOSTIC] Total table ${COL_USERS}: ${count || 0} lignes.`);
-        console.log(`[DB-DIAGNOSTIC] Échantillon data (type check):`, JSON.stringify(sample));
+async function getProducts(onlyActive = false) {
+    let query = supabase.from(COL_PRODUCTS).select('*');
+    if (onlyActive) {
+        query = query.eq('is_active', true);
     }
-
-    return list.map(d => decryptUser(d));
-}
-/**
- * Marque un utilisateur comme bloqué.
- * @param {string} docId 
- * @param {boolean} byAdmin true si bloqué par l'admin, false si le bot a été bloqué par l'utilisateur (détecté par broadcast)
- */
-async function markUserBlocked(docId, byAdmin = false) {
-    const updateData = { is_blocked: true, blocked_at: ts() };
-    console.log(`[DB] Marking user ${docId} as BLOCKED (byAdmin: ${byAdmin})`);
-
-    const u = await getUser(docId);
-    if (u) {
-        const newData = { ...(u.data || {}), blocked_by_admin: byAdmin };
-        updateData.data = newData;
-    }
-
-    await supabase.from(COL_USERS).update(updateData).eq('id', docId);
-    _userCache.delete(docId);
-}
-async function markUserUnblocked(docId) {
-    console.log(`[DB] Marking user ${docId} as UNBLOCKED`);
-    const updateData = { is_blocked: false, blocked_at: null };
-    const u = await getUser(docId);
-    if (u) {
-        const newData = { ...(u.data || {}) };
-        delete newData.blocked_by_admin;
-        updateData.data = newData;
-    }
-    await supabase.from(COL_USERS).update(updateData).eq('id', docId);
-    _userCache.delete(docId);
-}
-async function deleteUser(docId) {
-    const user = await getUser(docId);
-    const targetId = user ? (user.doc_id || user.id) : docId;
-    await supabase.from(COL_USERS).delete().eq('id', targetId);
-    if (_userCache) {
-        _userCache.delete(docId);
-        _userCache.delete(targetId);
-    }
-}
-async function incrementOrderCount(docId) {
-    const user = await getUser(docId);
-    if (user) {
-        const targetId = user.doc_id || user.id;
-        await supabase.from(COL_USERS).update({ order_count: (user.order_count || 0) + 1 }).eq('id', targetId);
-        _userCache.delete(docId);
-        _userCache.delete(targetId);
-    }
+    // Priorité au custom sorting si on finit par ajouter une colonne 'display_order', 
+    // sinon created_at pour respecter l'ordre d'ajout/rangement.
+    const { data } = await query.order('created_at', { ascending: true });
+    return data || [];
 }
 
-async function updateUserWallet(docId, amount) {
-    await supabase.from(COL_USERS).update({ wallet_balance: parseFloat(amount) }).eq('id', docId);
-    _userCache.delete(docId);
+async function getProductsByCategory(onlyActive = false) {
+    const products = await getProducts(onlyActive);
+    const categorized = {};
+    products.forEach(p => {
+        const cat = p.category || 'Autres';
+        if (!categorized[cat]) categorized[cat] = [];
+        categorized[cat].push(p);
+    });
+    return categorized;
 }
 
-async function updateUserPoints(docId, points) {
-    points = parseFloat(points) || 0;
-    await supabase.from(COL_USERS).update({ points }).eq('id', docId);
-    _userCache.delete(docId);
-
-    // Trigger conversion if threshold reached
-    const settings = await getAppSettings();
-    const threshold = settings.points_exchange || 100;
-    const creditValue = settings.points_credit_value || 5;
-
-    if (points >= threshold) {
-        const conversions = Math.floor(points / threshold);
-        const pointsToDeduce = conversions * threshold;
-        const creditToAdd = conversions * creditValue;
-
-        const user = await getUser(docId);
-        if (user) {
-            await supabase.from(COL_USERS).update({
-                points: points - pointsToDeduce,
-                wallet_balance: (user.wallet_balance || 0) + creditToAdd
-            }).eq('id', docId);
-            _userCache.delete(docId);
-
-            try {
-                const { getBotInstance } = require('../server');
-                const bot = getBotInstance();
-                if (bot && user.platform_id) {
-                    bot.telegram.sendMessage(user.platform_id, `🎊 <b>Conversion Automatique !</b>\n\nVos ${pointsToDeduce} points ont été convertis en <b>${creditToAdd}€</b> de crédit.\nNouveau solde : <b>${((user.wallet_balance || 0) + creditToAdd).toFixed(2)}€</b> 🚀`, { parse_mode: 'HTML' }).catch(() => { });
-                }
-            } catch (e) { }
-        }
-    }
-}
-
-// --- Livreurs ---
-async function setLivreurStatus(userId, platform, isLivreur) {
-    const docId = makeDocId(platform, userId);
-    const { error } = await supabase.from(COL_USERS).update({
-        is_livreur: isLivreur,
-        is_approved: true, // Auto-approve if promoted to livreur
-        updated_at: ts()
-    }).eq('id', docId);
-
-    if (error) throw new Error(error.message);
-    _userCache.delete(docId);
-}
-async function updateUserField(docId, field, value) {
-    const updates = { [field]: value, updated_at: ts() };
-    const { error } = await supabase.from(COL_USERS).update(updates).eq('id', docId);
-    if (error) throw new Error(error.message);
-    _userCache.delete(docId);
-}
-async function setLivreurAvailability(docId, isAvailable) {
-    const updates = {
-        is_available: !!isAvailable,
-        updated_at: ts()
-    };
-
-    const { data: updated, error: fullError } = await supabase.from(COL_USERS).update(updates).eq('id', docId).select();
-    if (fullError) {
-        console.error(`❌ DB Error setLivreurAvailability: ${fullError.message}`);
-        throw new Error(fullError.message);
-    }
-    if (updated) console.log(`[DB] Updated row count: ${updated.length}`);
-
-    _userCache.delete(docId);
-}
-
-async function updateLivreurPosition(docId, input) {
-    const user = await getUser(docId);
-    if (!user) return;
-    const city = input.toLowerCase();
-    const sectors = city.split(',').map(s => s.trim()).filter(s => s.length > 0);
-
-    let meta = user.data || {};
-    meta.sectors = sectors;
-    meta.current_city = city;
-    meta.last_position_update = ts();
-
-    // 1. On ne touche plus à is_available ici pour les séparer
-    const updates = {
-        current_city: city,
-        updated_at: ts()
-    };
-
-    const { data: updated, error: fullError } = await supabase.from(COL_USERS).update(updates).eq('id', docId).select();
-    if (fullError) {
-        console.error(`❌ DB Error updateLivreurPosition: ${fullError.message}`);
-        throw new Error(fullError.message);
-    }
-    if (updated) console.log(`[DB] Updated row count: ${updated.length} for ID: ${docId}`);
-
-    _userCache.delete(docId);
-}
-
-async function saveUserLocation(docId, lat, lon, city = null) {
-    const user = await getUser(docId);
-    if (!user) return;
-    let tracked = user.data || {};
-    tracked.latitude = lat;
-    tracked.longitude = lon;
-    tracked.last_gps_update = ts();
-    if (city) tracked.current_city = city.toLowerCase();
-    await supabase.from(COL_USERS).update({ data: tracked }).eq('id', docId);
-    _userCache.delete(docId);
-}
-
-async function getActiveLivreursCount() {
-    const { data } = await supabase.from(COL_USERS).select('*')
-        .eq('is_livreur', true);
-
-    // Check JSONB for is_available as well
-    const available = (data || []).map(d => decryptUser(d)).filter(u => u.is_available === true);
-    return available.length;
-}
-
-async function addMessageToTrack(docId, messageId, isMenuMsg = true) {
-    const user = await getUser(docId);
-    if (!user) return;
-
-    if (isMenuMsg) {
-        // Message de menu actif : on remplace last_menu_id et on garde l'ancien dans tracked_messages
-        const existing = Array.isArray(user.tracked_messages) ? user.tracked_messages : [];
-        // Garder les messages intermédiaires (non-menu) + ancien menu pour cleanup, max 10
-        const updated = [...existing.filter(id => String(id) !== String(messageId)), messageId].slice(-10);
-        await supabase.from(COL_USERS).update({
-            tracked_messages: updated,
-            last_menu_id: messageId
-        }).eq('id', docId);
-    } else {
-        // Message intermédiaire (notification, réponse, etc.) : on l'ajoute à la liste pour cleanup futur
-        const existing = Array.isArray(user.tracked_messages) ? user.tracked_messages : [];
-        if (existing.includes(messageId)) return; // Déjà tracké
-        const updated = [...existing, messageId].slice(-10);
-        await supabase.from(COL_USERS).update({
-            tracked_messages: updated
-        }).eq('id', docId);
-    }
-
-    _userCache.delete(docId);
-}
-
-async function getLastMenuId(docId) {
-    const user = await getUser(docId);
-    return user ? user.last_menu_id : null;
-}
-
-async function getTrackedMessages(docId) {
-    const user = await getUser(docId);
-    return user && Array.isArray(user.tracked_messages) ? user.tracked_messages : [];
-}
-
-// --- Orders ---
-async function createOrder(orderData) {
-    // SÉCURITÉ : On s'assure que l'utilisateur est bien enregistré avant de créer la commande
-    const userId = orderData.user_id;
-    try {
-        const platform = orderData.platform || (String(userId).startsWith('whatsapp') ? 'whatsapp' : 'telegram');
-        const platformId = String(userId).includes('_') ? userId.split('_')[1] : userId;
-
-        await registerUser({
-            id: platformId,
-            username: orderData.username || 'inconnu',
-            first_name: orderData.first_name || 'Inconnu',
-            type: 'user'
-        }, platform);
-    } catch (e) {
-        console.error("⚠️ registerUser failed during createOrder:", e.message);
-        // Vérifie si l'utilisateur existe quand même (erreur de doublon OK)
-        const existingUser = await getUser(userId);
-        if (!existingUser) {
-            console.error(`❌ Cannot create order: user ${userId} doesn't exist and registration failed`);
-            return { order: null, error: new Error("Utilisateur introuvable") };
-        }
-    }
-
-    // --- GEO EXTRACTION (extraction avant chiffrement) ---
-    try {
-        if (!orderData.city || orderData.city === 'INCONNUE' || !orderData.postal_code) {
-            const { city, postalCode, district } = extractCityFromAddress(orderData.address);
-            if (city && city !== 'INCONNUE') {
-                if (!orderData.city || orderData.city === 'INCONNUE') orderData.city = city.toUpperCase();
-                if (!orderData.postal_code) orderData.postal_code = postalCode;
-                if (!orderData.district) orderData.district = district;
-            }
-        }
-    } catch (e) {
-        console.warn("⚠️ Geo extraction failed during createOrder:", e.message);
-    }
-
-    const id = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-
-
-    // Chiffrement des champs sensibles avant stockage en base
-    const secureOrderData = { ...orderData };
-    if (secureOrderData.address) secureOrderData.address = encryption.encrypt(secureOrderData.address);
-    if (secureOrderData.first_name) secureOrderData.first_name = encryption.encrypt(secureOrderData.first_name);
-    if (secureOrderData.username) secureOrderData.username = encryption.encrypt(secureOrderData.username);
-
-    // Compatibilité universelle Mini App vs Bot classique
-    if (secureOrderData.items && Array.isArray(secureOrderData.items)) {
-        secureOrderData.cart = JSON.stringify(secureOrderData.items);
-        if (!secureOrderData.product_name) {
-            secureOrderData.product_name = secureOrderData.items.map(it => `${it.productName || it.name || 'Produit'} (x${it.qty || 1})`).join(', ');
-        }
-        if (secureOrderData.quantity === undefined) {
-            secureOrderData.quantity = secureOrderData.items.reduce((acc, it) => acc + (it.qty || 1), 0);
-        }
-        if (secureOrderData.total_price === undefined && secureOrderData.total !== undefined) {
-            secureOrderData.total_price = secureOrderData.total;
-        }
-        delete secureOrderData.items;
-        delete secureOrderData.total;
-    }
-
-    const insertData = {
-        id: id,
-        ...secureOrderData,
-        scheduled_at: orderData.scheduled_at || null,
-        status: 'pending',
-        created_at: ts(),
-        notif_1h_sent: false,
-        notif_30m_sent: false
-    };
-
-    let { data, error } = await supabase.from(COL_ORDERS).insert([insertData]).select();
-
-    // Fallbacks si des colonnes manquent dans la base en production
-    if (error && error.message && error.message.includes("'cart'")) {
-        console.warn("⚠️ Column 'cart' missing in bot_orders. Retrying without it...");
-        delete insertData.cart;
-        const retry = await supabase.from(COL_ORDERS).insert([insertData]).select();
-        data = retry.data;
-        error = retry.error;
-    }
-    if (error && error.message && error.message.includes("'district'")) {
-        console.warn("⚠️ Column 'district' missing in bot_orders. Retrying without it...");
-        delete insertData.district;
-        const retry = await supabase.from(COL_ORDERS).insert([insertData]).select();
-        data = retry.data;
-        error = retry.error;
-    }
-
-    // Sauvegarde de l'adresse utilisateur pour l'historique
-    if (orderData.address && !error) {
-        saveUserAddress(orderData.user_id, orderData.address).catch(e => console.error("⚠️ saveUserAddress error:", e));
-    }
-
-    if (error) {
-        console.error("Error createOrder", error);
-        return { order: null, error };
-    }
-
-    await incrementStat('total_orders');
-    return { order: data[0], error: null };
-}
-
-/**
- * Sauvegarde une adresse dans le profil JSON de l'utilisateur.
- */
-async function saveUserAddress(docId, address) {
-    if (!address) return;
-    const user = await getUser(docId);
-    if (!user) return;
-
-    let data = user.data || {};
-    let addresses = data.addresses || [];
-
-    const normalized = address.trim();
-    if (!addresses.includes(normalized)) {
-        addresses.push(normalized);
-        data.addresses = addresses;
-
-        let blobArr = [];
-        try {
-            if (data.saved_addresses_blob) {
-                const parsed = JSON.parse(data.saved_addresses_blob);
-                if (Array.isArray(parsed)) blobArr = parsed;
-            }
-        } catch(e) {}
-        
-        if (!blobArr.some(a => (a.address || '').trim() === normalized)) {
-            blobArr.push({
-                id: String(Date.now()),
-                name: 'Adresse ' + (blobArr.length + 1),
-                address: normalized
-            });
-            data.saved_addresses_blob = JSON.stringify(blobArr);
-        }
-
-        const targetId = user.doc_id || user.id;
-        await supabase.from(COL_USERS).update({ data }).eq('id', targetId);
-        _userCache.delete(docId);
-        _userCache.delete(targetId);
-    }
-}
-
-async function getUpcomingPlannedOrders() {
-    // On cherche les commandes qui ne sont pas encore livrées/annulées et qui ont un horaire prévu
-    const { data, error } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .not('status', 'in', '("delivered","cancelled")')
-        .not('scheduled_at', 'is', null);
-
-    if (error) return [];
+async function getProduct(id) {
+    const { data } = await supabase.from(COL_PRODUCTS).select('*').eq('id', id).maybeSingle();
     return data;
 }
 
-async function markNotifSent(orderId, type) {
-    const field = type === '1h' ? 'notif_1h_sent' : 'notif_30m_sent';
-    await supabase.from(COL_ORDERS).update({ [field]: true }).eq('id', orderId);
-}
-
-async function updateOrderStatus(orderId, status, extraData = {}) {
-    if (status === 'delivered') {
-        extraData.delivered_at = ts();
-        const order = await getOrder(orderId);
-        if (order && !order.points_awarded) {
-            const user = await getUser(order.user_id);
-            if (user) {
-                const price = parseFloat(order.total_price) || 0;
-                const settings = await getAppSettings();
-                const pointsRatio = settings.points_ratio || 1;
-                const refBonus = settings.ref_bonus || 5;
-
-                const pointsToAdd = Math.floor(price * pointsRatio);
-                const isFirstOrder = user.order_count === 0;
-
-                if (settings.enable_referral !== false && isFirstOrder && user.referred_by) {
-                    await updateUserWallet(user.id, (user.wallet_balance || 0) + refBonus);
-                    const referrer = await getUser(user.referred_by);
-                    if (referrer) {
-                        await updateUserWallet(referrer.id, (referrer.wallet_balance || 0) + refBonus);
-
-                        // Notifier le parrain
-                        const { getBotInstance } = require('../server');
-                        const bot = getBotInstance();
-                        if (bot) {
-                            const refTgId = String(referrer.id).replace('telegram_', '');
-                            bot.telegram.sendMessage(refTgId, `👥 <b>GÉNIAL ! Récompense Parrainage !</b>\n\nVotre ami <b>${user.first_name || 'anonyme'}</b> vient de passer sa première commande.\n\nNous venons de créditer votre portefeuille de <b>+${refBonus.toFixed(2)}€</b>. Partagez encore votre lien ! 🎁`, { parse_mode: 'HTML' }).catch(() => { });
-                        }
-                    }
-                }
-
-                const newOrderCount = (user.order_count || 0) + 1;
-
-                if (settings.enable_fidelity !== false) {
-                    await updateUserPoints(user.id, (user.points || 0) + pointsToAdd);
-                    
-                    // --- Système de Bonus Fidélité ---
-                    const thresholds = (settings.fidelity_bonus_thresholds || "5,9,10").split(',').map(t => parseInt(t.trim())).filter(t => !isNaN(t));
-                    const bonusAmount = parseFloat(settings.fidelity_bonus_amount) || 10;
-
-                    if (thresholds.includes(newOrderCount)) {
-                        await updateUserWallet(user.id, (user.wallet_balance || 0) + bonusAmount);
-
-                        // Notifier le client du bonus
-                        const { getBotInstance } = require('../server');
-                        const bot = getBotInstance();
-                        if (bot) {
-                            const tgId = String(user.id).replace('telegram_', '');
-                            bot.telegram.sendMessage(tgId, `🏮 <b>C'EST VOTRE JOUR DE CHANCE ! Bonus Fidélité !</b>\n\nFélicitations pour votre <b>${newOrderCount}ème</b> commande !\n\nEn récompense, votre portefeuille a été crédité de <b>+${bonusAmount.toFixed(2)}€</b>. Merci de votre fidélité ! ⭐️`, { parse_mode: 'HTML' }).catch(() => { });
-                        }
-                        console.log(`🎁 Bonus fidélité de ${bonusAmount}€ accordé à ${user.id} pour sa ${newOrderCount}ème commande.`);
-                    }
-                }
-                
-                await supabase.from(COL_USERS).update({ order_count: newOrderCount }).eq('id', user.id);
-
-                _userCache.delete(user.id);
-                extraData.points_awarded = true;
-            }
-        }
+async function saveProduct(product) {
+    if (!product.id) {
+        product.id = String(Date.now());
     }
-    await supabase.from(COL_ORDERS).update({ status, ...extraData, updated_at: ts() }).eq('id', orderId);
 
-    // Notification Admin sur chaque changement
-    try {
-        const settings = await getAppSettings();
-        const label = (status === 'delivered' ? settings.status_delivered_label :
-            (status === 'pending' ? settings.status_pending_label :
-                (status === 'taken' ? settings.status_taken_label : settings.status_cancelled_label))) || status.toUpperCase();
-        const icon = (status === 'delivered' ? settings.ui_icon_success :
-            (status === 'pending' ? settings.ui_icon_pending :
-                (status === 'taken' ? (settings.ui_icon_taken || '🚚') : settings.ui_icon_error))) || '🔔';
+    // Si c'est une mise à jour partielle (ex: juste stock), utiliser update au lieu d'upsert
+    // pour éviter les erreurs NOT NULL sur les colonnes absentes
+    const { data: existing } = await supabase.from(COL_PRODUCTS).select('id').eq('id', product.id).maybeSingle();
 
-        const alertMsg = `${icon} <b>MISE À JOUR COMMANDE</b>\n\n🆔 ID : <code>#${orderId.slice(-5)}</code>\n🔄 Statut : <b>${label}</b>`;
-        const { notifyAdmins } = require('./notifications');
-        await notifyAdmins(null, alertMsg);
-    } catch (e) { }
-
-    if (status === 'delivered') {
-        const order = await getOrder(orderId);
-        if (order) {
-            const price = parseFloat(order.total_price) || 0;
-            await addToStat('total_ca', price);
-        }
+    if (existing) {
+        // Produit existant → update partiel (ne touche que les champs fournis)
+        const { id, ...updates } = product;
+        const { data, error } = await supabase.from(COL_PRODUCTS).update(updates).eq('id', product.id).select().single();
+        if (error) throw error;
+        return product.id;
+    } else {
+        // Nouveau produit → insert
+        const { data, error } = await supabase.from(COL_PRODUCTS).insert(product).select().single();
+        if (error) throw error;
+        return product.id;
     }
 }
 
-async function getOrdersByUser(userId) {
+async function saveMarketplaceProduct(product) {
+    // For now we use the same table but maybe it has a flag
+    return await saveProduct({ ...product, is_marketplace: true });
+}
+
+async function deleteProduct(id) {
+    return await supabase.from(COL_PRODUCTS).delete().eq('id', id);
+}
+
+// --- ORDERS ---
+
+async function createOrder(order) {
+    const id = order.id || `order_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const encrypted = {
+        ...order,
+        id,
+        address: encryption.encrypt(order.address),
+        first_name: encryption.encrypt(order.first_name),
+        username: encryption.encrypt(order.username),
+        created_at: ts()
+    };
+    const { data, error } = await supabase.from(COL_ORDERS).insert(encrypted).select().single();
+    return { order: data, error };
+}
+
+async function getOrder(id) {
+    const { data } = await supabase.from(COL_ORDERS).select('*').eq('id', id).maybeSingle();
+    return decryptOrder(data);
+}
+
+async function getUserOrders(userId) {
     const { data } = await supabase.from(COL_ORDERS).select('*').eq('user_id', userId).order('created_at', { ascending: false });
     return (data || []).map(decryptOrder);
 }
 
-async function getCustomerInsight(userId) {
-    const orders = await getOrdersByUser(userId);
-    if (!orders || orders.length === 0) return null;
-
-    const totalOrders = orders.length;
-    const deliveredOrders = orders.filter(o => o.status === 'delivered');
-    const totalSpent = deliveredOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
-    const avgBasket = totalSpent / (deliveredOrders.length || 1);
-
-    // Adresses préférées (top 3)
-    const adrMap = {};
-    orders.forEach(o => {
-        if (o.address) adrMap[o.address] = (adrMap[o.address] || 0) + 1;
-    });
-    const topAddresses = Object.entries(adrMap)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([addr]) => addr);
-
-    // Heures habituelles d'achat (fréquence par heure)
-    const hoursMap = {};
-    orders.forEach(o => {
-        const date = safeDate(o.created_at);
-        if (!isNaN(date.getTime())) {
-            const h = date.getHours();
-            hoursMap[h] = (hoursMap[h] || 0) + 1;
-        }
-    });
-
-    return {
-        totalOrders,
-        deliveredCount: deliveredOrders.length,
-        totalSpent: totalSpent.toFixed(2),
-        avgBasket: avgBasket.toFixed(2),
-        topAddresses,
-        hoursFrequency: hoursMap,
-        recentOrders: orders.slice(0, 5)
-    };
+async function deleteOrder(id) {
+    await supabase.from(COL_ORDERS).delete().eq('id', id);
 }
 
-
-async function assignOrderLivreur(orderId, livreurId, livreurName) {
-    try {
-        let finalLivreurName = livreurName;
-        
-        // Si le nom n'est pas fourni, on le cherche
-        if (!finalLivreurName && livreurId) {
-            const { data: user } = await supabase.from(COL_USERS).select('first_name, last_name, username').eq('id', livreurId).single();
-            if (user) {
-                finalLivreurName = user.first_name || user.username || 'Inconnu';
-            }
-        }
-
-        const update = {
-            livreur_id: livreurId || null,
-            livreur_name: finalLivreurName || null,
-            status: livreurId ? 'taken' : 'pending',
-            updated_at: ts()
-        };
-        
-        const { error } = await supabase.from(COL_ORDERS).update(update).eq('id', orderId);
-        if (error) throw error;
-
-        // Notifier Admin
-        try {
-            const { notifyAdmins } = require('./notifications');
-            const alertMsg = `🚚 <b>AFFECTATION</b>\n\n🆔 #<code>${orderId.slice(-6).toUpperCase()}</code>\n👤 Livreur : <b>${finalLivreurName}</b>`;
-            notifyAdmins(null, alertMsg).catch(e => console.error("❌ notifyAdmins (assign) failed:", e.message));
-        } catch (e) {
-            console.error("❌ Notification Admin (assign) error:", e.message);
-        }
-
-        return { success: true };
-    } catch (e) {
-        console.error("❌ assignOrderLivreur error:", e.message);
-        return { success: false, error: e.message };
-    }
-}
-
-
-async function getClientActiveOrders(userId) {
-    const { data } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .eq('user_id', userId)
-        .in('status', ['pending', 'taken'])
-        .order('created_at', { ascending: false });
-    return data || [];
-}
-
-async function logHelpRequest(orderId, type, message) {
-    try {
-        const order = await getOrder(orderId);
-        if (!order) return;
-        const requests = Array.isArray(order.help_requests) ? order.help_requests : [];
-        requests.push({ type, message, timestamp: ts() });
-        const { error } = await supabase.from(COL_ORDERS).update({ help_requests: requests }).eq('id', orderId);
-        if (error) console.error("❌ SQL logHelpRequest failed:", error.message);
-    } catch (e) {
-        console.error("❌ logHelpRequest error:", e.message);
-    }
-
-    // NOUVEAU: Notifier l'admin pour l'aider
-    try {
-        const { notifyAdmins } = require('./notifications');
-        const alertMsg = `❓ <b>DEMANDE D'AIDE</b>\n\n🆔 Commande : <code>#${orderId.slice(-5)}</code>\n📌 Type : <b>${type}</b>\n💬 Message : ${message}`;
-        notifyAdmins(null, alertMsg).catch(() => {});
-    } catch (e) {}
-}
-
-async function saveClientReply(orderId, reply) {
-    await supabase.from(COL_ORDERS).update({ client_reply: reply }).eq('id', orderId);
-}
-
-async function incrementChatCount(orderId) {
-    try {
-        const order = await getOrder(orderId);
-        if (!order) return 0;
-
-        // Sécurité : si la colonne est absente ou NaN, on force à 0
-        let currentCount = parseInt(order.chat_count);
-        if (isNaN(currentCount)) currentCount = 0;
-
-        const newCount = currentCount + 1;
-        const { error } = await supabase.from(COL_ORDERS).update({ chat_count: newCount }).eq('id', orderId);
-
-        if (error) {
-            console.error("❌ SQL incrementChatCount failed:", error.message);
-            // Si erreur SQL (colonne manquante), on renvoie quand même un nombre pour ne pas bloquer le relayage
-            return newCount;
-        }
-        return newCount;
-    } catch (e) {
-        console.error("❌ incrementChatCount error:", e.message);
-        return 1;
-    }
-}
-
-async function saveFeedback(orderId, rating, text) {
-    await supabase.from(COL_ORDERS).update({
-        feedback_rating: rating,
-        feedback_text: text,
-        updated_at: ts()
-    }).eq('id', orderId);
-}
-
-async function setPendingFeedback(userId, orderId, rate) {
-    const user = await getUser(userId);
-    if (!user) return;
-    let meta = user.data || {};
-    meta.pending_feedback = { orderId, rate };
-    await supabase.from(COL_USERS).update({ data: meta, updated_at: ts() }).eq('id', userId);
-    _userCache.delete(userId);
-}
-
-async function getAndClearPendingFeedback(userId) {
-    const user = await getUser(userId);
-    if (!user || !user.data || !user.data.pending_feedback) return null;
-    const feedback = user.data.pending_feedback;
-
-    let meta = user.data;
-    delete meta.pending_feedback;
-    await supabase.from(COL_USERS).update({ data: meta, updated_at: ts() }).eq('id', userId);
-    _userCache.delete(userId);
-    return feedback;
-}
-
-async function getOrder(orderId) {
-    const { data } = await supabase.from(COL_ORDERS).select('*').eq('id', orderId).limit(1);
-    return data && data.length > 0 ? decryptOrder(data[0]) : null;
-}
-
-async function getAvailableOrders(city = null) {
-    let q = supabase.from(COL_ORDERS).select('*').eq('status', 'pending');
-    if (city && city !== 'all' && city !== 'non défini') {
-        q = q.eq('city', city.toLowerCase());
-    }
-    const { data } = await q.order('created_at', { ascending: false });
+async function getAllOrders(limit = 500) {
+    const { data } = await supabase.from(COL_ORDERS).select('*').order('created_at', { ascending: false }).limit(limit);
     return (data || []).map(decryptOrder);
 }
 
-async function getAllOrders(limit = 1000) {
-    // We use a simple select + manual join to avoid "Missing relationship" warnings in Supabase
-    // when the Foreign Key isn't explicitly set in the schema cache.
-    const { data: rawOrders, error } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .order('created_at', { ascending: false })
-        .abortSignal(AbortSignal.timeout(DB_TIMEOUT))
-        .limit(limit);
-    
-    if (error || !rawOrders) {
-        console.warn(`[DB-Orders] Fetch failed: ${error?.message || 'No data'}`);
-        return [];
-    }
-
-    const orders = rawOrders.map(decryptOrder);
-    
-    // Fetch associated users status to get is_approved
-    const userIds = [...new Set(orders.map(o => o.user_id).filter(id => id))];
-    if (userIds.length > 0) {
-        const { data: userData } = await supabase.from(COL_USERS)
-            .select('id, is_approved')
-            .in('id', userIds);
-        
-        if (userData) {
-            const userMap = new Map(userData.map(u => [u.id, u.is_approved]));
-            orders.forEach(o => {
-                o.is_approved = userMap.has(o.user_id) ? userMap.get(o.user_id) : true;
-            });
-        }
-    }
-    
-    return orders;
+async function incrementOrderCount(userId) {
+    const { data: user } = await supabase.from(COL_USERS).select('data').eq('id', userId).single();
+    const meta = user?.data || {};
+    meta.order_count = (meta.order_count || 0) + 1;
+    return await supabase.from(COL_USERS).update({ data: meta }).eq('id', userId);
 }
 
-/**
- * Recherche multicritère pour le dashboard (ID court ou nom produit)
- */
-async function searchOrders(query) {
-    if (!query) return [];
-    
-    // Manual search + manual join
-    const { data: rawOrders } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .or(`id.ilike.%${query}%,username.ilike.%${query}%,first_name.ilike.%${query}%,items.ilike.%${query}%`)
-        .order('created_at', { ascending: false })
-        .limit(50);
-    if (!rawOrders) return [];
-    const orders = rawOrders.map(decryptOrder);
+// --- SETTINGS ---
 
-    const userIds = [...new Set(orders.map(o => o.user_id).filter(id => id))];
-    if (userIds.length > 0) {
-        const { data: userData } = await supabase.from(COL_USERS).select('id, is_approved').in('id', userIds);
-        if (userData) {
-            const userMap = new Map(userData.map(u => [u.id, u.is_approved]));
-            orders.forEach(o => {
-                o.is_approved = userMap.has(o.user_id) ? userMap.get(o.user_id) : true;
-            });
-        }
-    }
-    return orders;
-}
-
-async function getLivreurHistory(livreurId) {
-    const { data } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .eq('livreur_id', livreurId)
-        .eq('status', 'delivered')
-        .order('created_at', { ascending: false });
-    return (data || []).map(decryptOrder);
-}
-
-async function getLivreurOrders(livreurId) {
-    const { data } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .eq('livreur_id', livreurId)
-        .eq('status', 'taken');
-    return (data || []).map(decryptOrder);
-}
-
-async function getUser(docId) {
-    if (!docId) return null;
-    if (_userCache.has(docId)) {
-        const cached = _userCache.get(docId);
-        if (Date.now() < cached.expire) {
-            return decryptUser(cached.data);
-        }
-    }
-
-    let { data } = await supabase.from(COL_USERS).select('*').eq('id', docId).abortSignal(AbortSignal.timeout(DB_TIMEOUT)).limit(1);
-    let rawData = data && data.length > 0 ? data[0] : null;
-
-    if (!rawData) {
-        const cleanId = String(docId).replace('telegram_', '').replace('whatsapp_', '');
-        const { data: altData } = await supabase.from(COL_USERS).select('*')
-            .or(`id.eq.${cleanId},platform_id.eq.${cleanId}`)
-            .limit(1);
-        rawData = altData && altData.length > 0 ? altData[0] : null;
-    }
-
-    if (rawData) {
-        const nowMs = Date.now();
-        _userCache.set(docId, { data: rawData, expire: nowMs + 300000 });
-        _userCache.set(rawData.id, { data: rawData, expire: nowMs + 300000 });
-        return decryptUser(rawData);
-    }
-    return null;
-}
-
-async function getUserCount(platform = null) {
-    let q = supabase.from(COL_USERS).select('*', { count: 'exact', head: true });
-    if (platform) q = q.eq('platform', platform);
-    const { count } = await q.abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-    return count || 0;
-}
-async function getActiveUserCount(platform = null) {
-    let q = supabase.from(COL_USERS).select('*', { count: 'exact', head: true }).eq('is_blocked', false).eq('is_active', true);
-    if (platform) q = q.eq('platform', platform);
-    const { count } = await q.abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-    return count || 0;
-}
-async function getRecentUsers(limit = 100, offset = 0) {
-    let q = supabase.from(COL_USERS).select('*')
-        .eq('is_blocked', false)
-        .not('is_approved', 'eq', false)
-        .order('last_active', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-    const { data, error } = await q;
-    const users = (data || []).map(decryptUser);
-    
-    const seenId = new Set();
-    const seenName = new Set();
-    const deduped = [];
-
-    for (const u of users) {
-        if (u.platform === 'whatsapp') {
-            const rawId = String(u.platform_id || '');
-            const phoneNum = rawId.split('@')[0].split(':')[0];
-            const name = u.first_name || '';
-
-            // 1. Dédup par numéro
-            if (phoneNum && seenId.has(phoneNum)) continue;
-            
-            // 2. Dédup par nom (si pas le nom par défaut)
-            if (name && name !== 'Utilisateur WhatsApp' && seenName.has(name)) continue;
-
-            if (phoneNum) seenId.add(phoneNum);
-            if (name && name !== 'Utilisateur WhatsApp') seenName.add(name);
-        }
-        deduped.push(u);
-    }
-    return deduped.slice(0, limit);
-}
-
-async function getBlockedUsers(limit = 1000) {
-    const { data } = await supabase.from(COL_USERS).select('*')
-        .eq('is_blocked', true)
-        .order('updated_at', { ascending: false })
-        .limit(limit);
-    return (data || []).map(decryptUser);
-}
-async function searchUsers(query, tab = 'active') {
-    // Exact match by ID first (snappy)
-    if (query && (query.startsWith('telegram_') || query.startsWith('whatsapp_') || !isNaN(query.replace('@', '')))) {
-        let idToSearch = query;
-        if (!query.includes('_') && !query.includes('@')) {
-            // Try both default prefixes if it's just a number
-            const { data: exact } = await supabase.from(COL_USERS).select('*')
-                .or(`id.eq.telegram_${query},id.eq.whatsapp_${query},platform_id.eq.${query}`)
-                .limit(5);
-            if (exact && exact.length > 0) {
-                const results = exact.map(decryptUser).filter(u => {
-                    if (tab === 'pending') return u.is_approved === false && u.is_blocked === false;
-                    if (tab === 'blocked') return u.is_blocked === true;
-                    return u.is_approved === true && u.is_blocked === false; // active
-                });
-                return results;
-            }
-        } else {
-            const { data: exact } = await supabase.from(COL_USERS).select('*')
-                .or(`id.eq.${query},platform_id.eq.${query}`)
-                .limit(5);
-            if (exact && exact.length > 0) {
-                const results = exact.map(decryptUser).filter(u => {
-                    if (tab === 'pending') return u.is_approved === false && u.is_blocked === false;
-                    if (tab === 'blocked') return u.is_blocked === true;
-                    return u.is_approved === true && u.is_blocked === false;
-                });
-                return results;
-            }
-        }
-    }
-
-    if (!query) {
-        // FAST PATH: If no query, just return latest active users of the requested tab
-        // Use a smaller limit for performance, as only the first few are shown in the bot
-        let baseQuery = supabase.from(COL_USERS).select('*').order('last_active', { ascending: false }).limit(100);
-        
-        if (tab === 'pending') baseQuery = baseQuery.eq('is_approved', false).eq('is_blocked', false);
-        else if (tab === 'blocked') baseQuery = baseQuery.eq('is_blocked', true);
-        else baseQuery = baseQuery.eq('is_approved', true).eq('is_blocked', false);
-        
-        const { data: fastData } = await baseQuery;
-        const results = (fastData || []).map(decryptUser);
-        
-        // Dedup WhatsApp accounts by number
-        const seen = new Set();
-        return results.filter(u => {
-            const num = String(u.id).split('_')[1]?.split('@')[0];
-            if (num && seen.has(num)) return false;
-            if (num) seen.add(num);
-            return true;
-        });
-    }
-
-    // SEARCH PATH: Fetch a smaller batch and filter in memory (for encrypted names)
-    // Reduce batch to 250 for better CPU performance on Railway and faster response
-    const { data, error } = await supabase.from(COL_USERS).select('*').order('last_active', { ascending: false }).limit(250);
-    if (error) {
-        console.error('[DB-SEARCH-ERR]', error.message);
-        return [];
-    }
-    const decrypted = (data || []).map(decryptUser);
-
-    // Apply tab filter on decrypted list
-    let filtered = decrypted.filter(u => {
-        if (tab === 'pending') return u.is_approved === false && u.is_blocked === false;
-        if (tab === 'blocked') return u.is_blocked === true;
-        return u.is_approved !== false && u.is_blocked === false;
-    });
-
-    // Process search query on the already tab-filtered list
-    const q = query.toLowerCase();
-    const finalResults = filtered.filter(u => {
-        const uid = String(u.id || '').toLowerCase();
-        const uname = String(u.username || '').toLowerCase();
-        const fname = String(u.first_name || '').toLowerCase();
-        const pid = String(u.platform_id || '').toLowerCase();
-
-        return uid.includes(q) || uname.includes(q) || fname.includes(q) || pid.includes(q);
-    });
-
-    return finalResults.slice(0, 50);
-}
-
-async function getPendingUsers() {
-    const { data } = await supabase.from(COL_USERS)
-        .select('*')
-        .eq('is_approved', false)
-        .eq('is_blocked', false)
-        .order('date_inscription', { ascending: false });
-    return (data || []).map(decryptUser);
-}
-
-async function getPendingUserCount() {
-    const { count } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true }).eq('is_approved', false).eq('is_blocked', false);
-    return count || 0;
-}
-
-async function searchLivreurs(query) {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_livreur', true).limit(200);
-    const decrypted = (data || []).map(decryptUser);
-
-    if (!query) return decrypted.slice(0, 50);
-
-    const q = query.toLowerCase().replace('@', '');
-    return decrypted.filter(u => {
-        const uid = String(u.id || '').toLowerCase();
-        const uname = String(u.username || '').toLowerCase();
-        const fname = String(u.first_name || '').toLowerCase();
-        const pid = String(u.platform_id || '').toLowerCase();
-
-        return uid.includes(q) || uname.includes(q) || fname.includes(q) || pid.includes(q);
-    }).slice(0, 50);
-}
-
-async function getDetailedLivreurActivity(livreurId) {
-    if (!livreurId) return [];
-    // Ensure format matches livreur_id in orders (e.g. telegram_123)
-    const docId = (livreurId.includes('_') || livreurId.startsWith('t_')) ? livreurId : `telegram_${livreurId}`;
-
-    // We try both formats just in case some orders have the raw ID
-    const rawId = livreurId.replace('telegram_', '');
-
-    const { data } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .or(`livreur_id.eq.${docId},livreur_id.eq.${rawId},livreur_id.eq.${livreurId}`)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-    return data || [];
-}
-
-function generateReferralCode(platform, platformId) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-    return `ref_${platform}_${platformId}_${code}`;
-}
-
-async function getUserAnalytics(userId) {
-    if (!userId) return null;
-    
-    const { data: orders } = await supabase.from(COL_ORDERS)
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-    if (!orders || orders.length === 0) return {
-        total_spent: 0,
-        order_count: 0,
-        average_basket: 0,
-        addresses: [],
-        ordering_hours: [],
-        history: []
-    };
-
-    const decrypted = (orders || []).map(o => {
-        try { return decryptOrder(o); } 
-        catch (e) { return o; }
-    });
-    
-    // Addresses
-    const addressesArray = decrypted.map(o => o.address).filter(Boolean);
-    const addresses = [...new Set(addressesArray)];
-    
-    // Total & Average
-    const totalSpent = decrypted.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
-    const avgBasket = totalSpent / decrypted.length;
-
-    // Temporal Analysis (by hour)
-    const hourCounts = {};
-    decrypted.forEach(o => {
-        if (!o.created_at) return;
-        try {
-            const hour = new Date(o.created_at).getHours();
-            hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-        } catch(e) {}
-    });
-    
-    const orderingHours = Object.entries(hourCounts).map(([hour, count]) => ({
-        hour: parseInt(hour),
-        count
-    })).sort((a,b) => b.count - a.count);
-
-    return {
-        total_spent: totalSpent,
-        order_count: decrypted.length,
-        average_basket: avgBasket,
-        addresses,
-        ordering_hours: orderingHours,
-        history: decrypted.slice(0, 100) 
-    };
-}
-
-async function getReferralLeaderboard(limit = 10) {
-    const { data } = await supabase.from(COL_USERS).select('*').gt('referral_count', 0).order('referral_count', { ascending: false }).limit(limit);
-    return (data || []).map(decryptUser);
-}
-
-// --- Stats ---
-async function incrementStat(name) {
-    const { data } = await supabase.from(COL_STATS).select('*').eq('id', 'global').limit(1);
-    const globalStats = data && data.length > 0 ? data[0] : { id: 'global' };
-    const val = (globalStats[name] || 0) + 1;
-    await supabase.from(COL_STATS).upsert({ ...globalStats, [name]: incr(val), id: 'global' });
-}
-
-async function addToStat(name, amount) {
-    const { data } = await supabase.from(COL_STATS).select('*').eq('id', 'global').limit(1);
-    const globalStats = data && data.length > 0 ? data[0] : { id: 'global' };
-    const val = (parseFloat(globalStats[name]) || 0) + parseFloat(amount);
-    await supabase.from(COL_STATS).upsert({ ...globalStats, [name]: val, id: 'global' });
-}
-
-async function incrementDailyStat(name) {
-    const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase.from(COL_DAILY_STATS).select('*').eq('id', `daily_${today}`).limit(1);
-    const daily = data && data.length > 0 ? data[0] : { id: `daily_${today}`, date: today };
-    const val = (daily[name] || 0) + 1;
-    await supabase.from(COL_DAILY_STATS).upsert({ ...daily, [name]: val, id: `daily_${today}`, date: today });
-}
-
-async function getGlobalStats() {
-    const { data } = await supabase.from(COL_STATS).select('*').eq('id', 'global').limit(1);
-    return data && data.length > 0 ? data[0] : {};
-}
-
-async function getDailyStats(days = 30) {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    const { data } = await supabase.from(COL_DAILY_STATS)
-        .select('*')
-        .gte('date', cutoff.toISOString().split('T')[0])
-        .order('date', { ascending: true });
-    return data || [];
-}
-
-async function getStatsOverview(force = false) {
+async function getAppSettings() {
     const now = Date.now();
-    if (!force && _statsCache.overview && (now - _statsCache.lastOverview < _statsCache.ttl)) {
-        return _statsCache.overview;
+    if (_statsCache.settings && (now - _statsCache.lastSettings < 30000)) {
+        return _statsCache.settings;
+    }
+    const { data, error } = await supabase.from(COL_SETTINGS).select('*').eq('id', 'default').maybeSingle();
+    if (error) {
+        console.error('❌ [DB] getAppSettings error:', error.message);
+    }
+    const settings = data || {};
+    if (!settings.custom_links) settings.custom_links = '[]';
+    
+    // Assurer que les admins de l'ENV sont présents si la DB est vide ou pour affichage
+    const envAdmins = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_IDS || '';
+    if (!settings.admin_telegram_id && envAdmins) {
+        settings.admin_telegram_id = envAdmins;
     }
 
-    const [
-        total,
-        totalPending,
-        totalBlockedRes,
-        totalTelegram,
-        totalWhatsapp,
-        active,
-        stats,
-        bcSnapRes,
-        activeLivreursRes,
-        totalLivreursRes,
-        ordersCountRes
-    ] = await Promise.all([
-        getUserCount().catch(() => 0),
-        getPendingUserCount().catch(() => 0),
-        (async () => {
-            try {
-                const { count } = await supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_blocked', true).abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-                return { count: count || 0 };
-            } catch(e) { return { count: 0 }; }
-        })(),
-        getUserCount('telegram').catch(() => 0),
-        getUserCount('whatsapp').catch(() => 0),
-        getActiveUserCount().catch(() => 0),
-        getGlobalStats().catch(() => ({})),
-        (async () => {
-            try {
-                const { data } = await supabase.from(COL_BROADCASTS).select('id, created_at, success, failed, message').order('created_at', { ascending: false }).limit(5).abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-                return { data: data || [] };
-            } catch(e) { return { data: [] }; }
-        })(),
-        (async () => {
-            try {
-                const { count } = await supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_livreur', true).eq('is_available', true).abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-                return { count: count || 0 };
-            } catch(e) { return { count: 0 }; }
-        })(),
-        (async () => {
-            try {
-                const { count } = await supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_livreur', true).abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-                return { count: count || 0 };
-            } catch(e) { return { count: 0 }; }
-        })(),
-        (async () => {
-            try {
-                const { count } = await supabase.from(COL_ORDERS).select('id', { count: 'exact', head: true }).abortSignal(AbortSignal.timeout(DB_TIMEOUT));
-                return { count: count || 0 };
-            } catch(e) { return { count: 0 }; }
-        })()
+    _statsCache.settings = settings;
+    _statsCache.lastSettings = now;
+    return settings;
+}
+
+async function updateAppSettings(data) {
+    console.log("♻️ [CACHE] Invaliding settings cache in Farmstegridy Bot");
+    _statsCache.settings = null;
+    _statsCache.lastSettings = 0; // Invalider le cache
+    return await supabase.from(COL_SETTINGS).update(data).eq('id', 'default');
+}
+
+// --- BROADCASTS ---
+
+async function getPendingBroadcasts() {
+    const { data } = await supabase.from(COL_BROADCASTS).select('*').eq('status', 'pending');
+    return data || [];
+}
+
+async function updateBroadcast(id, data) {
+    return await supabase.from(COL_BROADCASTS).update(data).eq('id', id);
+}
+
+async function deleteBroadcast(id) {
+    return await supabase.from(COL_BROADCASTS).delete().eq('id', id);
+}
+
+async function getBroadcastHistory(limit = 20) {
+    const { data } = await supabase.from(COL_BROADCASTS).select('*').order('created_at', { ascending: false }).limit(limit);
+    return data || [];
+}
+
+async function saveBroadcast(broadcast) {
+    const id = require('crypto').randomBytes(10).toString('hex');
+    const { data, error } = await supabase.from(COL_BROADCASTS).insert({
+        id,
+        ...broadcast,
+        created_at: ts()
+    }).select().single();
+    if (error) throw error;
+    return id;
+}
+
+// --- REVIEWS ---
+
+async function getReviews(limit = 100) {
+    const { data } = await supabase.from(COL_REVIEWS).select('*').order('created_at', { ascending: false }).limit(limit);
+    return (data || []).map(decryptReview);
+}
+
+async function saveReview(review) {
+    const payload = JSON.stringify({ text: review.text, media: review.media || [], product_id: review.product_id });
+    const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const encrypted = {
+        ...review,
+        id: id,
+        text: encryption.encrypt(payload),
+        first_name: encryption.encrypt(review.first_name),
+        username: encryption.encrypt(review.username),
+        created_at: ts()
+    };
+    delete encrypted.media;
+    delete encrypted.product_id;
+    return await supabase.from(COL_REVIEWS).insert(encrypted);
+}
+
+async function deleteReview(id) {
+    return await supabase.from(COL_REVIEWS).delete().eq('id', id);
+}
+
+// --- MEDIA UPLOAD ---
+
+async function uploadMediaBuffer(buffer, filename, mimetype) {
+    try {
+        if (!buffer || buffer.length === 0) {
+            console.error('[DB] uploadMediaBuffer: Buffer is empty');
+            return null;
+        }
+
+        let normalizedMimetype = mimetype;
+        if (mimetype === 'video/quicktime' || (filename && filename.toLowerCase().endsWith('.mov'))) {
+            normalizedMimetype = 'video/mp4';
+        }
+
+        const { data, error } = await supabase.storage
+            .from('bot_media')
+            .upload(filename, buffer, {
+                contentType: normalizedMimetype,
+                upsert: true
+            });
+            
+        if (error) {
+            console.error('[DB] Supabase upload error:', error.message);
+            throw error;
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+            .from('bot_media')
+            .getPublicUrl(filename);
+            
+        console.log(`[DB] Media uploaded successfully: ${publicUrl}`);
+        return publicUrl;
+    } catch (e) {
+        console.error('[DB] Media upload exception:', e.message);
+        return null;
+    }
+}
+
+// --- STATS ---
+
+async function getStatsOverview() {
+    // Run all counts in parallel for speed
+    const results = await Promise.all([
+        supabase.from(COL_USERS).select('id', { count: 'exact', head: true }),
+        supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_approved', true).eq('is_blocked', false).eq('is_livreur', false),
+        supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_livreur', true),
+        supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_approved', false).eq('is_blocked', false),
+        supabase.from(COL_USERS).select('id', { count: 'exact', head: true }).eq('is_blocked', true),
+        supabase.from(COL_ORDERS).select('id', { count: 'exact', head: true }),
+        supabase.from(COL_ORDERS).select('total_price').eq('status', 'delivered')
     ]);
 
-    const totalBlocked = totalBlockedRes.count || 0;
-    const totalApproved = total - totalPending - totalBlocked;
-    const bcSnap = bcSnapRes.data || [];
-    const activeLivreurs = activeLivreursRes.count || 0;
-    const totalLivreurs = totalLivreursRes.count || 0;
-    const totalOrdersCount = ordersCountRes.count || 0;
+    const totalUsers = results[0]?.count || 0;
+    const approvedUsers = results[1]?.count || 0;
+    const livreurs = results[2]?.count || 0;
+    const pending = results[3]?.count || 0;
+    const blocked = results[4]?.count || 0;
+    const totalOrdersCount = results[5]?.count || 0;
+    const deliveredOrders = results[6]?.data || [];
 
-    // Get CA from Sum of delivered orders (fallback to global stats if too many/error)
-    let calculatedCA = 0;
-    try {
-        const { data: caData, error: caError } = await supabase.from(COL_ORDERS)
-            .select('total_price')
-            .eq('status', 'delivered')
-            .order('created_at', { ascending: false })
-            .abortSignal(AbortSignal.timeout(DB_TIMEOUT))
-            .limit(2000); 
+    const totalOrders = totalOrdersCount || 0;
+    const totalCA = deliveredOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+    const avgBasket = totalOrders > 0 ? (totalCA / totalOrders).toFixed(2) : 0;
 
-        if (!caError && caData) {
-            calculatedCA = caData.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
-        }
-    } catch (e) {
-        console.error('[STATS] CA calculation error:', e.message);
-    }
+    return { 
+        totalUsers: totalUsers || 0,
+        totalUsersTelegram: totalUsers || 0,
 
-    const totalCA = calculatedCA || parseFloat(stats.total_ca || stats.global?.total_ca || 0);
-
-    const result = {
-        totalUsers: total,
-        totalApproved: totalApproved,
-        totalPending: totalPending,
-        totalBlocked: totalBlocked,
-        totalUsersTelegram: totalTelegram,
-        totalUsersWhatsapp: totalWhatsapp,
-        activeUsers: active,
-        totalStats: stats,
-        totalOrders: totalOrdersCount || 0,
-        totalCA: totalCA.toFixed(2),
-        totalLivreurs: totalLivreurs || 0,
-        activeLivreurs: activeLivreurs,
-        recentBroadcasts: bcSnap || []
+        totalOrders,
+        totalCA,
+        avgBasket,
+        activeUsers: approvedUsers || 0,
+        totalLivreurs: livreurs || 0,
+        totalPending: pending || 0,
+        totalBlocked: blocked || 0,
+        actualUserCount: totalUsers || 0,
+        _v: "1.0.6"
     };
-
-    _statsCache.overview = result;
-    _statsCache.lastOverview = now;
-    return result;
 }
 
-/**
- * Find city/postal from Gouv API (French alternative to Google Maps API)
- */
-async function searchAddressGouv(address, postalCode = null) {
-    if (!address && !postalCode) return null;
-    try {
-        const axios = require('axios');
-        let query = address;
-        if (postalCode && (!address || address.length < 5)) query = postalCode;
-        
-        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1${postalCode ? '&postcode=' + postalCode : ''}`;
-        const response = await axios.get(url, { timeout: 3000 });
-        if (response.data && response.data.features && response.data.features.length > 0) {
-            const props = response.data.features[0].properties;
-            return {
-                city: props.city?.toUpperCase() || 'INCONNUE',
-                postalCode: props.postcode || '',
-                district: props.district ? props.district : (props.city || '')
-            };
-        }
-    } catch (e) {
-        // Silently fail or log for debug
+async function getDailyStats(limit = 30) {
+    const { data } = await supabase.from(COL_DAILY_STATS).select('*').order('date', { ascending: false }).limit(limit);
+    return data || [];
+}
+
+// --- SUPPLIERS ---
+
+async function getSuppliers() {
+    const { data } = await supabase.from(COL_SUPPLIERS).select('*').order('name');
+    return data || [];
+}
+
+async function getSupplier(id) {
+    const { data } = await supabase.from(COL_SUPPLIERS).select('*').eq('id', id).single();
+    return data;
+}
+
+async function getSupplierByTelegramId(tgId) {
+    const { data } = await supabase.from(COL_SUPPLIERS).select('*').eq('admin_telegram_id', tgId.toString()).single();
+    return data;
+}
+
+async function saveSupplier(supplier) {
+    if (supplier.id) {
+        return await supabase.from(COL_SUPPLIERS).update(supplier).eq('id', supplier.id);
     }
-    return null;
+    return await supabase.from(COL_SUPPLIERS).insert(supplier);
 }
 
-/**
- * Extract city, postal code AND district from a free-text address string.
- */
+async function deleteSupplier(id) {
+    return await supabase.from(COL_SUPPLIERS).delete().eq('id', id);
+}
+
+// --- ANALYTICS & HELPERS ---
+
 function extractCityFromAddress(address) {
     if (!address) return { city: 'INCONNUE', postalCode: '', district: '' };
-    // Cleanup address string
     const cleanAddr = address.replace(/[\r\n]/g, ' ').replace(/\s+/g, ' ').trim();
     
+    // Look for 5 digits (French postal code)
     const cpMatch = cleanAddr.match(/\b(\d{5})\b/);
     const postalCode = cpMatch ? cpMatch[1] : '';
-    let city = '';
-    let district = '';
-
-    const blacklist = ['RUE', 'BOULEVARD', 'AVENUE', 'AVE', 'ALLEE', 'SQUARE', 'PARIS', 'INFOS', 'NO', 'NUMERO', 'ETAGE', 'CODE', 'BATIMENT', 'BAT', 'RESIDENCE', 'RES'];
-
+    
+    let city = 'INCONNUE';
+    let district = postalCode;
+    
     if (postalCode) {
-        const cp = parseInt(postalCode);
-        const dep = postalCode.substring(0, 2);
-        const depNames = {
-            '75': 'PARIS', '92': 'HAUTS-DE-SEINE', '93': 'SEINE-SAINT-DENIS', '94': 'VAL-DE-MARNE', 
-            '95': 'VAL-D\'OISE', '77': 'SEINE-ET-MARNE', '78': 'YVELINES', '91': 'ESSONNE'
-        };
-        const region = depNames[dep] || 'HORS-IDF';
-
-        // Extract city from string around CP
-        const parts = cleanAddr.split(postalCode);
-        let candidate = '';
-        
-        // Priority: After CP
-        if (parts[1]) {
-            const afterWords = parts[1].trim().split(/[\s,.;]+/).filter(w => w.length > 1 && !blacklist.includes(w.toUpperCase()));
-            if (afterWords.length > 0) {
-                const potentialCity = [];
-                for (const w of afterWords) {
-                    if (w.match(/^\d+$/)) break;
-                    potentialCity.push(w);
-                    if (potentialCity.length >= 3) break;
-                }
-                candidate = potentialCity.join(' ');
-            }
+        // Find text after postal code (usually the city)
+        const cityMatch = cleanAddr.match(new RegExp(`\\b${postalCode}\\b\\s*([A-Za-zÀ-ÿ\\s-]+)`));
+        if (cityMatch && cityMatch[1]) {
+            city = cityMatch[1].trim().toUpperCase();
         }
-        // Fallback: Before CP
-        if (!candidate && parts[0]) {
-            const beforeWords = parts[0].trim().split(/[\s,.;]+/).filter(w => w.length > 1 && !blacklist.includes(w.toUpperCase()));
-            if (beforeWords.length > 0) {
-                const potentialCity = [];
-                for (let i = beforeWords.length - 1; i >= 0; i--) {
-                    const w = beforeWords[i];
-                    if (w.match(/^\d+$/) || blacklist.includes(w.toUpperCase())) break;
-                    potentialCity.unshift(w);
-                    if (potentialCity.length >= 3) break;
-                }
-                candidate = potentialCity.join(' ');
-            }
-        }
+    }
 
-        city = (candidate || region).toUpperCase().replace(/[^A-ZÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸ\s-]/g, '').trim();
-        
-        // Specific grouping for Paris
-        if (dep === '75') {
-            const arr = (cp >= 75001 && cp <= 75020) ? (cp - 75000) : 0;
-            city = 'PARIS'; 
-            district = arr > 0 ? `Paris ${arr}e` : `Paris ${postalCode}`;
+    if (postalCode.startsWith('75')) {
+        city = 'PARIS';
+        const arr = parseInt(postalCode) - 75000;
+        district = `Paris ${arr}e`;
+    } else if (city === 'INCONNUE' || city.length < 2) {
+        // Try fallback parsing if no CP but maybe city at end
+        const parts = cleanAddr.split(',');
+        if (parts.length > 1) {
+            city = parts[parts.length - 1].trim().toUpperCase();
+            city = city.replace(/[0-9]/g, '').trim(); // remove any residual numbers
         } else {
-            district = city ? `${postalCode} - ${city}` : postalCode;
+            // Default to Paris if absolutely nothing found (legacy behavior)
+            city = 'PARIS';
         }
-    } else {
-        city = 'INCONNUE';
     }
     
-    return { city: city || 'INCONNUE', postalCode, district: district || postalCode || 'INCONNU' };
-}
+    if (!city) city = 'INCONNUE';
 
-/**
- * Scrape all orders with missing geo info and fix them.
- */
-async function backfillOrderCities(limit = 500) {
-    let { data: orders, error: selectError } = await supabase.from(COL_ORDERS)
-        .select('id, address, city, postal_code, district')
-        .or('city.is.null,city.ilike.INCONNUE,city.eq.,city.ilike.LE,city.ilike.LA,city.ilike.DE,city.ilike.SAINT,city.ilike.INFOS,city.ilike.SAINTS,city.ilike.FRANCE,postal_code.is.null')
-        .limit(limit);
-
-    // Fallback if district is missing
-    if (selectError && selectError.message && selectError.message.includes("'district'")) {
-        const retry = await supabase.from(COL_ORDERS)
-            .select('id, address, city, postal_code')
-            .or('city.is.null,city.ilike.INCONNUE,city.eq.,city.ilike.LE,city.ilike.LA,city.ilike.DE,city.ilike.SAINT,city.ilike.INFOS,city.ilike.SAINTS,city.ilike.FRANCE,postal_code.is.null')
-            .limit(limit);
-        orders = retry.data;
-    }
-
-    console.log(`[BACKFILL] Found ${orders ? orders.length : 0} orders to fix.`);
-    if (!orders || orders.length === 0) return { updated: 0, failed: 0 };
-    let updated = 0, failed = 0;
-    for (const order of orders) {
-        const fullAddress = encryption.decrypt(order.address);
-        if (!fullAddress) { failed++; continue; }
-        
-        // 1. Regex logic (fast, IDF focused)
-        let { city, postalCode, district } = extractCityFromAddress(fullAddress);
-
-        // 2. Data Gouv API logic (Logic requested by user, for unknown/LE/etc)
-        const isBadCity = !city || ['INCONNUE', 'LE', 'LA', 'DE', 'SAINT', 'FRANCE', 'INFOS', 'SAINTS'].includes(city.toUpperCase());
-        if (isBadCity || !postalCode) {
-            const gouvMatch = await searchAddressGouv(fullAddress, postalCode || order.postal_code);
-            if (gouvMatch && gouvMatch.city !== 'INCONNUE') {
-                city = gouvMatch.city;
-                postalCode = gouvMatch.postalCode;
-                district = gouvMatch.district;
-            }
-        }
-
-        if ((!city || city === 'INCONNUE') && !postalCode) { failed++; continue; }
-        const updateData = {};
-        if (city) updateData.city = city.toUpperCase();
-        if (postalCode) updateData.postal_code = postalCode;
-        if (district) updateData.district = district;
-        const { error } = await supabase.from(COL_ORDERS).update(updateData).eq('id', order.id);
-        if (error) failed++; else updated++;
-    }
-    // Invalidate analytics cache
-    _statsCache.analytics = null;
-    _statsCache.lastAnalytics = 0;
-    return { updated, failed };
+    return { city, postalCode, district };
 }
 
 async function getOrderAnalytics() {
@@ -1715,15 +731,10 @@ async function getOrderAnalytics() {
     } catch(_) {}
 
     // Fetch last 2000 orders for historical analysis (optimized fields selection for performance)
-    const { data: ordersSnap, error } = await supabase.from(COL_ORDERS)
-        .select('id, created_at, delivered_at, total_price, status, product_name, is_priority, city, postal_code, address, livreur_name, user_id, platform, first_name, username, quantity')
+    const { data: ordersSnap } = await supabase.from(COL_ORDERS)
+        .select('id, created_at, updated_at, total_price, status, product_name, city, postal_code, address, livreur_name, user_id, platform, first_name, username, quantity')
         .order('created_at', { ascending: false })
         .limit(2000);
-
-    if (error) {
-        console.error('[DB-ANALYTICS-CRITICAL] Query failed:', error);
-        throw error;
-    }
 
     const analytics = {
         totalCA: 0,
@@ -1731,8 +742,7 @@ async function getOrderAnalytics() {
         avgBasket: 0,
         avgDeliveryTime: 0,
         byPlatform: {
-            telegram: { ca: 0, count: 0, avgBasket: 0, products: {} },
-            whatsapp: { ca: 0, count: 0, avgBasket: 0, products: {} }
+            telegram: { ca: 0, count: 0, avgBasket: 0, products: {} }
         },
         byHour: {}, byDay: {}, byWeek: {}, byMonth: {}, byYear: {},
         byCity: {},         // city -> { ca, count, priority }
@@ -1776,13 +786,15 @@ async function getOrderAnalytics() {
         if (isDelivered) analytics.funnel.completed++;
         if (isCancelled) analytics.funnel.cancelled++;
 
-        // --- PRIORITY: detect via is_priority column ---
-        const isPriorityOrder = order.is_priority === true;
+        // --- PRIORITY: detect via is_priority OR priority_fee > 0 OR product_list contains 'Prioritaire' ---
+        const priorityFee = parseFloat(order.priority_fee) || 0;
+        const productListHasPriority = (order.product_list || order.product_name || '').toLowerCase().includes('prioritaire');
+        const isPriorityOrder = order.is_priority === true || priorityFee > 0 || productListHasPriority;
 
         if (isPriorityOrder) {
             analytics.priority.total++;
             if (order.created_at) {
-                const h = new Date(order.created_at).getHours().toString().padStart(2, '0') + 'h';
+                const h = new Date(order.created_at).getHours() + 'h';
                 analytics.priority.byHour[h] = (analytics.priority.byHour[h] || 0) + 1;
             }
             let pCity = (order.city || '').toUpperCase();
@@ -1802,7 +814,7 @@ async function getOrderAnalytics() {
         analytics.totalOrders++;
 
         // Platform
-        const platform = order.platform || (String(order.user_id).startsWith('whatsapp') ? 'whatsapp' : 'telegram');
+        const platform = order.platform || 'telegram';
         if (!analytics.byPlatform[platform]) {
             analytics.byPlatform[platform] = { ca: 0, count: 0, avgBasket: 0, products: {} };
         }
@@ -1811,9 +823,9 @@ async function getOrderAnalytics() {
 
         // Delivery time
         let deliveryMinutes = null;
-        if (order.created_at && order.delivered_at) {
+        if (order.created_at && order.updated_at) {
             const createdMs = new Date(order.created_at).getTime();
-            const deliveredMs = new Date(order.delivered_at).getTime();
+            const deliveredMs = new Date(order.updated_at).getTime();
             deliveryMinutes = Math.round((deliveredMs - createdMs) / 60000);
             if (deliveryMinutes > 0 && deliveryMinutes < 1440) {
                 totalDeliveryMinutes += deliveryMinutes;
@@ -1938,7 +950,9 @@ async function getOrderAnalytics() {
             district: district || postalCode,
             livreur: order.livreur_name || 'N/A',
             platform: platform,
-            is_priority: isPriorityOrder
+            is_priority: isPriorityOrder,
+            chat_count: order.chat_count || 0,
+            user_id: order.user_id
         });
     });
 
@@ -1990,1398 +1004,613 @@ async function getOrderAnalytics() {
     });
     analytics.avgDeliveryTime = deliveryCount > 0 ? Math.round(totalDeliveryMinutes / deliveryCount) : 0;
 
-    // Save last 20 raw delivered for searching
-    analytics.rawDelivered = (ordersSnap || [])
-        .filter(o => (o.status || '').toLowerCase() === 'delivered')
-        .slice(0, 20)
-        .map(o => decryptOrder(o));
-
     _statsCache.analytics = analytics;
     _statsCache.lastAnalytics = now;
     return analytics;
 }
 
-async function getAvailableLivreurs() {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_livreur', true);
-    return (data || []).map(d => decryptUser(d)).filter(l => l.is_available);
+// --- MISSING FUNCTIONS (Order flow, Livreurs, Marketplace, etc.) ---
+
+// ORDER STATUS & MANAGEMENT
+async function updateOrderStatus(orderId, status, extraData = {}) {
+    const updateData = { status, ...extraData };
+    const { data, error } = await supabase.from(COL_ORDERS).update(updateData).eq('id', orderId).select().single();
+    if (error) console.error('[DB] updateOrderStatus error:', error.message);
+    
+    // Invalidate stats cache so dashboard updates immediately
+    _statsCache.lastAnalytics = 0;
+    
+    // Si la commande est annulée ou refusée, on restocke !
+    if (status === 'cancelled' || status === 'refused') {
+        adjustOrderStock(orderId, 'increment').catch(e => console.error("Stock restore error:", e));
+    }
+    
+    return data;
+}
+
+async function adjustOrderStock(orderId, action) {
+    const { data: order } = await supabase.from(COL_ORDERS).select('*').eq('id', orderId).maybeSingle();
+    if (!order || !order.notes) return;
+    try {
+        const cart = JSON.parse(order.notes);
+        if (!Array.isArray(cart)) return;
+        const { logStockMovement } = require('./inventory_manager');
+        
+        for (const item of cart) {
+            const productId = item.productId;
+            const qty = action === 'increment' ? item.qty : -item.qty;
+            
+            const { data: p } = await supabase.from(COL_PRODUCTS).select('id, stock, name').eq('id', productId).maybeSingle();
+            if (p && typeof p.stock === 'number') {
+                const newStock = Math.max(0, p.stock + qty);
+                await supabase.from(COL_PRODUCTS).update({ stock: newStock }).eq('id', productId);
+                await logStockMovement(productId, qty, `order_${action}`, orderId);
+            }
+        }
+    } catch(e) {
+        console.error('[DB] adjustOrderStock error:', e.message);
+    }
+}
+
+async function assignOrderLivreur(orderId, livreurId, livreurName) {
+    const res = await supabase.from(COL_ORDERS).update({
+        livreur_id: livreurId,
+        livreur_name: livreurName,
+        status: 'taken'
+    }).eq('id', orderId);
+    
+    _statsCache.lastAnalytics = 0;
+    return res;
+}
+
+async function getOrdersByUser(userId) {
+    const { data } = await supabase.from(COL_ORDERS).select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    return (data || []).map(decryptOrder);
+}
+
+async function getClientActiveOrders(userId) {
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .eq('user_id', userId)
+        .in('status', ['pending', 'taken', 'supplier_pending', 'supplier_accepted'])
+        .order('created_at', { ascending: false });
+    return (data || []).map(decryptOrder);
+}
+
+async function getAvailableOrders() {
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+    return (data || []).map(decryptOrder);
+}
+
+async function searchOrders(query) {
+    if (!query) return getAllOrders(100);
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .or(`id.ilike.%${query}%,product_name.ilike.%${query}%,username.ilike.%${query}%`)
+        .order('created_at', { ascending: false }).limit(50);
+    return (data || []).map(decryptOrder);
+}
+
+async function backfillOrderCities() {
+    const { data: orders } = await supabase.from(COL_ORDERS).select('id, address').is('city', null);
+    let updated = 0;
+    for (const order of (orders || [])) {
+        const { city, postalCode } = extractCityFromAddress(encryption.decrypt(order.address) || order.address);
+        await supabase.from(COL_ORDERS).update({ city, postal_code: postalCode }).eq('id', order.id);
+        updated++;
+    }
+    return { updated };
+}
+
+// SUPPLIER ORDER HELPERS
+async function markOrderSupplierReady(orderId) {
+    return await supabase.from(COL_ORDERS).update({ supplier_ready: true }).eq('id', orderId);
+}
+
+async function markOrderSupplierNotified(orderId) {
+    return await supabase.from(COL_ORDERS).update({ supplier_notified: true }).eq('id', orderId);
+}
+
+// LIVREUR MANAGEMENT
+async function setLivreurStatus(platformId, platform, isLivreur) {
+    const docId = makeDocId(platform, platformId);
+    const { data, error } = await supabase.from(COL_USERS).update({ is_livreur: isLivreur }).eq('id', docId).select().single();
+    if (data) _userCacheDelete(docId);
+    return data;
+}
+
+async function setLivreurAvailability(docId, isAvailable) {
+    const { data } = await supabase.from(COL_USERS).select('data').eq('id', docId).maybeSingle();
+    const meta = data?.data || {};
+    meta.is_available = isAvailable;
+    await supabase.from(COL_USERS).update({ is_available: isAvailable, data: meta }).eq('id', docId);
+    _userCacheDelete(docId);
+}
+
+async function updateLivreurPosition(docId, city) {
+    const { data } = await supabase.from(COL_USERS).select('data').eq('id', docId).maybeSingle();
+    const meta = data?.data || {};
+    meta.current_city = city;
+    await supabase.from(COL_USERS).update({ current_city: city, data: meta }).eq('id', docId);
+    _userCacheDelete(docId);
 }
 
 async function getAllLivreurs() {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_livreur', true);
-    return (data || []).map(d => decryptUser(d));
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_livreur', true).order('created_at', { ascending: false });
+    return (data || []).map(decryptUser);
 }
 
-// --- Settings ---
-const SETTINGS_DEFAULTS = {
-    bot_name: 'Mon Shop',
-    welcome_message: 'Bienvenue sur Mon Shop ! 🚀 Votre service de livraison express.',
-    welcome_message_enabled: true,
-    admin_password: 'admin',
-    admin_telegram_id: '1183134641',
-    list_moderators: '',
-    dashboard_url: process.env.DASHBOARD_URL || '',
-    private_contact_url: 'https://t.me/admin_boutique',
-    private_contact_wa_url: 'https://wa.me/33752981714',
-    channel_url: 'https://t.me/+aZMQZI-hATsyMThk', 
-    bot_description: 'Service de livraison express Mon Shop',
-    bot_short_description: 'Mon Shop - Livraison express',
-    payment_modes: '💵 Espèces',
-    maintenance_mode: false,
-    maintenance_message: '🔧 <b>Le bot est actuellement en maintenance.</b>\n\nNous revenons bientôt !\n\nContactez l\'admin : @admin_boutique',
-    maintenance_contact: 'https://t.me/admin_boutique',
-    accent_color: '#4CAF50',
-    languages: 'fr',
-    payment_modes_config: '[]',
-    force_subscribe: false,
-    force_subscribe_channel_id: '',
-    default_wa_name: 'Utilisateur',
-    enable_abandoned_cart_notifications: false,
-    msg_abandoned_cart: '',
-    msg_welcome_back: '',
-    msg_order_notif_livreur: '',
-    msg_order_received_admin: '',
-    msg_order_confirmed_client: '',
-    enable_telegram: true,
-    enable_whatsapp: true,
-    enable_marketplace: true,
-    enable_fidelity: true,
-    enable_referral: true,
-    enable_help_menu: true,
-    dashboard_title: 'Mon Shop',
-    label_catalog_title: '',
-    priority_delivery_enabled: false,
-    priority_delivery_price: 15,
-    auto_approve_new: false,
-    notify_on_approval: false,
-    
-    // UI Labels & Icons
-    label_catalog: 'Catalogue Mini App',
-    ui_icon_catalog: '🛒',
-    label_my_orders: 'Mes Commandes',
-    ui_icon_orders: '📦',
-    label_contact: 'Contact',
-    ui_icon_contact: '📱',
-    label_profile: 'Profil',
-    ui_icon_profile: '👤',
-    label_livreur_space: 'Espace Livreur',
-    ui_icon_livreur: '🚴',
-    label_admin_bot: 'Admin Bot',
-    ui_icon_admin: '⚙️',
-    label_admin_web: 'Mon Shop',
-    ui_icon_web: '🌐',
-    label_channel: 'Canal',
-    ui_icon_channel: '📢',
-    label_welcome: 'Bienvenue',
-    ui_icon_welcome: '👋',
-    label_support: 'Aide & Support',
-    ui_icon_support: '❓',
-    label_reviews: 'Avis',
-    ui_icon_leave_review: '⭐️',
-    ui_icon_view_reviews: '👥',
-    label_users: 'Utilisateurs',
-    label_info: 'Informations',
-    ui_icon_info: 'ℹ️',
-    
-    // Statuses
-    status_pending_label: 'Attente Validation',
-    ui_icon_pending: '⏳',
-    status_taken_label: 'En cours de livraison',
-    ui_icon_taken: '🚚',
-    status_delivered_label: 'Livré ✅',
-    ui_icon_success: '✅',
-    status_cancelled_label: 'Annulé ❌',
-    ui_icon_error: '❌',
-    
-    // Messages
-    msg_auto_timer: '🔥 <b>Le catalogue est à jour !</b>',
-    msg_choose_qty: 'Choisissez la quantité souhaitée :',
-    msg_search_livreur: '⏳ Recherche d\'un livreur en cours...',
-    msg_order_success: '✅ <b>Commande enregistrée !</b>',
-    msg_help_intro: 'Besoin d\'aide ? Choisissez une option ci-dessous :',
-    msg_status_taken: '🚚 Votre commande est en route !',
-    msg_status_delivered: '✅ Livraison confirmée ! Merci pour votre commande.',
-    msg_delay_report: '⏳ Un retard est à signaler pour votre commande.',
-    msg_arrival_soon: '🛵 Votre livreur arrive bientôt !',
-    msg_review_prompt: '⭐ Êtes-vous satisfait de votre commande ?',
-    msg_review_thanks: '🙏 Merci pour votre avis !',
-    msg_thanks_participation: 'Merci pour votre participation !',
-    msg_your_answer: 'Votre réponse',
-    
-    // Settings Logic
-    points_exchange: 100,
-    points_ratio: 1,
-    ref_bonus: 5,
-    points_credit_value: 10,
-    fidelity_wallet_max_pct: 50,
-    fidelity_min_spend: 50,
-    fidelity_bonus_thresholds: '5,10,15,20',
-    fidelity_bonus_amount: 10,
-    dashboard_title: 'Mon Shop',
-    show_broadcasts_btn: true,
-    show_reviews_btn: true,
-    priority_delivery_enabled: false,
-    priority_delivery_price: 15,
-    auto_approve_new: false, // Default to false, to be toggled by admin
-    notify_on_approval: false, // Whether to send the confirmation message
-    
-    // Buttons
-    btn_back_menu: '◀️ Retour Menu',
-    btn_back_menu_nav: '◀️ Retour Menu',
-    btn_cart_resume: '➡️ 🛒 REPRENDRE MON PANIER',
-    btn_client_mode: '🛒 Mode Client (commander)',
-    btn_back_generic: '◀️ Retour',
-    btn_verify_sub: '✅ Vérifier mon abonnement',
-    btn_back_to_cart: '◀️ Retour Panier',
-    btn_back_to_qty: '◀️ Retour Quantité',
-    btn_back_to_address: '◀️ Retour Adresse',
-    btn_back_to_options: '◀️ Retour aux options',
-    btn_back_quick_menu: '◀️ Menu',
-    btn_back_to_livreur_menu: '◀️ Menu Livreur',
-    btn_back_main_menu_alt: '◀️ Menu principal',
-    btn_cancel: '◀️ Annuler',
-    btn_cancel_alt: '❌ Annuler',
-    btn_cancel_order: '❌ Annuler la commande',
-    btn_cancel_my_order: '❌ Annuler ma commande',
-    btn_abandon_delivery: '❌ Abandonner la livraison',
-    btn_dont_use_credit: '❌ Non, payer plein tarif',
-    btn_send_now: '✅ Envoyer maintenant',
-    btn_set_available: '✅ Passer en Disponible',
-    btn_leave_review: '⭐️ Laisser un avis',
-    btn_view_reviews: '👥 Voir les avis',
-    btn_confirm_review: '✅ Confirmer',
-    btn_supplier_ready: '✅ Prêt à livrer',
-    btn_supplier_my_sales: '📊 Mes ventes',
-    btn_supplier_menu: '🏪 Espace Fournisseur',
-    btn_supplier_prep_time: '⏱ Temps de préparation',
-    
-    // Suppliers
-    msg_supplier_new_order: '📦 <b>Nouvelle commande !</b>',
-    msg_supplier_ready: '✅ Produit prêt pour livraison !'
-};
-
-let _settingsCache = null;
-let _settingsExpire = 0;
-let _settingsPromise = null;
-
-async function getAppSettings() {
-    if (_settingsCache && Date.now() < _settingsExpire) {
-        return _settingsCache;
-    }
-    if (_settingsPromise) return _settingsPromise;
-
-    _settingsPromise = (async () => {
-        try {
-            const { data, error } = await supabase.from(COL_SETTINGS).select('*').eq('id', 'default').abortSignal(AbortSignal.timeout(15000)).limit(1);
-            
-            if (error) {
-                console.error('⚠️ [DB] getAppSettings error:', error.message);
-                return _settingsCache || { ...SETTINGS_DEFAULTS };
-            }
-
-            let settings = { ...SETTINGS_DEFAULTS };
-
-            if (!data || data.length === 0) {
-                // Only insert if it's a CLEAN 0 rows (no error)
-                try {
-                    await supabase.from(COL_SETTINGS).insert([{ id: 'default', ...SETTINGS_DEFAULTS }]).abortSignal(AbortSignal.timeout(3000));
-                } catch (e) {}
-            } else {
-                // Robust merging: Only use DB values if they are NOT null or undefined
-                const dbSettings = data[0];
-                for (const key in dbSettings) {
-                    if (dbSettings[key] !== null && dbSettings[key] !== undefined) {
-                        settings[key] = dbSettings[key];
-                    }
-                }
-            }
-
-            // Force string for key fields that might be stored as arrays in JSONB
-            if (Array.isArray(settings.admin_telegram_id)) {
-                settings.admin_telegram_id = settings.admin_telegram_id.join(', ');
-            } else if (settings.admin_telegram_id !== null && settings.admin_telegram_id !== undefined) {
-                settings.admin_telegram_id = String(settings.admin_telegram_id);
-            }
-
-            // Auto-réparation légère (évite les valeurs "test" collatérales)
-            const repairs = {};
-            for (const key of Object.keys(SETTINGS_DEFAULTS)) {
-                const val = settings[key];
-                if (typeof val === 'string' && val.toLowerCase() === 'test') {
-                    settings[key] = SETTINGS_DEFAULTS[key];
-                    repairs[key] = SETTINGS_DEFAULTS[key];
-                }
-                if (key.startsWith('ui_icon_') && (!val || val.length > 5 || /^[a-zA-Z0-9]+$/.test(val))) {
-                    settings[key] = SETTINGS_DEFAULTS[key];
-                    repairs[key] = SETTINGS_DEFAULTS[key];
-                }
-            }
-
-            // Synchronisation label_livreur
-            if (!settings.label_livreur || settings.label_livreur === '') {
-                settings.label_livreur = settings.label_livreur_space || SETTINGS_DEFAULTS.label_livreur;
-            }
-
-            if (Object.keys(repairs).length > 0) {
-                console.log(`🔧 [DB] Auto-réparation de ${Object.keys(repairs).length} champs :`, Object.keys(repairs).join(', '));
-                supabase.from(COL_SETTINGS).update(repairs).eq('id', 'default').then(() => { }, () => { });
-            }
-
-            _settingsCache = settings;
-            _settingsExpire = Date.now() + 300000; // Cache valid for 5 minutes instead of 30s
-            return settings;
-        } finally {
-            _settingsPromise = null;
-        }
-    })();
-
-    return _settingsPromise;
+async function setAdminStatus(docId, isAdmin) {
+    const { data, error } = await supabase.from(COL_USERS).update({ is_admin: isAdmin }).eq('id', docId).select().single();
+    if (data) _userCacheDelete(docId);
+    return data;
 }
 
-async function updateAppSettings(settings) {
-    // Robustesse: On ne garde que les champs définis dans SETTINGS_DEFAULTS pour éviter les crashs si la table n'est pas à jour
-    const filtered = {};
-    for (const key in settings) {
-        if (Object.prototype.hasOwnProperty.call(SETTINGS_DEFAULTS, key) || key === 'id') {
-            filtered[key] = settings[key];
-        }
-    }
-
-    const { error } = await supabase.from(COL_SETTINGS).update(filtered).eq('id', 'default');
-    if (!error) {
-        // Clear cache and promise to force refresh
-        _settingsCache = null;
-        _settingsExpire = 0;
-        _settingsPromise = null;
-    }
-    if (error) {
-        console.error('❌ Error updating settings:', error.message, '— Trying partial save...');
-        // Fallback: save only core fields that always exist
-        const coreFields = [
-            'bot_name', 'welcome_message', 'admin_password', 'admin_telegram_id',
-            'dashboard_url', 'payment_modes', 'maintenance_mode', 'maintenance_message',
-            'private_contact_url', 'private_contact_wa_url', 'channel_url', 'accent_color', 'bot_description',
-            'label_contact', 'label_channel', 'ui_icon_contact', 'ui_icon_channel',
-            'dashboard_title', 'label_support', 'ui_icon_support', 'msg_help_intro',
-            'label_catalog', 'ui_icon_catalog', 'label_my_orders', 'ui_icon_orders',
-            'payment_modes_config', 'msg_order_received_admin', 'msg_order_confirmed_client',
-            'force_subscribe', 'force_subscribe_channel_id', 'priority_delivery_enabled', 'priority_delivery_price',
-            'auto_approve_new', 'notify_on_approval'
-        ];
-        const coreFiltered = {};
-        for (const key of coreFields) {
-            if (filtered[key] !== undefined) coreFiltered[key] = filtered[key];
-        }
-        const { error: e2 } = await supabase.from(COL_SETTINGS).update(coreFiltered).eq('id', 'default');
-        if (e2) {
-            throw new Error(`Erreur sauvegarde: ${error.message}`);
-        }
-        console.warn('⚠️ Partial settings save done. Some columns may need SQL migration.');
-    }
-    _settingsCache = null; // Invalidate cache
+async function setModeratorStatus(docId, isModerator) {
+    const { data, error } = await supabase.from(COL_USERS).update({ is_moderator: isModerator }).eq('id', docId).select().single();
+    if (data) _userCacheDelete(docId);
+    return data;
 }
 
-// --- Products ---
-let _productsCache = null;
-let _productsExpire = 0;
+async function getAllAdmins() {
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_admin', true);
+    return (data || []).map(decryptUser);
+}
 
-async function getProduct(id) {
-    // Check main products
-    const { data: p } = await supabase.from(COL_PRODUCTS).select('*').eq('id', id).single();
-    if (p) return p;
-    
-    // Check marketplace products
-    const { data: mp } = await supabase.from(COL_SUPPLIER_PRODUCTS).select('*').eq('id', id).single();
-    if (mp) return mp;
-    
+async function getAllModerators() {
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_moderator', true);
+    return (data || []).map(decryptUser);
+}
+
+async function searchLivreurs(query) {
+    let q = supabase.from(COL_USERS).select('*').eq('is_livreur', true);
+    if (query) {
+        q = q.or(`id.ilike.%${query}%,username.ilike.%${query}%,first_name.ilike.%${query}%`);
+    }
+    const { data } = await q.order('created_at', { ascending: false }).limit(50);
+    return (data || []).map(decryptUser);
+}
+
+async function getDetailedLivreurActivity(livreurId) {
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .eq('livreur_id', livreurId)
+        .order('created_at', { ascending: false }).limit(50);
+    return (data || []).map(decryptOrder);
+}
+
+async function getLivreurHistory(livreurId) {
+    return getDetailedLivreurActivity(livreurId);
+}
+
+async function getLivreurOrders(livreurId) {
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .eq('livreur_id', String(livreurId))
+        .in('status', ['taken', 'accepted', 'near', 'arrived'])
+        .order('created_at', { ascending: false });
+    return (data || []).map(decryptOrder);
+}
+
+// USER STATS & WALLET
+async function getUserCount() {
+    const { count } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true });
+    return count || 0;
+}
+
+async function getActiveUserCount() {
+    const { count } = await supabase.from(COL_USERS).select('*', { count: 'exact', head: true }).eq('is_approved', true).eq('is_blocked', false);
+    return count || 0;
+}
+
+async function updateUserWallet(userId, amount) {
+    const { data: user } = await supabase.from(COL_USERS).select('data').eq('id', userId).single();
+    const meta = user?.data || {};
+    meta.wallet = (parseFloat(meta.wallet) || 0) + parseFloat(amount);
+    return await supabase.from(COL_USERS).update({ data: meta }).eq('id', userId);
+}
+
+async function updateUserPoints(userId, points) {
+    const { data: user } = await supabase.from(COL_USERS).select('data').eq('id', userId).single();
+    const meta = user?.data || {};
+    meta.points = (parseInt(meta.points) || 0) + parseInt(points);
+    return await supabase.from(COL_USERS).update({ data: meta }).eq('id', userId);
+}
+
+async function getReferralLeaderboard(limit = 10) {
+    const { data } = await supabase.from(COL_REFERRALS).select('referrer_id')
+        .eq('status', 'completed');
+    // Count referrals per user
+    const counts = {};
+    (data || []).forEach(r => { counts[r.referrer_id] = (counts[r.referrer_id] || 0) + 1; });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit);
+    // Enrich with user data
+    const result = [];
+    for (const [userId, count] of sorted) {
+        const user = await getUser(userId.replace('telegram_', ''));
+        result.push({ user_id: userId, count, username: user?.username || 'Inconnu', first_name: user?.first_name || '' });
+    }
+    return result;
+}
+
+async function getGlobalStats() {
+    return getStatsOverview();
+}
+
+// FEEDBACK & HELP
+async function logHelpRequest(userId, message) {
+    console.log(`[HELP] ${userId}: ${message}`);
+    return true;
+}
+
+async function saveClientReply(orderId, userId, message) {
+    console.log(`[CLIENT-REPLY] Order ${orderId} from ${userId}: ${message}`);
+    return true;
+}
+
+async function incrementChatCount(orderId) {
+    const { data } = await supabase.from(COL_ORDERS).select('chat_count').eq('id', orderId).maybeSingle();
+    const count = (data?.chat_count || 0) + 1;
+    await supabase.from(COL_ORDERS).update({ chat_count: count }).eq('id', orderId);
+    return count; // CRITICAL: must return count for display
+}
+
+
+async function appendChatHistory(userId, msgObj) {
+    try {
+        const idStr = String(userId).startsWith('telegram_') ? String(userId) : `telegram_${userId}`;
+        const { data: user } = await supabase.from(COL_USERS).select('data').eq('id', idStr).maybeSingle();
+        if (!user) return false;
+        
+        const history = user.data?.chat_history || [];
+        // Ne pas stocker un historique infini, garder les 100 derniers
+        if (history.length > 100) history.shift();
+        
+        history.push({ ...msgObj, ts: Date.now() });
+        const newData = { ...user.data, chat_history: history };
+        
+        const { error } = await supabase.from(COL_USERS).update({ data: newData }).eq('id', idStr);
+        if (error) throw error;
+        return true;
+    } catch (err) {
+        console.error('[DB] appendChatHistory error:', err.message);
+        return false;
+    }
+}
+
+const pendingFeedbacks = new Map();
+
+async function setPendingFeedback(userId, orderId, rate) {
+    pendingFeedbacks.set(userId, { orderId, rate });
+}
+
+async function getAndClearPendingFeedback(userId) {
+    const pending = pendingFeedbacks.get(userId);
+    if (pending) {
+        pendingFeedbacks.delete(userId);
+        return pending;
+    }
     return null;
 }
 
-async function getProducts(includeInactive = false) {
-    if (_productsCache && Date.now() < _productsExpire && !includeInactive) {
-        return _productsCache;
-    }
-    let query = supabase.from(COL_PRODUCTS).select('*').order('priority', { ascending: true }).order('created_at', { ascending: true });
-    if (!includeInactive) {
-        query = query.eq('is_active', true);
-    }
-    const { data: nativeProds } = await query;
-    
-    // FETCH VALIDATED MARKETPLACE PRODUCTS TOO
-    let mpQuery = supabase.from(COL_SUPPLIER_PRODUCTS).select('*').eq('is_validated', true).order('created_at', { ascending: true });
-    if (!includeInactive) {
-        mpQuery = mpQuery.eq('is_active', true);
-    }
-    const { data: mpProds } = await mpQuery;
-    
-    // Normalisation des MP prods pour matcher le format standard
-    const normalizedMp = (mpProds || []).map(p => ({
-        ...p,
-        is_mp: true // Flag pour savoir que c'est du marketplace
-    }));
-
-    // --- INTEGRATION DES FORMULES ET MODULES DU BOT (BaaS) ---
-    const officialBotProducts = [
-        {
-            id: 'pack_standard',
-            name: '🥉 Pack Standard (Telegram)',
-            category: 'PACKS BOT',
-            price: 450,
-            description: 'Bot Telegram Professionnel complet avec catalogue multimédia, gestion de panier fluide et interface d\'administration intégrée.',
-            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Standard+Telegram',
-            is_active: true,
-            is_featured: true,
-            priority: 1,
-            promo: '-30€ par code parrain'
-        },
-        {
-            id: 'pack_wa',
-            name: '🥈 Pack WhatsApp Plus',
-            category: 'PACKS BOT',
-            price: 550,
-            description: 'Bot WhatsApp Professionnel haute stabilité. Sessions persistantes, réponses instantanées et support technique VIP inclus pendant 1 an.',
-            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+WhatsApp+Plus',
-            is_active: true,
-            is_featured: true,
-            priority: 2,
-            promo: '-40€ par code promo'
-        },
-        {
-            id: 'pack_premium',
-            name: '🥇 Pack Premium (TG + WA Sync)',
-            category: 'PACKS BOT',
-            price: 650,
-            description: 'L\'offre de référence. Synchronisation multiplateforme en temps réel, alertes livreur automatisées et statistiques de croissance avancées.',
-            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Premium+Sync',
-            is_active: true,
-            is_featured: true,
-            priority: 3,
-            promo: '-50€ de remise immédiate'
-        },
-        {
-            id: 'pack_enterprise',
-            name: '🚀 Pack Enterprise (Sur mesure)',
-            category: 'PACKS BOT',
-            price: 950,
-            description: 'Solution sur mesure clé en main. Architecture dédiée haute performance, intégration API personnalisée et accompagnement stratégique dédié.',
-            image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Enterprise+VIP',
-            is_active: true,
-            is_featured: false,
-            priority: 4,
-            promo: '-50€ de remise immédiate'
-        },
-        {
-            id: 'mod_payment',
-            name: '💳 Paiement Stripe & Crypto Intégré',
-            category: 'MODULES SUR MESURE',
-            price: 150,
-            description: 'Encaissement automatisé et sécurisé par carte bancaire via Stripe et portefeuilles cryptographiques (USDT/BTC/ETH).',
-            image_url: 'https://placehold.co/400x300/222/00ff88?text=Module+Paiement',
-            is_active: true,
-            is_featured: false,
-            priority: 5
-        },
-        {
-            id: 'mod_livreur',
-            name: '🚴 Système Console Livreur & Tracking',
-            category: 'MODULES SUR MESURE',
-            price: 200,
-            description: 'Interface WebApp dédiée aux livreurs, suivi GPS en direct, calcul du temps estimé d\'arrivée (ETA) et chat de coordination sécurisé.',
-            image_url: 'https://placehold.co/400x300/222/ffaa00?text=Console+Livreur',
-            is_active: true,
-            is_featured: false,
-            priority: 6
-        },
-        {
-            id: 'mod_vip',
-            name: '👑 Programme VIP & Cashback Fidélité',
-            category: 'MODULES SUR MESURE',
-            price: 120,
-            description: 'Système de paliers clients évolutifs (Bronze/Silver/Gold), génération de liens de parrainage et attribution automatique de solde fidélité.',
-            image_url: 'https://placehold.co/400x300/222/ff0050?text=Programme+VIP',
-            is_active: true,
-            is_featured: false,
-            priority: 7
-        },
-        {
-            id: 'mod_mkt',
-            name: '📣 Diffusion Broadcast & Relance Paniers',
-            category: 'MODULES SUR MESURE',
-            price: 180,
-            description: 'Envois groupés de campagnes marketing multimédias et scénarios de relance intelligente automatisée pour récupérer les paniers abandonnés.',
-            image_url: 'https://placehold.co/400x300/222/00aaff?text=Marketing+Engine',
-            is_active: true,
-            is_featured: false,
-            priority: 8
-        },
-        {
-            id: 'mod_gating',
-            name: '🔒 Gating de Canal (Force Join)',
-            category: 'MODULES SUR MESURE',
-            price: 90,
-            description: 'Obligation automatique pour l\'utilisateur de rejoindre votre canal Telegram officiel ou groupe privé pour débloquer l\'accès aux commandes.',
-            image_url: 'https://placehold.co/400x300/222/bb00ff?text=Force+Join+Canal',
-            is_active: true,
-            is_featured: false,
-            priority: 9
-        }
-    ];
-
-    let filteredProds = nativeProds || [];
-    
-    const existingIds = new Set(filteredProds.map(p => p.id));
-    const toAdd = officialBotProducts.filter(p => !existingIds.has(p.id));
-
-    _productsCache = [...toAdd, ...filteredProds, ...normalizedMp];
-    _productsExpire = Date.now() + 60000;
-    return _productsCache;
-}
-
-async function saveProduct(data) {
-    const id = data.id || `${Date.now()}`;
-    const row = { id, ...data };
-    
-    // Si c'est un nouveau produit (pas de data.created_at), on met le timestamp actuel
-    let createdAt = data.created_at || ts();
-    if (typeof createdAt === 'number' || (typeof createdAt === 'string' && /^\d{10,13}$/.test(createdAt))) {
-        createdAt = new Date(Number(createdAt)).toISOString();
-    }
-    row.created_at = createdAt;
-
-    const { error } = await supabase.from(COL_PRODUCTS).upsert(row);
-    if (error) {
-        console.error("Error saveProduct", error);
-        throw new Error(`Erreur Supabase: ${error.message}`);
-    }
-    _productsCache = null; // Invalidate cache
-    return id;
-}
-
-async function updateProduct(id, updates) {
-    const { error } = await supabase
-        .from(COL_PRODUCTS)
-        .update({ ...updates, updated_at: ts() })
-        .eq('id', id);
-
-    if (error) {
-        console.error(`Error updateProduct (${id})`, error);
-        throw new Error(`Erreur Supabase: ${error.message}`);
-    }
-    _productsCache = null;
+async function saveFeedback(userId, feedback) {
+    console.log(`[FEEDBACK] ${userId}: ${JSON.stringify(feedback)}`);
     return true;
 }
 
-async function deleteProduct(id) {
-    await supabase.from(COL_PRODUCTS).delete().eq('id', id);
-    _productsCache = null; // Invalidate cache
-}
-
-// --- Broadcasts ---
-async function saveBroadcast(data) {
-    const id = `${Date.now()}`;
-    const now = ts();
-    // On s'assure que created_at et start_at sont cohérents pour l'affichage instantané
-    const { error } = await supabase.from(COL_BROADCASTS).insert([{
-        id,
-        ...data,
-        created_at: now,
-        start_at: data.start_at || now
-    }]);
-
-    // Si erreur (probablement colonnes manquantes), on tente de sauver uniquement les colonnes de base
-    if (error) {
-        console.warn(`[DB-WARN] saveBroadcast fallback: ${error.message}`);
-        const filtered = { 
-            id, 
-            message: data.message, 
-            target_platform: data.target_platform, 
-            created_at: now, 
-            start_at: now,
-            poll_data: data.poll_data,
-            badge: data.badge,
-            media_count: data.media_count,
-            total_target: data.total_target,
-            status: data.status
-        };
-        await supabase.from(COL_BROADCASTS).insert([filtered]);
-    }
-    return id;
-}
-
-async function getPendingBroadcasts() {
-    const now = ts();
-    const rescueTime = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 minutes pour considérer une diffusion "stuck"
-    const windowStart = new Date(Date.now() - 120 * 60 * 1000).toISOString(); // 2h de fenêtre (ÉVITE LE SPAM DES VIEILLES DIFFUSIONS)
-    
-    // 1. Chercher les PENDING (classiques)
-    const { data: pending, error: pError } = await supabase.from(COL_BROADCASTS)
-        .select('*')
-        .eq('status', 'pending')
-        .lte('start_at', now)
-        .gte('start_at', windowStart)
-        .order('start_at', { ascending: true });
-        
-    if (pError) {
-        console.error('❌ [DB] getPendingBroadcasts error:', pError);
-        return [];
-    }
-
-    // 2. Chercher les IN_PROGRESS "bloqués" (plus d'activité depuis 10 mins et non complétés)
-    // On considère qu'une diffusion est bloquée si elle est 'in_progress' et créée depuis plus de 10 mins 
-    // SANS être passée en 'completed'.
-    const { data: stuck, error: sError } = await supabase.from(COL_BROADCASTS)
-        .select('*')
-        .eq('status', 'in_progress')
-        .lt('created_at', rescueTime) // Initié depuis plus de 10 mins
-        .gt('created_at', windowStart) // MAIS pas créé depuis plus de 2h
-        .is('completed_at', null)
-        .limit(5);
-
-    if (sError) console.error('❌ [DB] getStuckBroadcasts error:', sError);
-
-    const allToProcess = [...(pending || []), ...(stuck || [])];
-    if (allToProcess.length > 0) {
-        console.log(`[BC-SERVICE] ${allToProcess.length} diffusions à traiter (P: ${pending?.length || 0}, Stuck: ${stuck?.length || 0})`);
-    }
-
-    return allToProcess;
-}
-
-async function recordPollVote(broadcastId, optionIdx, userId, userName = 'Anonyme') {
-    const { data: bc } = await supabase.from(COL_BROADCASTS).select('poll_data').eq('id', broadcastId).single();
-    if (!bc) return 'not_found';
-
-    let poll = bc.poll_data || { options: [], title: 'Sondage', votes: {} };
-    if (!poll.votes) poll.votes = {};
-
-    // Déjà voté ?
-    if (poll.votes[userId]) return 'already_voted';
-
-    poll.votes[userId] = {
-        option: optionIdx,
-        userName: userName,
-        platform: String(userId).split('_')[0] || 'telegram',
-        timestamp: ts()
-    };
-
-    // Alerte Admin
-    const { notifyAdmins } = require('./notifications');
-    const label = poll.options[optionIdx] || `#${optionIdx}`;
-    // await notifyAdmins(null, `🗳 <b>VOTE SONDAGE</b>\n\n👤 Par : <b>${userName}</b>\n🆔 Sondage ID : <code>${broadcastId}</code>\n🔘 Réponse : "<b>${label}</b>"`).catch(() => {});
-
-    const { error } = await supabase.from(COL_BROADCASTS).update({ poll_data: poll }).eq('id', broadcastId);
-    return error ? 'error' : 'success';
-}
-
-async function recordPollFreeResponse(broadcastId, userId, userName, responseText) {
-    const { data: bc } = await supabase.from(COL_BROADCASTS).select('poll_data').eq('id', broadcastId).single();
-    if (!bc) return 'not_found';
-
-    let poll = bc.poll_data || { options: [], title: 'Sondage', votes: {} };
-    if (!poll.free_responses) poll.free_responses = {};
-    
-    // Déjà répondu ? (libre)
-    if (poll.free_responses[userId]) return 'already_voted';
-
-    poll.free_responses[userId] = {
-        text: responseText,
-        userName: userName,
-        platform: String(userId).startsWith('whatsapp') || String(userId).includes('@') ? 'whatsapp' : 'telegram',
-        timestamp: ts()
-    };
-
-    // Alerte Admin
-    const { notifyAdmins } = require('./notifications');
-    // await notifyAdmins(null, `🖋 <b>RÉPONSE LIBRE (SONDAGE)</b>\n\n👤 Par : <b>${userName}</b>\n🆔 Sondage ID : <code>${broadcastId}</code>\n📝 Message : "<i>${responseText}</i>"`).catch(() => {});
-
-    const { error } = await supabase.from(COL_BROADCASTS).update({ poll_data: poll }).eq('id', broadcastId);
-    return error ? 'error' : 'success';
-}
-
-async function updateBroadcast(broadcastId, data) {
-    // Liste des colonnes de base garanties (pour le repli si les nouvelles colonnes n'existent pas)
-    const baseColumns = ['status', 'success', 'failed', 'blocked', 'completed_at'];
-
-    const { error } = await supabase.from(COL_BROADCASTS).update(data).eq('id', broadcastId);
-
-    // Si erreur (probablement colonnes manquantes), on tente de sauver uniquement les colonnes de base
-    if (error) {
-        console.warn(`[DB-WARN] updateBroadcast fallack: ${error.message}`);
-        const filtered = {};
-        for (const key of baseColumns) {
-            if (data[key] !== undefined) filtered[key] = data[key];
-        }
-        await supabase.from(COL_BROADCASTS).update(filtered).eq('id', broadcastId);
-    }
-}
-async function claimBroadcast(broadcastId) {
-    const rescueTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    
-    // On peut claim une diffusion si elle est 'pending' 
-    // OU si elle est 'in_progress' mais "stuck" (plus de 10 mins d'inactivité)
-    const { data, error } = await supabase
-        .from(COL_BROADCASTS)
-        .update({ status: 'in_progress' })
-        .eq('id', broadcastId)
-        .or(`status.eq.pending,and(status.eq.in_progress,created_at.lt.${rescueTime})`)
-        .select();
-
-    if (error) {
-        console.error(`[DB-ERROR] claimBroadcast(id=${broadcastId}):`, error.message);
-        return false;
-    }
-
-    if (!data || data.length === 0) {
-        return false;
-    }
-    return true;
-}
-async function deleteBroadcast(id) {
-    await supabase.from(COL_BROADCASTS).delete().eq('id', id);
-}
-
-async function getBroadcastHistory(limit = 50, onlyActive = false) {
-    let query = supabase.from(COL_BROADCASTS).select('*').order('created_at', { ascending: false });
-
-    if (onlyActive) {
-        const now = new Date().toISOString();
-        query = query.or(`end_at.is.null,end_at.gt.${now}`).lte('start_at', now);
-    }
-
-    const { data } = await query.limit(limit);
-    return data || [];
-}
-
-async function nukeDatabase() {
-    const collections = [COL_REVIEWS, COL_PRODUCTS, COL_ORDERS, COL_USERS, COL_STATS, COL_BROADCASTS, COL_DAILY_STATS, COL_REFERRALS, COL_SETTINGS];
-    for (const col of collections) {
-        await supabase.from(col).delete().neq('id', 'neverMatchThisString12345'); // Deletes all rows where ID != "..."
-    }
-}
-
-// --- Reviews ---
-async function saveReview(reviewData) {
-    const id = reviewData.id || `rev_${Date.now()}`;
-    const secureData = {
-        ...reviewData,
-        text: reviewData.text ? encryption.encrypt(reviewData.text) : reviewData.text,
-        first_name: reviewData.first_name ? encryption.encrypt(reviewData.first_name) : reviewData.first_name,
-        username: reviewData.username ? encryption.encrypt(reviewData.username) : reviewData.username,
-    };
-    const { error } = await supabase.from(COL_REVIEWS).upsert([{ id, ...secureData, created_at: ts() }]);
-    if (error) throw error;
-    return id;
-}
-
-async function getReviews(limit = 50) {
-    const { data } = await supabase.from(COL_REVIEWS).select('*').order('created_at', { ascending: false }).limit(limit);
-    return (data || []).map(decryptReview);
-}
-
-async function getPublicReviews(limit = 20) {
-    const { data } = await supabase.from(COL_REVIEWS).select('*').eq('is_public', true).order('created_at', { ascending: false }).limit(limit);
-    return (data || []).map(decryptReview);
-}
-
-async function deleteReview(id) {
-    await supabase.from(COL_REVIEWS).delete().eq('id', id);
-}
-
-async function uploadMediaFromUrl(url, fileName) {
-    if (!url) return null;
+// MEDIA HELPER
+async function uploadMediaFromUrl(url) {
     try {
-        const axios = require('axios');
-        const response = await axios.get(url, {
-            responseType: 'arraybuffer',
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            timeout: 5000
+        const https = require('https');
+        const http = require('http');
+        const mod = url.startsWith('https') ? https : http;
+        return new Promise((resolve) => {
+            mod.get(url, (res) => {
+                const chunks = [];
+                res.on('data', chunk => chunks.push(chunk));
+                res.on('end', async () => {
+                    const buffer = Buffer.concat(chunks);
+                    const contentType = res.headers['content-type'] || '';
+                    let ext = '.jpg';
+                    let mimetype = 'image/jpeg';
+                    
+                    if (contentType.includes('video/mp4') || url.includes('.mp4')) { ext = '.mp4'; mimetype = 'video/mp4'; }
+                    else if (contentType.includes('video/quicktime') || url.includes('.mov')) { ext = '.mov'; mimetype = 'video/quicktime'; }
+                    else if (contentType.includes('image/png') || url.includes('.png')) { ext = '.png'; mimetype = 'image/png'; }
+                    else if (contentType.includes('image/gif') || url.includes('.gif')) { ext = '.gif'; mimetype = 'image/gif'; }
+                    else if (contentType.includes('video')) { ext = '.mp4'; mimetype = contentType; }
+                    
+                    const filename = `media_${Date.now()}_${Math.floor(Math.random()*1000)}${ext}`;
+                    const publicUrl = await uploadMediaBuffer(buffer, filename, mimetype);
+                    resolve(publicUrl);
+                });
+                res.on('error', () => resolve(null));
+            }).on('error', () => resolve(null));
         });
-
-        const buffer = Buffer.from(response.data);
-        return uploadMediaBuffer(buffer, fileName, response.headers['content-type'] || 'image/jpeg');
     } catch (e) {
-        console.error("❌ uploadMediaFromUrl failed:", e.message);
-        throw e;
-    }
-}
-
-async function uploadMediaBuffer(buffer, fileName, contentType = 'image/jpeg') {
-    if (!buffer) return null;
-    try {
-        const { error } = await supabase.storage.from('uploads').upload(fileName, buffer, {
-            contentType,
-            upsert: true
-        });
-
-        if (error) throw error;
-        const { data: publicUrlData } = supabase.storage.from('uploads').getPublicUrl(fileName);
-        return publicUrlData.publicUrl;
-    } catch (e) {
-        console.error("❌ uploadMediaBuffer failed:", e.message);
-        throw e;
-    }
-}
-
-async function markUserUnblocked(userId) {
-    await supabase.from(COL_USERS).update({ is_blocked: false }).eq('id', userId);
-}
-
-async function deleteOrder(id) {
-    await supabase.from(COL_ORDERS).delete().eq('id', id);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  WhatsApp Session Persistence — stocke les credentials Baileys dans bot_state
-//  (table existante), ce qui survit aux redéploiements Railway
-// ─────────────────────────────────────────────────────────────────────────────
-async function useSupabaseAuthState(sessionId) {
-    const TABLE = 'bot_state';
-    const NAMESPACE = 'wa_session';
-    // Dynamic import for ESM-only baileys (Node 22+)
-    const baileysMod = await import('@whiskeysockets/baileys');
-    const BufferJSON = baileysMod.BufferJSON;
-    const initAuthCreds = baileysMod.initAuthCreds;
-
-    // Construit un ID unique pour bot_state : "wa_session::{sessionId}::{key}"
-    function makeId(key) {
-        return `${NAMESPACE}::${sessionId}::${key}`;
-    }
-
-    async function readData(key) {
-        try {
-            const { data, error } = await supabase
-                .from(TABLE)
-                .select('value')
-                .eq('id', makeId(key))
-                .abortSignal(AbortSignal.timeout(10000))
-                .single();
-            
-            if (!error && data) {
-                return JSON.parse(JSON.stringify(data.value), BufferJSON.reviver);
-            }
-
-            // [🛡️ REDONDANCE] Si la session principale est vide, on cherche dans le backup
-            const backupId = `wa_backup::${sessionId}::${key}`;
-            const { data: backupData } = await supabase
-                .from(TABLE)
-                .select('value')
-                .eq('id', backupId)
-                .maybeSingle();
-
-            if (backupData) {
-                // Restoration silencieuse vers la session principale pour éviter les futurs ralentissements
-                const serialized = JSON.parse(JSON.stringify(backupData.value));
-                supabase.from(TABLE).upsert({
-                    id: makeId(key),
-                    namespace: NAMESPACE,
-                    user_key: key,
-                    value: serialized,
-                    updated_at: new Date().toISOString()
-                }).then(() => {});
-
-                return JSON.parse(JSON.stringify(backupData.value), BufferJSON.reviver);
-            }
-
-            return null;
-        } catch (e) {
-            return null;
-        }
-    }
-
-    async function writeData(key, value) {
-        try {
-            const serialized = JSON.parse(JSON.stringify(value, BufferJSON.replacer));
-            const payload = {
-                id: makeId(key),
-                namespace: NAMESPACE,
-                user_key: key,
-                value: serialized,
-                updated_at: new Date().toISOString()
-            };
-
-            // Écriture principale
-            await supabase.from(TABLE).upsert(payload, { onConflict: 'id' }).abortSignal(AbortSignal.timeout(10000));
-
-            // Écriture redondante (Backup) - Persiste même après clearSession()
-            const backupId = `wa_backup::${sessionId}::${key}`;
-            await supabase.from(TABLE).upsert({
-                ...payload,
-                id: backupId,
-                namespace: 'wa_backup'
-            }, { onConflict: 'id' });
-
-        } catch (e) {
-            console.error(`[WA-DB] writeData error for key ${key}:`, e.message);
-        }
-    }
-
-    async function removeData(key) {
-        try {
-            await supabase.from(TABLE).delete().eq('id', makeId(key));
-        } catch (e) { }
-    }
-
-    async function clearAllData() {
-        try {
-            // Supprimer toutes les entrées de cette session (Primaire ET Backup)
-            // On utilise un filtre large sur l'ID pour être sûr de tout nettoyer
-            const { error } = await supabase.from(TABLE).delete()
-                .or(`namespace.eq.${NAMESPACE},namespace.eq.wa_backup`)
-                .filter('id', 'like', `%::${sessionId}::%`);
-            
-            if (error) throw error;
-            console.log(`[WA-DB] Session ${sessionId} (and backup) cleared from Supabase`);
-        } catch (e) {
-            console.error('[WA-DB] clearAllData error:', e.message);
-        }
-    }
-
-    // Chargement initial des credentials depuis Supabase
-    const credsRaw = await readData('creds');
-    const creds = credsRaw || initAuthCreds();
-    console.log(`[WA-DB] Auth state loaded from Supabase bot_state (session: ${sessionId}, fresh: ${!credsRaw})`);
-
-    return {
-        state: {
-            creds,
-            keys: {
-                get: async (type, ids) => {
-                    const data = {};
-                    await Promise.all(ids.map(async (id) => {
-                        const value = await readData(`${type}-${id}`);
-                        if (value !== null && value !== undefined) {
-                            data[id] = value;
-                        }
-                    }));
-                    return data;
-                },
-                set: async (data) => {
-                    const tasks = [];
-                    for (const category in data) {
-                        for (const id in data[category]) {
-                            const value = data[category][id];
-                            if (value) {
-                                tasks.push(writeData(`${category}-${id}`, value));
-                            } else {
-                                tasks.push(removeData(`${category}-${id}`));
-                            }
-                        }
-                    }
-                    await Promise.all(tasks);
-                }
-            }
-        },
-        saveCreds: () => writeData('creds', creds),
-        clearSession: clearAllData,
-        // LOCK SYSTEM 
-        claimLock: (ownerId) => claimLock(`wa_lock::${sessionId}`, ownerId),
-        checkLock: () => checkLock(`wa_lock::${sessionId}`),
-
-        // [🛡️ UI PERSISTENCE] Persistance des boutons pour le nettoyage des messages après restart
-        getMetadata: async (key) => {
-            const data = await readData(`meta-${key}`);
-            return data;
-        },
-        saveMetadata: async (key, value) => {
-            await writeData(`meta-${key}`, value);
-        }
-    };
-}
-
-/**
- * Système de verrouillage distribué générique
- */
-async function claimLock(lockId, ownerId) {
-    const TABLE = 'bot_state';
-    try {
-        // 1. Vérifier si un verrou existe déjà et s'il est valide
-        const current = await checkLock(lockId);
-        if (current && current.owner !== ownerId) {
-            console.log(`[LOCK] Conflit : Verrou ${lockId} déjà tenu par ${current.owner}`);
-            return false;
-        }
-
-        // 2. Tenter de prendre ou renouveler le verrou
-        const { error } = await supabase.from(TABLE).upsert({
-            id: lockId,
-            namespace: 'global_lock',
-            user_key: lockId.split('::')[1] || lockId,
-            value: { owner: ownerId, since: current?.since || new Date().toISOString() },
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-        
-        if (error) return false;
-        return true;
-    } catch (e) { 
-        console.error(`[LOCK-ERR] ${lockId}:`, e.message);
-        return false; 
-    }
-}
-
-async function checkLock(lockId) {
-    const TABLE = 'bot_state';
-    try {
-        const { data } = await supabase.from(TABLE).select('value, updated_at').eq('id', lockId).single();
-        if (!data) return null;
-        
-        // On retourne la valeur PLUS la date de mise à jour pour que le channel puisse juger de la fraîcheur
-        return { 
-            ...data.value, 
-            updatedAt: new Date(data.updated_at).getTime() 
-        };
-    } catch (e) { return null; }
-}
-
-// ====== SUPPLIERS / FOURNISSEURS ======
-const COL_SUPPLIERS = 'bot_suppliers';
-
-async function getSuppliers() {
-    const { data } = await supabase.from(COL_SUPPLIERS).select('*').order('created_at', { ascending: false });
-    return data || [];
-}
-
-async function getSupplier(id) {
-    const { data } = await supabase.from(COL_SUPPLIERS).select('*').eq('id', id).limit(1);
-    return data?.[0] || null;
-}
-
-async function getSupplierDeliveryMode(supplierId) {
-    const s = await getSupplier(supplierId);
-    if (!s || !s.notes) return 'admin'; // Default
-    if (s.notes.includes('DELIVERY_MODE:supplier')) return 'supplier';
-    return 'admin';
-}
-
-const _supplierCache = new Map();
-async function getSupplierByTelegramId(tgId) {
-    if (!tgId) return null;
-    const now = Date.now();
-    if (_supplierCache.has(tgId)) {
-        const cached = _supplierCache.get(tgId);
-        if (now < cached.expire) return cached.data;
-    }
-
-    try {
-        const { data, error } = await supabase.from(COL_SUPPLIERS).select('*').eq('telegram_id', String(tgId)).limit(1);
-        if (error) return null;
-        const supplier = data?.[0] || null;
-        _supplierCache.set(tgId, { data: supplier, expire: now + 300000 });
-        return supplier;
-    } catch (e) {
+        console.error('[DB] uploadMediaFromUrl error:', e.message);
         return null;
     }
 }
 
-async function saveSupplier(supplier) {
-    if (supplier.id) {
-        const { data } = await supabase.from(COL_SUPPLIERS).update(supplier).eq('id', supplier.id).select();
-        return data?.[0] || supplier;
-    } else {
-        const { data } = await supabase.from(COL_SUPPLIERS).insert([supplier]).select();
-        return data?.[0] || supplier;
-    }
-}
-
-async function deleteSupplier(id) {
-    // Also unlink products
-    await supabase.from(COL_PRODUCTS).update({ supplier_id: null }).eq('supplier_id', id);
-    await supabase.from(COL_SUPPLIERS).delete().eq('id', id);
-}
-
-async function getSupplierProducts(supplierId) {
-    const { data } = await supabase.from(COL_PRODUCTS).select('*').eq('supplier_id', supplierId);
-    return data || [];
-}
-
-async function getSupplierOrders(supplierId, limit = 50) {
-    const { data } = await supabase.from(COL_ORDERS).select('*').eq('supplier_id', supplierId).order('created_at', { ascending: false }).limit(limit);
-    return (data || []).map(decryptOrder);
-}
-
-async function markOrderSupplierNotified(orderId) {
-    await supabase.from(COL_ORDERS).update({ supplier_notified: true }).eq('id', orderId);
-}
-
-async function markOrderSupplierReady(orderId, prepTime = null) {
-    const update = { supplier_ready_at: new Date().toISOString() };
-    if (prepTime) update.supplier_prep_time = prepTime;
-    await supabase.from(COL_ORDERS).update(update).eq('id', orderId);
-}
-
-// ========== MARKETPLACE FOURNISSEURS ==========
-
-// --- Produits marketplace (gérés par les fournisseurs eux-mêmes) ---
-
-async function getMarketplaceProducts(supplierId = null) {
-    let query = supabase.from(COL_SUPPLIER_PRODUCTS).select('*').order('created_at', { ascending: false });
-    if (supplierId) query = query.eq('supplier_id', supplierId);
-    
-    const { data, error } = await query;
-    if (error) {
-        console.error('❌ [DB] getMarketplaceProducts error:', error);
-        throw error;
-    }
+// MARKETPLACE FUNCTIONS
+async function getMarketplaceProducts(supplierId) {
+    let q = supabase.from(COL_PRODUCTS).select('*').eq('is_marketplace', true);
+    if (supplierId) q = q.eq('supplier_id', supplierId);
+    const { data } = await q.order('name');
     return data || [];
 }
 
 async function getMarketplaceProduct(id) {
-    const { data } = await supabase.from(COL_SUPPLIER_PRODUCTS).select('*').eq('id', id).limit(1);
-    return data?.[0] || null;
+    const { data } = await supabase.from(COL_PRODUCTS).select('*').eq('id', id).eq('is_marketplace', true).maybeSingle();
+    return data;
 }
 
-async function getAvailableMarketplaceProducts(supplierId = null) {
-    let query = supabase.from(COL_SUPPLIER_PRODUCTS).select('*').eq('is_available', true).gt('stock', 0);
-    if (supplierId) query = query.eq('supplier_id', supplierId);
-    
-    const { data, error } = await query.order('created_at', { ascending: false });
-    if (error) {
-        console.error('❌ [DB] getAvailableMarketplaceProducts error:', error);
-        throw error;
-    }
+async function getAvailableMarketplaceProducts(supplierId) {
+    let q = supabase.from(COL_PRODUCTS).select('*').eq('is_marketplace', true).eq('is_active', true);
+    if (supplierId) q = q.eq('supplier_id', supplierId);
+    const { data } = await q.order('name');
     return data || [];
 }
 
-async function saveMarketplaceProduct(product) {
-    if (product.id) {
-        product.updated_at = ts();
-        const { data } = await supabase.from(COL_SUPPLIER_PRODUCTS).update(product).eq('id', product.id).select();
-        return data?.[0] || product;
-    } else {
-        product.id = `mp_${Date.now()}_${Math.round(Math.random() * 1E6)}`;
-        product.created_at = ts();
-        product.updated_at = ts();
-        if (product.is_available === undefined) product.is_available = true;
-        if (product.stock === undefined) product.stock = 0;
-        
-        // Supprime is_validated avant insertion par précaution si on n'est pas sûr qu'elle existe
-        // On laisse le code normal, on l'enlève juste si erreur (plus rapide)
-        const { data, error } = await supabase.from(COL_SUPPLIER_PRODUCTS).insert([product]).select();
-        
-        if (error && error.message.includes('column "is_validated" does not exist')) {
-            delete product.is_validated;
-            const retry = await supabase.from(COL_SUPPLIER_PRODUCTS).insert([product]).select();
-            if (retry.error) throw retry.error;
-            return retry.data?.[0] || product;
-        }
-        
-        if (error) { console.error('saveMarketplaceProduct error:', error); throw error; }
-        return data?.[0] || product;
-    }
-}
-
-async function validateMarketplaceProduct(id, isValidated = true) {
-    try {
-        const { error } = await supabase.from(COL_SUPPLIER_PRODUCTS).update({ is_validated: isValidated, updated_at: ts() }).eq('id', id);
-        if (error && error.message.includes('column "is_validated" does not exist')) {
-            console.warn('⚠️ [DB] is_validated column is missing in supplier_marketplace, skipping validation update');
-            return;
-        }
-        if (error) throw error;
-    } catch(e) {
-        console.error('validateMarketplaceProduct error:', e);
-    }
-}
-
-/**
- * Déplace (copie) un produit de la marketplace vers le catalogue principal
- */
-async function promoteMarketplaceProduct(mpId) {
-    const { data: mpProd } = await supabase.from(COL_SUPPLIER_PRODUCTS).select('*').eq('id', mpId).single();
-    if (!mpProd) throw new Error("Produit marketplace introuvable");
-
-    // Créer dans le catalogue principal
-    const productData = {
-        name: mpProd.name,
-        description: mpProd.description,
-        price: mpProd.price,
-        image_url: mpProd.image_url,
-        stock: mpProd.stock,
-        is_active: mpProd.is_available === undefined ? true : mpProd.is_available,
-        unit: mpProd.unit || 'Pièce',
-        unit_value: mpProd.unit_value || '1',
-        supplier_id: mpProd.supplier_id,
-        marketplace_product_id: mpProd.id,
-        created_at: ts()
-    };
-    
-    return await saveProduct(productData);
-}
-
 async function deleteMarketplaceProduct(id) {
-    await supabase.from(COL_SUPPLIER_PRODUCTS).delete().eq('id', id);
+    return await supabase.from(COL_PRODUCTS).delete().eq('id', id).eq('is_marketplace', true);
 }
 
-async function updateMarketplaceStock(productId, newStock) {
-    const is_available = newStock > 0;
-    await supabase.from(COL_SUPPLIER_PRODUCTS).update({ stock: newStock, is_available, updated_at: ts() }).eq('id', productId);
+async function updateMarketplaceStock(id, stock) {
+    return await supabase.from(COL_PRODUCTS).update({ stock }).eq('id', id);
 }
 
-// --- Commandes marketplace (admin -> fournisseur) ---
-
-async function createMarketplaceOrder(orderData) {
-    const id = `mpo_${Date.now()}_${Math.round(Math.random() * 1E6)}`;
-    const order = {
-        id,
-        supplier_id: orderData.supplier_id,
-        admin_id: orderData.admin_id || 'admin',
-        products: JSON.stringify(orderData.products), // [{product_id, name, price, qty}]
-        total_price: orderData.total_price || 0,
-        address: orderData.address || '',
-        delivery_type: orderData.delivery_type || 'delivery',
-        status: 'pending', // pending -> accepted -> ready -> collected -> cancelled
-        notes: orderData.notes || '',
-        created_at: ts(),
-        updated_at: ts()
-    };
-    const { data, error } = await supabase.from(COL_SUPPLIER_ORDERS).insert([order]).select();
-    if (error) { console.error('createMarketplaceOrder error:', error); throw error; }
-
-    // Décrémenter le stock des produits commandés
-    if (Array.isArray(orderData.products)) {
-        for (const item of orderData.products) {
-            const prod = await getMarketplaceProduct(item.product_id);
-            if (prod) {
-                const newStock = Math.max(0, (prod.stock || 0) - (item.qty || 1));
-                await updateMarketplaceStock(item.product_id, newStock);
-            }
-        }
-    }
-
-    return data?.[0] || order;
+async function validateMarketplaceProduct(id, validated) {
+    return await supabase.from(COL_PRODUCTS).update({ is_active: validated }).eq('id', id);
 }
 
-async function getMarketplaceOrders(supplierId = null, limit = 50) {
-    let query = supabase.from(COL_SUPPLIER_ORDERS).select('*').order('created_at', { ascending: false }).limit(limit);
-    if (supplierId) query = query.eq('supplier_id', supplierId);
-    const { data } = await query;
-    return (data || []).map(o => {
-        try { o.products = typeof o.products === 'string' ? JSON.parse(o.products) : o.products; } catch(e) {}
-        return o;
-    });
+async function createMarketplaceOrder(order) {
+    const id = order.id || `mp_order_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const { data, error } = await supabase.from(COL_ORDERS).insert({ ...order, id }).select().single();
+    return { order: data, error };
 }
 
-async function getMarketplaceOrder(orderId) {
-    const { data } = await supabase.from(COL_SUPPLIER_ORDERS).select('*').eq('id', orderId).limit(1);
-    const o = data?.[0] || null;
-    if (o) { try { o.products = typeof o.products === 'string' ? JSON.parse(o.products) : o.products; } catch(e) {} }
-    return o;
+async function getMarketplaceOrders(supplierId, limit = 50) {
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .eq('supplier_id', supplierId)
+        .order('created_at', { ascending: false }).limit(limit);
+    return (data || []).map(decryptOrder);
+}
+
+async function getMarketplaceOrder(id) {
+    return getOrder(id);
 }
 
 async function updateMarketplaceOrderStatus(orderId, status) {
-    const validStatuses = ['pending', 'accepted', 'ready', 'collected', 'cancelled'];
-    if (!validStatuses.includes(status)) return;
-    await supabase.from(COL_SUPPLIER_ORDERS).update({ status, updated_at: ts() }).eq('id', orderId);
+    return updateOrderStatus(orderId, status);
 }
 
-// ========== FIN MARKETPLACE ==========
-
-/**
- * Sauvegarde complète d'un objet utilisateur (met à jour tous les champs)
- */
-async function saveUser(user) {
-    if (!user || !user.id) return { error: 'Invalid user object' };
-    const { error } = await supabase.from(COL_USERS).upsert(user);
-    if (!error) clearUserCache(user.id);
-    return { error };
+async function getSupplierProducts(supplierId) {
+    const { data } = await supabase.from(COL_PRODUCTS).select('*').eq('supplier_id', supplierId).order('name');
+    return data || [];
 }
 
-/**
- * Mise à jour partielle d'un utilisateur
- */
-async function updateUser(userId, data) {
-    if (!userId) return { error: 'Missing userId' };
-    const user = await getUser(userId);
-    const targetId = user ? (user.doc_id || user.id) : userId;
-
-    let updatePayload = { ...data };
-    if (updatePayload.address !== undefined) {
-        let meta = user ? { ...(user.data || {}) } : {};
-        meta.saved_addresses_blob = updatePayload.address;
-        try {
-            const parsed = JSON.parse(updatePayload.address);
-            if (Array.isArray(parsed)) {
-                meta.addresses = parsed.map(a => a.address).filter(Boolean);
-            }
-        } catch(e) {}
-        updatePayload.data = meta;
-        delete updatePayload.address;
-    }
-
-    const { error } = await supabase.from(COL_USERS).update(updatePayload).eq('id', targetId);
-    if (!error) {
-        clearUserCache(userId);
-        if (user) clearUserCache(user.doc_id || user.id);
-    }
-    return { error };
+async function getSupplierOrders(supplierId, limit = 50) {
+    const { data } = await supabase.from(COL_ORDERS).select('*')
+        .eq('supplier_id', supplierId)
+        .order('created_at', { ascending: false }).limit(limit);
+    return (data || []).map(decryptOrder);
 }
 
-async function recalculateAllUserStats() {
-    console.log("[DB] Starting global user stats recalculation...");
-    
-    // 1. Fetch all users
-    const { data: users, error: userError } = await supabase.from(COL_USERS).select('id, order_count');
-    if (userError) throw userError;
-
-    // 2. Fetch all orders (we only need user_id)
-    const { data: orders, error: orderError } = await supabase.from(COL_ORDERS).select('user_id');
-    if (orderError) throw orderError;
-
-    // 3. Count orders per user
-    const orderCounts = {};
-    orders.forEach(o => {
-        if (o.user_id) {
-            orderCounts[o.user_id] = (orderCounts[o.user_id] || 0) + 1;
-        }
-    });
-
-    // 4. Update each user IF their count is wrong
-    let updated = 0;
-    for (const user of users) {
-        const actualCount = orderCounts[user.id] || 0;
-        if ((user.order_count || 0) !== actualCount) {
-             await supabase.from(COL_USERS).update({ order_count: actualCount }).eq('id', user.id);
-             updated++;
-             _userCache.delete(user.id);
-        }
-    }
-
-    console.log(`[DB] Recalculation complete. Updated ${updated} users.`);
-    return { updated };
+async function getSupplierDeliveryMode(supplierId) {
+    const supplier = await getSupplier(supplierId);
+    return supplier?.delivery_mode || 'both';
 }
 
-async function logSupportMessage(userId, staffId, message, type = 'text', direction = 'out', staffRole = 'admin') {
-    const payload = {
-        user_id: userId,
-        staff_id: String(staffId),
-        message: message,
-        type: type,
-        direction: direction,
-        staff_role: staffRole,
-        created_at: new Date().toISOString()
-    };
-
-    const { error } = await supabase.from(COL_SUPPORT_LOGS).insert([payload]);
-    
-    if (error) {
-        console.error(`[LOG-DB-ERR] Insert failed for ${userId}:`, error.message, error.code, error.details);
-    } else {
-        console.log(`[LOG-DB-SUCCESS] Message logged for ${userId} (${direction})`);
-    }
+// NUKE
+async function nukeDatabase() {
+    console.warn('[DB] ⚠️ NUKE DATABASE REQUESTED');
+    await supabase.from(COL_ORDERS).delete().neq('id', '');
+    await supabase.from(COL_REVIEWS).delete().neq('id', '');
+    await supabase.from(COL_BROADCASTS).delete().neq('id', '');
+    await supabase.from(COL_REFERRALS).delete().neq('id', '');
+    await supabase.from(COL_USERS).delete().neq('id', '');
+    await supabase.from(COL_PRODUCTS).delete().neq('id', '');
+    await supabase.from(COL_STATS).update({ total_users: 0, total_orders: 0, total_ca: 0 }).eq('id', '1');
+    console.warn('[DB] ⚠️ NUKE COMPLETE');
 }
 
-async function getSupportLogs() {
-    console.log(`[getSupportLogs] START - querying table "${COL_SUPPORT_LOGS}"`);
+// DAILY STATS (proper implementation)
+async function incrementDailyStat(stat) {
+    const today = new Date().toISOString().split('T')[0];
     try {
-        const result = await supabase.from(COL_SUPPORT_LOGS)
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(300);
-        
-        console.log(`[getSupportLogs] Raw result keys:`, Object.keys(result));
-        console.log(`[getSupportLogs] error:`, result.error ? JSON.stringify(result.error) : 'null');
-        console.log(`[getSupportLogs] data type:`, typeof result.data, 'isArray:', Array.isArray(result.data), 'length:', result.data?.length);
-        console.log(`[getSupportLogs] status:`, result.status, 'statusText:', result.statusText);
-        
-        if (result.error) {
-            console.error(`[getSupportLogs] SUPABASE ERROR:`, result.error.message, result.error.code, result.error.hint, result.error.details);
-            return [];
-        }
-        
-        if (!result.data || result.data.length === 0) {
-            console.warn(`[getSupportLogs] Table exists but returned 0 rows`);
-            return [];
-        }
-        
-        console.log(`[getSupportLogs] SUCCESS: ${result.data.length} rows. First:`, JSON.stringify(result.data[0]));
-        return result.data;
-    } catch (e) {
-        console.error(`[getSupportLogs] EXCEPTION:`, e.message, e.stack?.split('\n').slice(0,3));
-        return [];
-    }
-}
-
-async function bulkRegisterUsers(users) {
-    if (!Array.isArray(users) || users.length === 0) return { success: false, message: 'No users provided' };
-    
-    let count = 0;
-    for (const u of users) {
-        try {
-            // Transform CSV data back to registerUser format
-            const platform = u.platform === 'whatsapp' ? 'whatsapp' : 'telegram';
-            const platformId = String(u.platform_id);
-            const first_name = u.first_name || 'Importé';
-            const last_name = u.last_name || '';
-            const username = u.username || '';
-            
-            await registerUser({ 
-                id: platformId, 
-                first_name, 
-                last_name, 
-                username 
-            }, platform);
-            count++;
-        } catch (e) {
-            console.error(`[DB-IMPORT-ERR] ID ${u.platform_id}:`, e.message);
-        }
-    }
-    
-    return { success: true, count };
-}
-
-/**
- * Synchronise le panier d'un utilisateur pour le suivi des paniers abandonnés.
- */
-async function syncUserCart(userId, cart) {
-    if (!userId) return;
-    try {
-        const { data: current } = await supabase.from(COL_SETTINGS).select('data').eq('key', 'active_carts').single();
-        let allCarts = current?.data || {};
-        
-        if (cart && cart.length > 0) {
-            allCarts[userId] = {
-                cart: cart,
-                updated_at: Date.now(),
-                notified: false
-            };
+        // Try to get today's record
+        const { data: existing } = await supabase.from(COL_DAILY_STATS).select('*').eq('date', today).maybeSingle();
+        if (existing) {
+            const val = (existing[stat] || 0) + 1;
+            await supabase.from(COL_DAILY_STATS).update({ [stat]: val }).eq('id', existing.id);
         } else {
-            delete allCarts[userId];
+            await supabase.from(COL_DAILY_STATS).insert({ date: today, [stat]: 1 });
         }
-
-        await supabase.from(COL_SETTINGS).upsert({ key: 'active_carts', data: allCarts });
     } catch (e) {
-        console.error('[DB] syncUserCart error:', e.message);
+        console.error(`[DB] incrementDailyStat(${stat}) error:`, e.message);
     }
 }
+
+// HELPER ALIAS
+function getPublicReviews(limit) { return getReviews(limit); }
+
+// --- MODULE EXPORTS ---
+
+const database = {
+    init,
+    initialize: init,
+    getAppSettings,
+    updateAppSettings,
+    registerUser,
+    getUser,
+    updateUser,
+    approveUser,
+    searchUsers,
+    createOrder,
+    getOrder,
+    getUserOrders,
+    deleteOrder,
+    getProducts,
+    getProductsByCategory,
+    getProduct,
+    saveProduct,
+    saveMarketplaceProduct,
+    deleteProduct,
+    claimLock,
+    checkLock,
+    releaseLock,
+    isLockOwner,
+    getSuppliers,
+    getSupplier,
+    getSupplierByTelegramId,
+    saveSupplier,
+    deleteSupplier,
+    getAllUsersForBroadcast,
+    getStatsOverview,
+    getDailyStats,
+    getOrderAnalytics,
+    getBroadcastHistory,
+    getPendingBroadcasts,
+    saveBroadcast,
+    updateBroadcast,
+    deleteBroadcast,
+    getReviews,
+    saveReview,
+    deleteReview,
+    uploadMediaBuffer,
+    uploadMediaFromUrl,
+    decryptUser,
+    decryptOrder,
+    decryptReview,
+    getRecentUsers,
+    getBlockedUsers,
+    getPendingUsers,
+    markUserBlocked,
+    markUserUnblocked,
+    deleteUser,
+    getAllOrders,
+    incrementOrderCount,
+    incrementDailyStat,
+    // Order management
+    updateOrderStatus,
+    adjustOrderStock,
+    assignOrderLivreur,
+    getOrdersByUser,
+    getClientActiveOrders,
+    getAvailableOrders,
+    searchOrders,
+    backfillOrderCities,
+    markOrderSupplierReady,
+    markOrderSupplierNotified,
+    setAdminStatus,
+    setModeratorStatus,
+    getAllAdmins,
+    getAllModerators,
+    // Livreur management
+    setLivreurStatus,
+    setLivreurAvailability,
+    updateLivreurPosition,
+    getAllLivreurs,
+    searchLivreurs,
+    getDetailedLivreurActivity,
+    getLivreurHistory,
+    getLivreurOrders,
+    // User stats
+    getUserCount,
+    getActiveUserCount,
+    updateUserWallet,
+    updateUserPoints,
+    getReferralLeaderboard,
+    getGlobalStats,
+    // Feedback & help
+    logHelpRequest,
+    saveClientReply,
+    appendChatHistory,
+    incrementChatCount,
+    getAndClearPendingFeedback,
+    setPendingFeedback,
+    saveFeedback,
+    getPublicReviews,
+    // Marketplace
+    getMarketplaceProducts,
+    getMarketplaceProduct,
+    getAvailableMarketplaceProducts,
+    deleteMarketplaceProduct,
+    updateMarketplaceStock,
+    validateMarketplaceProduct,
+    createMarketplaceOrder,
+    getMarketplaceOrders,
+    getMarketplaceOrder,
+    updateMarketplaceOrderStatus,
+    getSupplierProducts,
+    getSupplierOrders,
+    getSupplierDeliveryMode,
+    // Admin
+    nukeDatabase,
+    // Helpers
+    makeDocId,
+    extractCityFromAddress,
+    _userCache,
+    addMessageToTrack: async (userId, msgId) => {
+        // Non-blocking background update
+        (async () => {
+            try {
+                // On utilise le cache si possible
+                let tracked = [];
+                const cachedUser = _userCacheGet(userId);
+                if (cachedUser && cachedUser.tracked_messages) {
+                    tracked = cachedUser.tracked_messages;
+                } else {
+                    const { data: user } = await supabase.from(COL_USERS).select('tracked_messages').eq('id', userId).maybeSingle();
+                    tracked = user?.tracked_messages || [];
+                }
+
+                if (!tracked.includes(msgId)) {
+                    tracked.push(msgId);
+                    const finalTracked = tracked.slice(-50);
+                    await supabase.from(COL_USERS).update({ tracked_messages: finalTracked }).eq('id', userId);
+                    if (cachedUser) {
+                        cachedUser.tracked_messages = finalTracked;
+                        _userCacheSet(userId, cachedUser);
+                    }
+                }
+            } catch (e) {
+                console.error('[DB] Add tracked message failed:', e.message);
+            }
+        })();
+    },
+    getTrackedMessages: async (userId) => {
+        try {
+            const { data: user } = await supabase.from(COL_USERS).select('tracked_messages').eq('id', userId).maybeSingle();
+            return user?.tracked_messages || [];
+        } catch (e) {
+            return [];
+        }
+    },
+    clearTrackedMessages: async (userId) => {
+        try {
+            await supabase.from(COL_USERS).update({ tracked_messages: [] }).eq('id', userId);
+        } catch (e) {}
+    },
+    deleteOldMessages: async (userId) => {
+        return true;
+    },
+    getLastMenuId: async (userId) => {
+        try {
+            const { data: user } = await supabase.from(COL_USERS).select('last_menu_id').eq('id', userId).maybeSingle();
+            return user?.last_menu_id;
+        } catch (e) { return null; }
+    },
+    setLastMenuId: async (userId, msgId) => {
+        try {
+            await supabase.from(COL_USERS).update({ last_menu_id: msgId }).eq('id', userId);
+        } catch (e) {}
+    },
+    COL_USERS,
+    supabase
+};
 
 module.exports = {
-    supabase, COL_USERS, COL_PRODUCTS, COL_ORDERS, COL_SETTINGS, COL_BROADCASTS, COL_REFERRALS,
-    incr, ts, makeDocId, decryptUser, decryptOrder, decryptReview,
-    registerUser, getAllActiveUsers, getAllUsersForBroadcast, markUserBlocked, markUserUnblocked, deleteUser, getUser, saveUser, updateUser, updateUserWallet, updateUserPoints,
-    getUserCount, getActiveUserCount, getRecentUsers, getBlockedUsers, searchUsers, searchLivreurs,
-    generateReferralCode, getReferralLeaderboard, incrementOrderCount,
-    setLivreurStatus, updateLivreurPosition, getActiveLivreursCount,
-    createOrder, updateOrderStatus, assignOrderLivreur, getOrder, deleteOrder, getAvailableOrders, getAllOrders,
-    saveBroadcast, updateBroadcast, deleteBroadcast, getBroadcastHistory, getPendingBroadcasts, recordPollVote, recordPollFreeResponse, incrementStat, incrementDailyStat,
-    getGlobalStats, getDailyStats, getStatsOverview, getAppSettings, updateAppSettings, getClientActiveOrders,
-    updateUserField, updateProduct,
-    getProducts, getProduct, saveProduct, deleteProduct, setLivreurAvailability,
-    getAvailableLivreurs, getAllLivreurs, getOrderAnalytics, backfillOrderCities, saveUserLocation, addMessageToTrack, getLastMenuId, getTrackedMessages, getLivreurOrders, getLivreurHistory, getOrdersByUser, getDetailedLivreurActivity, saveFeedback, setPendingFeedback, getAndClearPendingFeedback, nukeDatabase,
-    saveReview, getReviews, getPublicReviews, deleteReview, uploadMediaFromUrl, uploadMediaBuffer,
-    incrementChatCount, saveClientReply, logHelpRequest,
-    getUpcomingPlannedOrders, markNotifSent, addToStat,
-    _userCache, clearUserCache,
-    useSupabaseAuthState,
-    // Suppliers
-    COL_SUPPLIERS, getSuppliers, getSupplier, getSupplierByTelegramId, saveSupplier, deleteSupplier,
-    getSupplierProducts, getSupplierOrders, markOrderSupplierNotified, markOrderSupplierReady,
-    // Marketplace
-    COL_SUPPLIER_PRODUCTS, COL_SUPPLIER_ORDERS,
-    getMarketplaceProducts, getMarketplaceProduct, getAvailableMarketplaceProducts,
-    saveMarketplaceProduct, deleteMarketplaceProduct, updateMarketplaceStock, promoteMarketplaceProduct,
-    createMarketplaceOrder, getMarketplaceOrders, getMarketplaceOrder, updateMarketplaceOrderStatus,
-    approveUser, getPendingUsers, getPendingUserCount,
-    claimLock, checkLock,
-    getUserAnalytics,
-    recalculateAllUserStats,
-    claimBroadcast,
-    logSupportMessage, getSupportLogs, bulkRegisterUsers, syncUserCart
+    database,
+    ...database
 };

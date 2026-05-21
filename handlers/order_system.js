@@ -1,6 +1,6 @@
 const { Markup } = require('telegraf');
 const {
-    getProducts, getProduct, updateProduct, createOrder, getUser, setLivreurStatus,
+    getProducts, createOrder, getUser, setLivreurStatus,
     updateLivreurPosition, getAvailableOrders, updateOrderStatus,
     getOrder, getAppSettings, setLivreurAvailability,
     incrementOrderCount, getAllLivreurs, _userCache,
@@ -9,13 +9,14 @@ const {
     saveReview, uploadMediaFromUrl,
     getSupplierByTelegramId, getSupplierProducts, getSupplierOrders, markOrderSupplierReady,
     getSupplier, markOrderSupplierNotified,
-    getOrdersByUser, syncUserCart
+    getOrdersByUser, getProductsByCategory
 } = require('../services/database');
 const { safeEdit, debugLog, trackIntermediateMessage, setActiveMediaGroup, clearActiveMediaGroup, getActiveMediaGroup, esc } = require('../services/utils');
 const { createPersistentMap } = require('../services/persistent_map');
 const { notifyAdmins, notifyLivreurs, notifySuppliers, sendTelegramMessage } = require('../services/notifications');
 const { clearAllAwaitingMaps } = require('./supplier_marketplace');
 const { t } = require('../services/i18n');
+const { logStockMovement, getScarcityBadge, getReservationWarningText } = require('../services/inventory_manager');
 
 // ======= ÉTAT PERSISTANT (survit aux redémarrages via Supabase) =======
 const userCarts = createPersistentMap('userCarts');
@@ -25,8 +26,7 @@ const pendingOrderConfirmation = createPersistentMap('pendingConfirm');
 const awaitingDelayReason = createPersistentMap('awaitingDelay');
 const awaitingChatReply = createPersistentMap('awaitingChat');
 const awaitingReviewText = createPersistentMap('awaitingReview');
-const awaitingPaymentProof = createPersistentMap('awaitingPaymentProof'); // User ID -> { orderData, method }
-const activeChatHistory = createPersistentMap('activeChatHistory'); // Order ID -> { lastMessage: "...", senderRole: "...", timestamp: "..." }
+const awaitingPaymentProof = createPersistentMap('awaitingPaymentProof');
 // État éphémère (pas besoin de persister)
 const userLastActivity = new Map();
 
@@ -52,14 +52,17 @@ function getAllMediaUrls(product) {
         if (raw.startsWith('"') && raw.endsWith('"')) raw = raw.substring(1, raw.length - 1);
     }
 
+    const videoExtRegex = /\.(mp4|mov|avi|wmv|webm|mkv)(\?.*)?$/i;
+
     // Handle JSON array format: [{"url":"...", "type":"photo"}, ...]
     if (typeof raw === 'string' && raw.startsWith('[') && raw.endsWith(']')) {
         try {
             const arr = JSON.parse(raw);
             if (Array.isArray(arr) && arr.length > 0) {
                 return arr.map(item => {
-                    if (typeof item === 'string') return { url: item, type: 'photo' };
-                    return { url: item.url || item.image_url, type: item.type || 'photo' };
+                    const url = typeof item === 'string' ? item : (item.url || item.image_url);
+                    const type = typeof item === 'object' && item.type ? item.type : (url && url.match(videoExtRegex) ? 'video' : 'photo');
+                    return { url, type };
                 }).filter(m => m.url);
             }
         } catch (e) { }
@@ -69,13 +72,15 @@ function getAllMediaUrls(product) {
     if (typeof raw === 'string' && raw.startsWith('{') && raw.endsWith('}')) {
         try {
             const obj = JSON.parse(raw);
-            const u = obj.url || obj.image_url;
-            return u ? [{ url: u, type: obj.type || 'photo' }] : [];
+            const url = obj.url || obj.image_url;
+            const type = obj.type || (url && url.match(videoExtRegex) ? 'video' : 'photo');
+            return url ? [{ url, type }] : [];
         } catch (e) {}
     }
 
     // Plain URL string
-    return raw ? [{ url: raw, type: 'photo' }] : [];
+    const type = raw.match(videoExtRegex) ? 'video' : 'photo';
+    return raw ? [{ url: raw, type }] : [];
 }
 
 async function initOrderState() {
@@ -83,156 +88,12 @@ async function initOrderState() {
         userCarts.load(), pendingOrders.load(), awaitingAddressDetails.load(),
         pendingOrderConfirmation.load(), awaitingDelayReason.load(),
         awaitingChatReply.load(), awaitingReviewText.load(),
-        awaitingPaymentProof.load(), activeChatHistory.load()
+        awaitingPaymentProof.load()
     ]);
     console.log('[State] Tous les états order_system chargés');
 }
 
 function setupOrderSystem(bot) {
-    bot.on('web_app_data', async (ctx) => {
-        try {
-            const data = JSON.parse(ctx.webAppData.data);
-            if (data.action === 'mini_app_cart') {
-                const uId = ctx.from.id;
-                const userId = `${ctx.platform}_${uId}`;
-                const cart = data.items;
-                
-                // Charger les produits réels pour avoir les prix et noms corrects
-                const products = await getProducts();
-                const cartItems = cart.map(item => {
-                    const p = products.find(x => x.id === item.id);
-                    if (!p) return null;
-                    return { 
-                        id: p.id,
-                        productName: p.name,
-                        price: p.price,
-                        qty: item.qty,
-                        totalPrice: (p.price * item.qty),
-                        productUnit: p.unit || 'u'
-                    };
-                }).filter(Boolean);
-
-                if (cartItems.length === 0) {
-                    return ctx.reply("❌ Votre panier Mini App semble vide ou les produits ne sont plus disponibles.");
-                }
-
-                userCarts.set(userId, cartItems);
-                await userCarts.save();
-
-                const total = cartItems.reduce((acc, i) => acc + i.totalPrice, 0);
-                const text = `🛒 <b>Mini App : Panier synchronisé !</b>\n\n` +
-                             cartItems.map(i => `• <b>${i.productName}</b> x${i.qty} (${i.totalPrice.toFixed(2)}€)`).join('\n') +
-                             `\n\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nSouhaitez-vous finaliser votre commande maintenant ?`;
-                
-                const keyboard = Markup.inlineKeyboard([
-                    [Markup.button.callback('🚀 PASSER LA COMMANDE', 'start_checkout')],
-                    [Markup.button.callback('🛒 VOIR LE PANIER / MODIFIER', 'view_cart')],
-                    [Markup.button.callback('❌ VIDER LE PANIER', 'clear_cart')]
-                ]);
-
-                return ctx.reply(text, { parse_mode: 'HTML', ...keyboard });
-            }
-        } catch (e) {
-            console.error('[MiniApp] Error processing web_app_data:', e);
-            ctx.reply("❌ Une erreur est survenue lors du traitement de votre panier Mini App.");
-        }
-    });
-
-    const eventBus = require('../services/event_bus');
-    eventBus.on('mini_app_cart_submitted', async ({ userId, items, platform }) => {
-        try {
-            const uKey = `${platform}_${userId}`;
-            const products = await getProducts();
-            const cartItems = items.map(item => {
-                const p = products.find(x => x.id === item.id);
-                if (!p) return null;
-                return { 
-                    id: p.id,
-                    productName: p.name,
-                    price: p.price,
-                    qty: item.qty,
-                    totalPrice: (p.price * item.qty),
-                    productUnit: p.unit || 'u'
-                };
-            }).filter(Boolean);
-
-            if (cartItems.length === 0) return;
-
-            userCarts.set(uKey, cartItems);
-            await userCarts.save();
-
-            const total = cartItems.reduce((acc, i) => acc + i.totalPrice, 0);
-            const text = `🛒 <b>Mini App : Panier prêt !</b>\n\n` +
-                         cartItems.map(i => `• <b>${i.productName}</b> x${i.qty}`).join('\n') +
-                         `\n\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nVotre commande est prête. Cliquez ci-dessous pour confirmer votre adresse et finaliser.`;
-            
-            const keyboard = Markup.inlineKeyboard([
-                [Markup.button.callback('🚀 FINALISER MA COMMANDE', 'start_checkout')],
-                [Markup.button.callback('🛒 Voir le panier', 'view_cart')],
-                [Markup.button.callback('❌ Vider', 'clear_cart')]
-            ]);
-
-            await sendTelegramMessage(userId, text, { parse_mode: 'HTML', ...keyboard });
-
-        } catch (e) {
-            console.error('[EventBus-MiniApp] Error:', e.message);
-        }
-    });
-
-    eventBus.on('mini_app_order_submitted', async (data) => {
-        try {
-            const { userId, items, address, customerName, phone, deliveryMethod, deliveryFee, total, platform } = data;
-            const uKey = `${platform}_${userId}`;
-            
-            // Préparation des items pour la DB
-            const orderItems = items.map(i => ({
-                id: i.id,
-                productName: i.productName || i.name,
-                price: i.price,
-                qty: i.qty * (i.qty_in_cart || 1), // Poids total
-                nSachets: (i.nSachets || 1) * (i.qty_in_cart || 1), // Nombre total de pochons
-                totalPrice: i.totalPrice || (i.price * (i.qty_in_cart || 1)),
-                productUnit: i.productUnit || i.unit || 'u'
-            }));
-
-            const orderData = {
-                user_id: uKey,
-                username: customerName,
-                first_name: customerName,
-                address: address,
-                items: orderItems,
-                total: total,
-                delivery_method: deliveryMethod,
-                delivery_fee: deliveryFee,
-                phone: phone,
-                status: 'pending',
-                created_at: new Date().toISOString(),
-                platform: platform
-            };
-
-            const { order, error } = await createOrder(orderData);
-            if (error) throw error;
-
-            // Vider le panier
-            userCarts.delete(uKey);
-            await userCarts.save();
-
-            // Notifications
-            const msg = `✅ <b>Commande validée (Mini App) !</b>\n\n🆔 Commande : <code>${order.id}</code>\n📍 Adresse : ${address}\n💰 Total : <b>${total.toFixed(2)}€</b>\n\nVotre commande est en cours de préparation.`;
-            await sendTelegramMessage(userId, msg, { parse_mode: 'HTML' });
-
-            // Notification Admins & Livreurs
-            await notifyAdmins(`🆕 <b>NOUVELLE COMMANDE (MINI APP)</b>\n\nClient : ${customerName}\nAdresse : ${address}\nTotal : ${total}€`, {
-                inline_keyboard: [[Markup.button.callback('Voir la commande', `view_order_${order.id}`)]]
-            });
-
-            await notifyLivreurs(`📦 <b>NOUVELLE COURSE DISPONIBLE</b>\n\nSecteur : ${address}\nTotal : ${total}€`, order.id);
-
-        } catch (e) {
-            console.error('[EventBus-MiniApp-Order] Error:', e.message);
-        }
-    });
-
     // Helper universel pour relayer un message à tous les admins
     // (Désormais géré par services/notifications.js)
 
@@ -264,32 +125,65 @@ function setupOrderSystem(bot) {
     // ========== CATALOGUE & COMMANDE ==========
 
     async function displayCatalog(ctx) {
-        const [products, settings] = await Promise.all([
-            getProducts(),
+        const [productsByCategory, settings] = await Promise.all([
+            getProductsByCategory(true),
             ctx.state?.settings ? Promise.resolve(ctx.state.settings) : getAppSettings()
         ]);
         const user = ctx.state?.user || await getUser(`${ctx.platform}_${ctx.from.id}`);
-        if (!products || products.length === 0) {
+        
+        const categories = Object.keys(productsByCategory);
+        if (categories.length === 0) {
             return safeEdit(ctx, t(user, 'msg_catalog_empty', settings.msg_catalog_empty || '📭 Le catalogue est actuellement vide.'), Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'main_menu')]]));
         }
+
         const catalogIcon = settings.ui_icon_catalog || '📦';
         const botName = settings.bot_name || 'Bot';
         const catalogTitle = settings.label_catalog_title || `${catalogIcon} <b>Catalogue ${botName}</b>`;
-        let text = `${catalogTitle}\n\n` + t(user, 'msg_catalog_choice', 'Choisissez un produit :');
+        let text = `${catalogTitle}\n\n` + t(user, 'msg_catalog_choice', 'Choisissez un produit par catégorie :');
 
-        // Chunking function pour garantir le 2 par 2
-        const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
-        
-        const productRows = chunk(products, 2);
-        const buttons = productRows.map(row => row.map(p => {
-            const badge = p.is_bundle ? '🎁 ' : (p.promo ? '🔥 ' : '');
-            return Markup.button.callback(`${badge}${p.name} - ${p.price}€`, `product_${p.id}`);
-        }));
+        const buttons = [];
+        for (const cat of categories) {
+            // Un bandeau pour la catégorie si plus d'une catégorie existe
+            if (categories.length > 1) {
+                buttons.push([Markup.button.callback(`─── ${cat.toUpperCase()} ───`, `cat_header_${cat.substring(0, 30)}`)]);
+            }
+            
+            const prods = productsByCategory[cat];
+            for (let i = 0; i < prods.length; i += 2) {
+                const row = [];
+                const p1 = prods[i];
+                const badge1 = p1.is_bundle ? '🎁 ' : (p1.promo ? '🔥 ' : '');
+                row.push(Markup.button.callback(`${badge1}${p1.name} - ${p1.price}€`, `product_${p1.id}`));
+                
+                if (i + 1 < prods.length) {
+                    const p2 = prods[i+1];
+                    const badge2 = p2.is_bundle ? '🎁 ' : (p2.promo ? '🔥 ' : '');
+                    row.push(Markup.button.callback(`${badge2}${p2.name} - ${p2.price}€`, `product_${p2.id}`));
+                }
+                buttons.push(row);
+            }
+        }
 
         buttons.push([Markup.button.callback(t(user, 'btn_back_menu', settings.btn_back_menu || '◀️ Retour Menu'), 'main_menu')]);
 
         await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
     }
+
+    bot.action(/^cat_header_(.+)$/, async (ctx) => {
+        try {
+            const cat = ctx.match[1];
+            await ctx.answerCbQuery(`🏷️ Catégorie : ${cat.toUpperCase()}\n\nVeuillez sélectionner un produit dans la liste ci-dessous.`, { show_alert: true }).catch(() => {});
+        } catch(e) {}
+    });
+
+    bot.action('noop', async (ctx) => {
+        try { await ctx.answerCbQuery().catch(() => {}); } catch(e) {}
+    });
+
+    const formatPrice = (val) => {
+        const num = parseFloat(val);
+        return Number.isFinite(num) ? num.toFixed(2) : "0.00";
+    };
 
     bot.action('view_catalog', async (ctx) => {
         await ctx.answerCbQuery();
@@ -305,10 +199,11 @@ function setupOrderSystem(bot) {
         // Nettoyer les états marketplace pour éviter l'interception des messages
         clearAllAwaitingMaps(ctx.from.id);
         const productId = ctx.match[1];
-        const product = await getProduct(productId);
+        const products = await getProducts(true);
+        const product = products.find(p => p.id == productId);
         const settings = ctx.state?.settings || await getAppSettings();
 
-        if (!product) return safeEdit(ctx, settings.msg_product_not_found || '❌ Produit non trouvé.', [Markup.button.callback(settings.btn_back_menu || '◀️ Retour Menu', 'view_catalog')]);
+        if (!product) return safeEdit(ctx, settings.msg_product_not_found || '❌ Produit non trouvé.', Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_menu || '◀️ Retour Menu', 'view_catalog')]]));
 
         let promoText = "";
         if (product.is_bundle) {
@@ -316,10 +211,8 @@ function setupOrderSystem(bot) {
             const trigger = config.trigger_qty || 1;
             const offered = config.offered_qty || 1;
             promoText = `\n🎁 <b>OFFRE : ${trigger} ACHETÉS = ${offered} OFFERT(S) !</b>\n<i>(Inclus automatiquement dans votre commande)</i>\n`;
-        } else if (product.promo) {
-            promoText = `\n🔥 <b>PROMO : ${product.promo}</b>\n`;
         }
-
+        
         // Affichage des tarifs dégressifs (GRILLE DE TARIFS PREMIUM)
         if (product.has_discounts && product.discounts_config && product.discounts_config.length > 0) {
             const rawVal = String(product.unit_value || '1');
@@ -335,31 +228,33 @@ function setupOrderSystem(bot) {
             promoText += `\n📊 <b>GRILLE DE TARIFS :</b>\n` + tiers.join('  |  ') + `\n`;
         }
 
+        const rawVal = String(product.unit_value || '1');
+        const multiplier = parseFloat(rawVal.replace(',', '.')) || 1;
+        const unitLabel = (product.unit && product.unit.toLowerCase() !== 'unité') ? product.unit : 'g';
+
         const user = ctx.state?.user || await getUser(`${ctx.platform}_${ctx.from.id}`);
-        let text = `🌟 <b>${esc(product.name)}</b> 🌟\n\n` +
+        const stockBadge = await getScarcityBadge(product);
+        let text = `🌟 <b>${esc(product.name)}</b> 🌟\n` +
+            `📦 Statut : <b>${stockBadge}</b>\n\n` +
             t(user, 'label_unit_price', '💰 Prix Unitaire :') + ` <b>${product.price}€</b>\n` +
             (promoText ? `${promoText}\n` : "") +
             (product.description ? `\n<i>${product.description}</i>\n` : "") +
-            `\n💎 ` + t(user, 'label_choose_qty', '<b>Choisissez votre quantité :</b>');
-
-        const rawVal = String(product.unit_value || '1');
-        const multiplier = parseFloat(rawVal.replace(',', '.')) || 1;
+            `\n💎 <b>Combien de sachets voulez-vous ?</b>\n\n` +
+            `💡 <i>Cliquez sur le chiffre qui correspond au nombre de sachets que vous voulez.</i>\n` +
+            `<i>(Exemple : si vous cliquez sur <b>1</b>, vous recevrez 1 sachet de ${multiplier}${unitLabel})</i>`;
         const multipliers = [1, 2, 3, 4, 5, 10];
+        
         const qtyRows = [];
-        const unit = product.unit || '';
-        const unitDisplay = (unit && unit.toLowerCase() !== 'unité' && unit.toLowerCase() !== 'pieces') ? unit : '';
-
         for (let i = 0; i < multipliers.length; i += 2) {
             const m1 = multipliers[i];
             const q1 = m1 * multiplier;
-            // Correction: Afficher le poids total pour plus de clarté
-            const label1 = multiplier > 1 ? `${q1}${unitDisplay} (${m1} sachet${m1 > 1 ? 's' : ''})` : `${q1}${unitDisplay}`;
+            const label1 = `${m1}`;
             const row = [Markup.button.callback(label1, `qty_${productId}_${q1}`)];
             
             if (i + 1 < multipliers.length) {
                 const m2 = multipliers[i+1];
                 const q2 = m2 * multiplier;
-                const label2 = multiplier > 1 ? `${q2}${unitDisplay} (${m2} sachet${m2 > 1 ? 's' : ''})` : `${q2}${unitDisplay}`;
+                const label2 = `${m2}`;
                 row.push(Markup.button.callback(label2, `qty_${productId}_${q2}`));
             }
             qtyRows.push(row);
@@ -386,9 +281,9 @@ function setupOrderSystem(bot) {
         await ctx.answerCbQuery();
         const userId = `${ctx.platform}_${ctx.from.id}`;
         const productId = ctx.match[1];
-        const qty = parseInt(ctx.match[2]);
-        const product = await getProduct(productId);
-        const products = await getProducts();
+        const qty = parseFloat(ctx.match[2]);
+        const products = await getProducts(true);
+        const product = products.find(p => String(p.id) === String(productId));
         const settings = (ctx.state?.settings || await getAppSettings());
 
         if (!product) {
@@ -396,19 +291,25 @@ function setupOrderSystem(bot) {
             return safeEdit(ctx, settings.msg_product_not_found || '❌ Produit non trouvé.', Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'view_catalog')]]));
         }
 
-        // Calcul du prix avec gestion des paliers dégressifs
-        const unitValue = parseInt(product.unit_value) || 1;
-        const basePrice = parseFloat(product.price) || 0;
-        const packsSelected = qty / unitValue;
+        // Calcul du prix avec gestion des paliers dégressifs et NaN Fix
+        const baseVal = Math.max(0.001, parseFloat(String(product.unit_value || '1').replace(',', '.')) || 1);
+        const effectiveQty = (Number.isFinite(qty) && Number.isFinite(baseVal)) ? (qty / baseVal) : 0; 
+        const basePrice = Math.max(0, parseFloat(product.price) || 0);
+        let totalPriceValue = basePrice * effectiveQty;
 
-        let totalPriceValue = basePrice * packsSelected;
-
-        if (product.has_discounts && product.discounts_config && product.discounts_config.length > 0) {
+        if (product.has_discounts && product.discounts_config && Array.isArray(product.discounts_config)) {
             const sortedDiscounts = [...product.discounts_config].sort((a, b) => b.qty - a.qty);
-            const bestDiscount = sortedDiscounts.find(d => packsSelected >= d.qty);
+            const bestDiscount = sortedDiscounts.find(d => effectiveQty >= d.qty);
             if (bestDiscount) {
-                totalPriceValue = bestDiscount.total_price + (packsSelected - bestDiscount.qty) * basePrice;
+                const discountValue = parseFloat(bestDiscount.total || bestDiscount.total_price || 0);
+                const discountQty = parseFloat(bestDiscount.qty);
+                totalPriceValue = discountValue + (effectiveQty - discountQty) * basePrice;
             }
+        }
+        
+        if (!Number.isFinite(totalPriceValue)) {
+            console.error(`❌ [NaN Fix] totalPriceValue is invalid for product ${productId}. basePrice=${basePrice}, effectiveQty=${effectiveQty}`);
+            totalPriceValue = 0;
         }
         const totalPrice = totalPriceValue.toFixed(2);
 
@@ -417,7 +318,7 @@ function setupOrderSystem(bot) {
             const config = product.bundle_config || { trigger_qty: 1, offered_qty: 1, offered_id: null };
             const trigger = config.trigger_qty || 1;
             const offered = config.offered_qty || 1;
-            const numGifts = Math.floor(packsSelected / trigger) * offered;
+            const numGifts = Math.floor(effectiveQty / trigger) * offered;
 
             if (numGifts > 0) {
                 if (config.offered_id) {
@@ -436,12 +337,12 @@ function setupOrderSystem(bot) {
             productName: product.name + bundleText,
             is_bundle: product.is_bundle,
             supplier_id: product.supplier_id, // IMPORTANT pour la notification fournisseur
-            nSachets: (unitValue > 1) ? packsSelected : null,
+            nSachets: (baseVal > 1) ? effectiveQty : null,
             productUnit: product.unit || 'g'
         });
 
-        if (unitValue === 1 && product.unit && product.unit.length > 0 && !(['unité', 'unite', 'piece', 'pce'].includes(product.unit.toLowerCase()))) {
-            const nSachets = Math.round(qty / unitValue) || 1;
+        if (baseVal === 1 && product.unit && product.unit.length > 0 && !(['unité', 'unite', 'piece', 'pce'].includes(product.unit.toLowerCase()))) {
+            const nSachets = Math.round(qty / baseVal) || 1;
             return askUnitSelection(ctx, product, nSachets);
         }
 
@@ -458,27 +359,27 @@ function setupOrderSystem(bot) {
         const user = ctx.state?.user || await getUser(userId);
         const rawVal = String(product.unit_value || '1');
         const multiplier = parseFloat(rawVal.replace(',', '.')) || 1;
-        const unit = product.unit || '';
-        const unitDisplay = (unit && unit.toLowerCase() !== 'unité' && unit.toLowerCase() !== 'pieces') ? unit : '';
-
-        let qtyLabel;
+        const unitLabel = product.unit || '';
+        
+        let displayQty;
         let sachetInfo = "";
         if (multiplier > 1) {
             const nSachets = qty / multiplier;
-            qtyLabel = `${qty}${unitDisplay}`;
-            sachetInfo = ` (${nSachets} sachet${nSachets > 1 ? 's' : ''} de ${multiplier}${unitDisplay})`;
+            displayQty = `${qty}${unitLabel}`;
+            sachetInfo = `\n📦 <b>Format : ${nSachets} sachet${nSachets > 1 ? 's' : ''} de ${multiplier}${unitLabel}</b>`;
         } else {
-            qtyLabel = `${qty}${unitDisplay || 'x'}`;
+            displayQty = unitLabel ? `${qty}${unitLabel}` : `${qty}x`;
         }
 
-        const text = t(user, 'msg_selection', '🛒 <b>Sélection : {qty} {name}</b>', { qty: qtyLabel, name: product.name + sachetInfo }) + (unitAmount ? ` (${unitAmount})` : '') + '\n' +
-            t(user, 'label_price_total', '💰 Prix :') + ` <b>${totalPrice}€</b>\n\n` +
-            t(user, 'msg_what_to_do', 'Que voulez-vous faire ?');
+        const text = t(user, 'msg_selection', '🛒 <b>Vous avez choisi : {qty} {name}</b>', { qty: displayQty, name: product.name }) + (unitAmount ? ` (${unitAmount})` : '') + 
+            sachetInfo + '\n' +
+            t(user, 'label_price_total', '💰 Prix à payer :') + ` <b>${totalPrice}€</b>\n\n` +
+            t(user, 'msg_what_to_do', '<b>C\'est presque fini ! Votre produit est mis de côté.</b>\n\nQue voulez-vous faire maintenant ?');
 
         const buttons = [
             [
-                Markup.button.callback(t(user, 'btn_add_to_cart', '🛒 Ajouter au panier'), 'add_to_cart'),
-                Markup.button.callback(t(user, 'btn_checkout_now', '💳 Régler maintenant'), 'checkout_now')
+                Markup.button.callback(t(user, 'btn_add_to_cart', '🛒 Mettre dans mon panier'), 'add_to_cart'),
+                Markup.button.callback(t(user, 'btn_checkout_now', '💳 Paiement à la livraison'), 'checkout_now')
             ],
             [
                 Markup.button.callback(t(user, 'btn_review', '⭐️ Avis / Comment'), 'leave_review'),
@@ -497,40 +398,77 @@ function setupOrderSystem(bot) {
 
     bot.action('add_to_cart', async (ctx) => {
         const userId = `${ctx.platform}_${ctx.from.id}`;
-        try {
-            const user = ctx.state?.user || await getUser(userId);
-            // Réponse immédiate pour arrêter le spinner sur le bouton
-            await ctx.answerCbQuery(t(user, 'msg_added_to_cart_notif', 'Ajouté au panier ! 🛒')).catch(() => {});
+        const user = ctx.state?.user || await getUser(userId);
+        await ctx.answerCbQuery(t(user, 'msg_added_to_cart_notif', 'Ajouté au panier ! 🛒'));
+        clearActiveMediaGroup(userId); // Quitter le contexte produit
+        const settings = ctx.state?.settings || await getAppSettings();
+        const pending = pendingOrders.get(userId);
+        if (!pending) return safeEdit(ctx, settings.msg_session_expired || "❌ Session expirée.", Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Menu', 'main_menu')]]));
+        
+        pending.addedAt = Date.now(); // Set reservation timestamp
 
-            const settings = ctx.state?.settings || await getAppSettings();
-            const pending = pendingOrders.get(userId);
-            
-            if (!pending) {
-                return safeEdit(ctx, settings.msg_session_expired || "❌ Session expirée.", Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Menu', 'main_menu')]]));
+        let cart = userCarts.get(userId) || [];
+        const products = await getProducts(true);
+        const product = products.find(p => String(p.id) === String(pending.productId));
+
+        if (product) {
+            // Tentative de fusion avec un item existant du même produit et même quantité unitaire (ex: 0.5g)
+            const sameIdx = cart.findIndex(it => 
+                String(it.productId) === String(pending.productId) && 
+                it.chosen_unit_amount === pending.chosen_unit_amount
+            );
+
+            if (sameIdx !== -1) {
+                // FUSION
+                const existing = cart[sameIdx];
+                existing.qty += pending.qty;
+                
+                // RECALCUL DU PRIX DÉGRESSIF pour la nouvelle quantité cumulée
+                let priceUsed = product.price;
+                let effectiveQty = existing.qty;
+
+                // Si c'est un produit à l'unité (0.5g, etc.), on ajuste le calcul
+                if (existing.chosen_unit_amount) {
+                    const cleanUnitVal = String(product.unit_value || '1').replace(',', '.');
+                    const baseVal = parseFloat(cleanUnitVal) || 1;
+                    // On extrait le nombre du chosen_unit_amount (ex: "0.5g" -> 0.5)
+                    const amountMatch = existing.chosen_unit_amount.match(/^[0-9.]+/);
+                    const amount = amountMatch ? parseFloat(amountMatch[0]) : baseVal;
+                    effectiveQty = (amount / baseVal) * existing.qty;
+                    priceUsed = (product.price / baseVal) * amount; // Prix de base de cette sélection (ex: prix de 0.5g)
+                }
+
+                let newTotalValue = priceUsed * existing.qty;
+                if (product.has_discounts && product.discounts_config && product.discounts_config.length > 0) {
+                    const sortedDiscounts = [...product.discounts_config].sort((a, b) => b.qty - a.qty);
+                    const bestD = sortedDiscounts.find(d => effectiveQty >= d.qty);
+                    if (bestD) {
+                        const dVal = parseFloat(bestD.total || bestD.total_price || 0);
+                        const dQty = parseFloat(bestD.qty);
+                        // extra_qty est la différence entre l'effectiveQty cumulée et le palier
+                        const extra = Math.max(0, effectiveQty - dQty);
+                        newTotalValue = dVal + (extra * (product.price / (parseFloat(String(product.unit_value || '1').replace(',', '.')) || 1)));
+                        // Si l'item fusionné avait un prix spécifique (amount != baseVal), on ajuste si besoin (mais dVal est déjà le total pour dQty)
+                        // Note: C'est complexe car dVal est un total fixe pour un certain nombre de baseUnits.
+                    }
+                }
+                existing.totalPrice = formatPrice(newTotalValue);
+            } else {
+                cart.push(pending);
             }
-
-            // Gestion panier
-            let cart = userCarts.get(userId) || [];
-            cart.push({ ...pending, added_at: new Date().toISOString() });
-            userCarts.set(userId, cart);
-            userLastActivity.set(userId, Date.now());
-            pendingOrders.delete(userId);
-            
-            // Sync for abandoned cart reminders
-            syncUserCart(userId, cart).catch(() => {});
-
-            const text = t(user, 'msg_product_added', '✅ Produit ajouté !') + '\n\n' + t(user, 'msg_cart_count', 'Votre panier contient <b>{count}</b> article(s).', { count: cart.length });
-            const buttons = [
-                [Markup.button.callback(t(user, 'btn_continue', '🛍️ Continuer'), 'view_catalog'), Markup.button.callback(t(user, 'btn_cart_view', '💳 Panier'), 'view_cart')],
-                [Markup.button.callback(t(user, 'btn_clear', settings.btn_clear_cart || '❌ Vider le panier'), 'clear_cart')]
-            ];
-
-            await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
-            clearActiveMediaGroup(userId); // Nettoyage après l'édition
-        } catch (err) {
-            console.error('[CART-ERROR]', err);
-            await ctx.answerCbQuery('❌ Erreur lors de l\'ajout au panier.').catch(() => {});
+        } else {
+            cart.push(pending);
         }
+
+        userCarts.set(userId, cart);
+        userLastActivity.set(userId, Date.now());
+        pendingOrders.delete(userId);
+        const text = t(user, 'msg_product_added', '✅ C\'est noté ! Produit ajouté au panier.') + '\n\n' + t(user, 'msg_cart_count', 'Votre panier contient <b>{count}</b> article(s).', { count: cart.length });
+        const buttons = [
+            [Markup.button.callback(t(user, 'btn_continue', '🛍️ Acheter autre chose'), 'view_catalog'), Markup.button.callback(t(user, 'btn_cart_view', '💳 Payer ma commande'), 'view_cart')],
+            [Markup.button.callback(t(user, 'btn_clear', settings.btn_clear_cart || '❌ Tout enlever'), 'clear_cart')]
+        ];
+        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
     });
 
     bot.action('checkout_now', async (ctx) => {
@@ -540,6 +478,7 @@ function setupOrderSystem(bot) {
         const pending = pendingOrders.get(userId);
         if (!pending) return;
 
+        pending.addedAt = Date.now(); // Set reservation timestamp
         let cart = userCarts.get(userId) || [];
         cart.push(pending);
         userCarts.set(userId, cart);
@@ -563,15 +502,20 @@ function setupOrderSystem(bot) {
         const buttons = [];
 
         cart.forEach((item, idx) => {
-            const price = parseFloat(item.totalPrice);
+            const price = parseFloat(item.totalPrice) || 0;
             total += price;
             const unit = item.productUnit || 'g';
             const qtyLabel = item.nSachets ? `(x${item.nSachets} sachet${item.nSachets > 1 ? 's' : ''} - ${item.qty}${unit})` : `(x${item.qty}${unit})`;
-            summary += `${idx + 1}. ${item.productName} <b>${qtyLabel}</b>${item.chosen_unit_amount ? ` [${item.chosen_unit_amount}]` : ''} - <b>${price.toFixed(2)}€</b>\n`;
+            
+            const warningText = getReservationWarningText(item);
+            summary += `${idx + 1}. ${item.productName} <b>${qtyLabel}</b>${item.chosen_unit_amount ? ` [${item.chosen_unit_amount}]` : ''} - <b>${formatPrice(price)}€</b>\n`;
+            if (warningText) {
+                summary += `   └─ <i>${warningText}</i>\n`;
+            }
             // Bouton de suppression individuelle
             buttons.push([Markup.button.callback(`❌ ${t(user, 'btn_back', 'Retirer')} ${item.productName}`, `remove_item_${idx}`)]);
         });
-        summary += `\n💰 <b>` + t(user, 'label_total_price', 'TOTAL :') + ` ${total.toFixed(2)}€</b>`;
+        summary += `\n💰 <b>` + t(user, 'label_total_price', 'TOTAL :') + ` ${formatPrice(total)}€</b>`;
 
         buttons.push([Markup.button.callback(t(user, 'btn_checkout', '💳 Commander'), 'start_checkout'), Markup.button.callback(t(user, 'btn_add_more', '🛍️ Continuer'), 'view_catalog')]);
         buttons.push([Markup.button.callback(t(user, 'btn_clear_cart', '❌ Vider'), 'clear_cart'), Markup.button.callback(t(user, 'btn_back_menu', '◀️ Menu'), 'main_menu')]);
@@ -592,115 +536,8 @@ function setupOrderSystem(bot) {
             await ctx.answerCbQuery(`Retiré : ${cart[idx].productName}`);
             cart.splice(idx, 1);
             userCarts.set(userId, cart);
-            // Sync for abandoned cart reminders
-            syncUserCart(userId, cart).catch(() => {});
         }
         await displayCart(ctx);
-    });
-
-    bot.action('my_orders', async (ctx) => {
-        await ctx.answerCbQuery();
-        const userId = `${ctx.platform}_${ctx.from.id}`;
-        const user = await getUser(userId);
-        const orders = await getOrdersByUser(userId);
-        const settings = ctx.state?.settings || await getAppSettings();
-
-        if (!orders || orders.length === 0) {
-            return safeEdit(ctx, t(user, 'msg_no_orders', "📦 Vous n'avez pas encore passé de commande."), Markup.inlineKeyboard([[Markup.button.callback('🛒 Aller au Catalogue', 'view_catalog')], [Markup.button.callback('◀️ Retour', 'main_menu')]]));
-        }
-
-        let text = `📦 <b>VOTRE HISTORIQUE DE COMMANDES</b>\n\n` +
-                   `Voici vos dernières commandes. Cliquez sur l'une d'elles pour voir le détail ou <b>recommander</b> les mêmes produits.`;
-        
-        const buttons = orders.slice(0, 8).map(o => {
-            const date = new Date(o.created_at).toLocaleDateString('fr-FR');
-            const total = parseFloat(o.total_price || o.total || 0).toFixed(2);
-            return [Markup.button.callback(`${date} - ${total}€ (#${o.id.slice(-5)})`, `view_past_order_${o.id}`)];
-        });
-
-        buttons.push([Markup.button.callback('◀️ Retour au Menu', 'main_menu')]);
-        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
-    });
-
-    bot.action(/^view_past_order_(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
-        const orderId = ctx.match[1];
-        const order = await getOrder(orderId);
-        const user = await getUser(`${ctx.platform}_${ctx.from.id}`);
-        const settings = ctx.state?.settings || await getAppSettings();
-
-        if (!order) return ctx.reply("❌ Commande introuvable.");
-
-        let items = [];
-        try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch(e) {}
-
-        const text = `📦 <b>DÉTAIL COMMANDE #${order.id.slice(-5)}</b>\n\n` +
-            `📅 Date : ${new Date(order.created_at).toLocaleDateString('fr-FR')}\n` +
-            `🔄 Statut : <b>${order.status.toUpperCase()}</b>\n` +
-            `📍 Adresse : <i>${order.address}</i>\n\n` +
-            `🛒 <b>Articles :</b>\n` +
-            items.map(i => `• ${i.productName || i.name} x${i.qty}${i.productUnit || 'g'} (${(parseFloat(i.totalPrice || 0)).toFixed(2)}€)`).join('\n') +
-            `\n\n💰 <b>Total : ${(parseFloat(order.total_price || order.total || 0)).toFixed(2)}€</b>`;
-
-        const buttons = [
-            [Markup.button.callback('♻️ RECOMMANDER LA MÊME CHOSE', `reorder_confirm_${order.id}`)],
-            [Markup.button.callback('◀️ Retour à l\'historique', 'my_orders')]
-        ];
-
-        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
-    });
-
-    bot.action(/^reorder_confirm_(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
-        const orderId = ctx.match[1];
-        const order = await getOrder(orderId);
-        const userId = `${ctx.platform}_${ctx.from.id}`;
-        const user = await getUser(userId);
-
-        if (!order) return ctx.reply("❌ Erreur lors de la récupération de la commande.");
-
-        let items = [];
-        try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch(e) {}
-
-        // Pré-remplir le panier avec les items de la commande passée
-        const cartItems = items.map(i => ({
-            id: i.id,
-            productName: i.productName || i.name,
-            price: parseFloat(i.price || 0),
-            qty: i.qty,
-            totalPrice: parseFloat(i.totalPrice || 0),
-            productUnit: i.productUnit || 'g'
-        }));
-
-        userCarts.set(userId, cartItems);
-        await userCarts.save();
-
-        // Stocker l'adresse de la commande passée pour la réutiliser
-        awaitingAddressDetails.set(userId, { 
-            step: 1.5, 
-            address: order.address, 
-            total: parseFloat(order.total_price || order.total || 0),
-            is_reorder: true 
-        });
-
-        const text = `♻️ <b>PRÉPARATION DE VOTRE COMMANDE</b>\n\n` +
-            `Nous avons repris les articles de votre commande précédente.\n\n` +
-            `📍 <b>Adresse de livraison :</b>\n<i>${order.address}</i>\n\n` +
-            `Souhaitez-vous conserver cette adresse ou la modifier ?`;
-
-        const buttons = [
-            [Markup.button.callback('✅ CONSERVER CETTE ADRESSE', 'reorder_proceed')],
-            [Markup.button.callback('✏️ MODIFIER L\'ADRESSE', 'start_checkout')], // Redirige vers la saisie d'adresse classique
-            [Markup.button.callback('🛒 MODIFIER LE PANIER', 'view_cart')],
-            [Markup.button.callback('❌ ANNULER', 'my_orders')]
-        ];
-
-        await safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
-    });
-
-    bot.action('reorder_proceed', async (ctx) => {
-        await ctx.answerCbQuery();
-        return askScheduling(ctx); // Passe directement à l'étape du choix de l'horaire
     });
 
     bot.action('clear_cart', async (ctx) => {
@@ -870,23 +707,31 @@ function setupOrderSystem(bot) {
         const [pId, qtyStr, amountStr] = ctx.match.slice(1);
         const qty = parseInt(qtyStr);
         const amount = parseFloat(amountStr);
-        const products = await getProducts();
+        const products = await getProducts(true);
         const product = products.find(p => p.id === pId);
 
         if (!product) return safeEdit(ctx, settings.msg_product_not_found || "❌ Produit non trouvé.", Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'view_catalog')]]));
 
         // Support comma and remove non-numeric chars for baseVal calculation
         const cleanUnitVal = String(product.unit_value || '1').replace(',', '.');
-        const baseVal = parseFloat(cleanUnitVal) || 1;
-        const effectiveQty = (amount / baseVal) * qty;
+        const baseVal = Math.max(0.001, parseFloat(cleanUnitVal) || 1);
+        const effectiveQty = (Number.isFinite(amount) && Number.isFinite(baseVal) && Number.isFinite(qty)) ? ((amount / baseVal) * qty) : 0;
+        const basePrice = Math.max(0, parseFloat(product.price) || 0);
 
-        let totalPriceValue = (product.price / baseVal) * amount * qty;
-        if (product.has_discounts && product.discounts_config && product.discounts_config.length > 0) {
+        let totalPriceValue = (basePrice / baseVal) * amount * qty;
+        if (product.has_discounts && product.discounts_config && Array.isArray(product.discounts_config)) {
             const sortedDiscounts = [...product.discounts_config].sort((a, b) => b.qty - a.qty);
             const bestDiscount = sortedDiscounts.find(d => effectiveQty >= d.qty);
             if (bestDiscount) {
-                totalPriceValue = bestDiscount.total_price + (effectiveQty - bestDiscount.qty) * product.price;
+                const discountValue = parseFloat(bestDiscount.total || bestDiscount.total_price || 0);
+                const discountQty = parseFloat(bestDiscount.qty);
+                totalPriceValue = discountValue + (effectiveQty - discountQty) * basePrice;
             }
+        }
+        
+        if (!Number.isFinite(totalPriceValue)) {
+            console.error(`❌ [NaN Fix-UnitSelect] totalPriceValue is invalid for product ${pId}. basePrice=${basePrice}, effectiveQty=${effectiveQty}`);
+            totalPriceValue = 0;
         }
         let finalPrice = totalPriceValue.toFixed(2);
 
@@ -903,7 +748,9 @@ function setupOrderSystem(bot) {
             if (product.is_bundle) pending.is_bundle = true;
         }
 
-        await showAddToCartChoice(ctx, product, qty, finalPrice, `${amount}${product.unit}${bundleText}`);
+        const totalWeight = amount * qty;
+        const description = `${qty} sachet${qty > 1 ? 's' : ''} de ${amount}${product.unit}${bundleText}`;
+        await showAddToCartChoice(ctx, product, totalWeight, finalPrice, description);
     });
 
     async function promptAddress(ctx, product, qty, totalPrice) {
@@ -933,31 +780,29 @@ function setupOrderSystem(bot) {
             const photo = ctx.message.photo ? ctx.message.photo[ctx.message.photo.length - 1].file_id : ctx.message.document.file_id;
             const { orderData, method, finalProductList, pending } = proofState;
             
-            // On crée la commande en statut "awaiting_payment"
             orderData.status = 'awaiting_payment';
             orderData.payment_proof_id = photo;
             
             const createResult = await createOrder(orderData);
-            if (createResult.error) {
-                return ctx.reply(`❌ Erreur lors de la validation : ${createResult.error.message}`);
-            }
+            if (createResult.error) return ctx.reply(`❌ Erreur : ${createResult.error.message}`);
             
             const order = createResult.order;
+            const { adjustOrderStock } = require('../services/database');
+            await adjustOrderStock(order.id, 'decrement').catch(e => console.error("Stock decrement error:", e));
+            
             awaitingPaymentProof.delete(userId);
             userCarts.delete(userId);
             pendingOrders.delete(userId);
 
-            await ctx.reply(`✅ <b>Preuve reçue !</b>\n\nVotre commande <code>#${order.id.slice(-5)}</code> est en cours de validation manuelle par nos administrateurs. Vous recevrez une notification dès qu'elle sera validée.`, { parse_mode: 'HTML' });
+            await ctx.reply(`✅ <b>Preuve reçue !</b>\n\nVotre commande <code>#${order.id.slice(-5)}</code> est en cours de validation manuelle par nos administrateurs.`, { parse_mode: 'HTML' });
 
-            // Alerte Admin avec la photo
-            const adminMsg = `📸 <b>PREUVE DE PAIEMENT RECUE (${method})</b>\n\n` +
+            const adminMsg = `📸 <b>PREUVE DE PAIEMENT (${method})</b>\n\n` +
                 `👤 Client : ${esc(ctx.from.first_name)} (@${esc(ctx.from.username || 'Inconnu')})\n` +
                 `💰 Montant : <b>${order.total_price}€</b>\n` +
-                `🔑 ID Commande : <code>${order.id}</code>\n\n` +
-                `Vérifiez le paiement et validez la commande ci-dessous :`;
+                `🔑 ID Commande : <code>${order.id}</code>`;
             
             const adminBtns = Markup.inlineKeyboard([
-                [Markup.button.callback('✅ VALIDER LE PAIEMENT', `confirm_payment_${order.id}`)],
+                [Markup.button.callback('✅ VALIDER', `confirm_payment_${order.id}`)],
                 [Markup.button.callback('❌ REJETER', `reject_payment_${order.id}`)]
             ]);
 
@@ -970,12 +815,6 @@ function setupOrderSystem(bot) {
 
 
         if (!ctx.message.text || ctx.message.text.startsWith('/')) return next();
-
-        // SÉCURITÉ : Ne pas intercepter comme adresse si l'utilisateur est en train de chatter ou de laisser un avis
-        if (awaitingChatReply.has(userId) || awaitingDelayReason.has(userId) || awaitingReviewText.has(userId)) {
-            return next();
-        }
-
         const addrState = awaitingAddressDetails.get(userId);
 
         // Step 1: Address Validation -> Suite vers SCHEDULING
@@ -1297,7 +1136,7 @@ function setupOrderSystem(bot) {
             if (user) {
                 text += t(user, 'label_profile', `👤 Profil :`) + ` <b>${user.first_name || 'Guest'}</b>\n`;
                 text += t(user, 'label_wallet', `💰 Solde :`) + ` <b>${(user.wallet_balance || 0).toFixed(2)}€</b>\n`;
-                text += t(user, 'label_loyalty', `🏆 Points :`) + ` <b>${user.loyalty_points || 0} pts</b>\n\n`;
+                text += t(user, 'label_loyalty', `🏆 Points :`) + ` <b>${user.points || 0} pts</b>\n\n`;
             }
 
             const activeOrders = orders.filter(o => o.status === 'pending' || o.status === 'taken');
@@ -1378,10 +1217,14 @@ function setupOrderSystem(bot) {
             ];
         }
 
+        const hasAlternativePayment = pModes.some(m => m.id !== 'CASH');
+        const adminContact = settings.private_contact_url || 'https://t.me/admin';
+
         // Si 1 seul mode, bouton "Confirmer" direct
         if (pModes.length === 1) {
             const pm = pModes[0];
-            keyboard.push([Markup.button.callback(t(user, 'btn_confirm_order_pm', `✅ Confirmer la commande ({label})`, { label: pm.label }), `create_order_${pm.id}_${discount > 0 ? 'discount' : 'normal'}`)]);
+            const label = pm.id === 'CASH' ? 'Payer à la livraison' : pm.label;
+            keyboard.push([Markup.button.callback(t(user, 'btn_confirm_order_pm', `✅ Confirmer ({label})`, { label: label }), `create_order_${pm.id}_${discount > 0 ? 'discount' : 'normal'}`)]);
         } else {
             // Grouper les modes de paiement 2 par 2
             for (let i = 0; i < pModes.length; i += 2) {
@@ -1391,6 +1234,10 @@ function setupOrderSystem(bot) {
                 }
                 keyboard.push(row);
             }
+        }
+
+        if (hasAlternativePayment) {
+            keyboard.push([Markup.button.url('💬 Parler à l\'admin (Paiement Crypto/Virement)', adminContact)]);
         }
 
         keyboard.push([Markup.button.callback('◀️ Modifier', 'back_to_scheduling'), Markup.button.callback(settings.btn_cancel_alt || '❌ Annuler', 'view_catalog')]);
@@ -1424,15 +1271,33 @@ function setupOrderSystem(bot) {
         const productList = cart.map(item => `${item.productName} (x${item.qty})${item.chosen_unit_amount ? ` [${item.chosen_unit_amount}]` : ''}`).join(', ');
         const totalQty = cart.reduce((acc, item) => acc + item.qty, 0);
         const discount = useDiscount ? (pending.possibleDiscount || 0) : 0;
-        const finalPrice = parseFloat(pending.totalPrice) - discount;
+        const finalPrice = Math.max(0, parseFloat(pending.totalPrice || 0) - discount);
 
         const isPriority = pending.is_priority;
         const priorityFee = isPriority ? (parseFloat(pending.priority_fee) || 0) : 0;
         let finalProductList = productList;
         if (isPriority) finalProductList += `\n🚀 Option Livraison Prioritaire (+${priorityFee.toFixed(2)}€)`;
 
-        // --- 2. DÉTERMINATION FOURNISSEUR (Avant création) ---
-        const allProducts = await getProducts().catch(() => []);
+        // --- 2. DÉTERMINATION FOURNISSEUR (Avant création) & VALIDATION STOCKS ---
+        const allProducts = await getProducts(true).catch(() => []);
+
+        const outOfStockItems = [];
+        for (const item of cart) {
+            const p = allProducts.find(prod => String(prod.id) === String(item.productId));
+            if (!p) {
+                outOfStockItems.push(`${item.productName} (Indisponible)`);
+            } else if (typeof p.stock === 'number' && p.stock < item.qty) {
+                outOfStockItems.push(`${p.name} (Stock insuffisant : reste ${p.stock})`);
+            }
+        }
+        if (outOfStockItems.length > 0) {
+            const settings = ctx.state?.settings || await getAppSettings();
+            const errorMsg = `⚠️ <b>Stock insuffisant</b>\n\nCertains articles de votre panier ne sont plus disponibles ou le stock est insuffisant :\n\n` +
+                outOfStockItems.map(txt => `- ${txt}`).join('\n') + 
+                `\n\nVeuillez modifier votre panier.`;
+            return safeEdit(ctx, errorMsg, Markup.inlineKeyboard([[Markup.button.callback('🛒 Retour au Panier', 'view_cart')]]));
+        }
+
         let orderSupplierId = null;
         if (cart.length > 0) {
             for (const item of cart) {
@@ -1456,9 +1321,9 @@ function setupOrderSystem(bot) {
             status: orderSupplierId ? 'supplier_pending' : 'pending',
             discount_applied: discount,
             scheduled_at: pending.scheduled_at || null,
+            notes: JSON.stringify(pending.cart || []) // Sauvegarde du panier pour gestion du stock après confirmation
         };
 
-        // --- NOUVEAU : GESTION PAIEMENT MANUEL ---
         const settings = ctx.state?.settings || await getAppSettings();
         const method = paymentMethod.toUpperCase();
 
@@ -1469,49 +1334,53 @@ function setupOrderSystem(bot) {
             awaitingPaymentProof.set(userId, { orderData, method, finalProductList, pending });
 
             const text = `💳 <b>RÈGLEMENT PAR ${method}</b>\n\n` +
-                `Veuillez effectuer le virement de <b>${finalPrice.toFixed(2)}€</b> vers les coordonnées suivantes :\n\n` +
+                `Veuillez effectuer le virement de <b>${finalPrice.toFixed(2)}€</b> vers :\n\n` +
                 `📍 <b>${detailLabel} :</b>\n<code>${detailValue}</code>\n\n` +
-                `✅ Une fois le règlement effectué, envoyez simplement une <b>capture d'écran</b> de votre preuve de paiement ici même.`;
+                `✅ Une fois fait, envoyez une <b>capture d'écran</b> ici.`;
             
-            const keyboard = Markup.inlineKeyboard([
-                [Markup.button.callback('◀️ Retour', 'view_cart')]
-            ]);
-
-            return safeEdit(ctx, text, { parse_mode: 'HTML', ...keyboard });
+            return safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'view_cart')]]) });
         }
-
-        // Si Espèces (CASH) ou autre, on continue normalement
 
         // --- 3. TRAVAIL PARALLÈLE (Vitesse Maximale) ---
         console.log(`[Checkout] Exécution des tâches DB en parallèle...`);
         const startTime = Date.now();
 
         try {
-            // DECREMENT STOCK
-            const { saveProduct } = require('../services/database');
-            const stockTasks = cart.map(async item => {
-                const p = allProducts.find(prod => String(prod.id) === String(item.productId));
-                if (p && typeof p.stock === 'number' && p.stock > 0) {
-                    const newStock = Math.max(0, p.stock - item.qty);
-                    // Si le stock tombe à 0, on peut désactiver si une option globale est cochée (ou par défaut ici pour satisfaire la demande)
-                    const updates = { id: p.id, stock: newStock };
-                    if (newStock <= 0) {
-                        updates.is_active = false;
-                        console.log(`[STOCK] Produit ${p.name} épuisé, désactivation automatique.`);
-                    }
-                    return updateProduct(p.id, updates).catch(e => console.error(`[STOCK-ERR] ${p.id}:`, e.message));
-                }
-                return Promise.resolve();
-            });
-
             const [createResult, dbSettings] = await Promise.all([
                 createOrder(orderData),
-                getAppSettings(),
-                ...stockTasks
+                getAppSettings()
             ]);
 
             if (createResult.error) throw createResult.error;
             const order = createResult.order;
+
+            // DECREMENT STOCK & LOG TO LEDGER
+            const { saveProduct } = require('../services/database');
+            for (const item of cart) {
+                const p = allProducts.find(prod => String(prod.id) === String(item.productId));
+                if (p && typeof p.stock === 'number') {
+                    const newStock = Math.max(0, p.stock - item.qty);
+                    const updates = { id: p.id, stock: newStock };
+                    
+                    let alertMsg = null;
+                    if (newStock <= 0 && p.stock > 0) {
+                        updates.is_active = false;
+                        updates.is_available = false;
+                        alertMsg = `🚫 <b>Rupture de Stock</b>\nLe produit <b>${p.name}</b> est épuisé. Il a été automatiquement masqué du catalogue du bot.`;
+                    } else if (newStock <= 2 && p.stock > 2) {
+                        alertMsg = `⚠️ <b>Alerte Stock Critique (${newStock} restants)</b>\nLe produit <b>${p.name}</b> n'a plus que ${newStock} unités en stock ! Veuillez réapprovisionner au plus vite.`;
+                    } else if (newStock <= 5 && p.stock > 5) {
+                        alertMsg = `⚠️ <b>Alerte Stock Bas (${newStock} restants)</b>\nLe produit <b>${p.name}</b> n'a plus que ${newStock} unités en stock. Pensez à réapprovisionner !`;
+                    }
+                    
+                    if (alertMsg) {
+                        notifyAdmins(bot, alertMsg).catch(err => console.error("Error sending stock alert:", err.message));
+                    }
+                    
+                    await saveProduct(updates).catch(e => console.error(`[STOCK-ERR] ${p.id}:`, e.message));
+                    await logStockMovement(p.id, -item.qty, 'order', order?.id || 'unknown');
+                }
+            }
             
             // On vérifie si c'est la première commande en utilisant l'ID officiel (possiblement fusionné)
             const officialUserId = ctx.state.user?.id || userId;
@@ -1546,7 +1415,7 @@ function setupOrderSystem(bot) {
             (async () => {
                 // Notif Nouveau Client
                 if (isFirstOrder) {
-                    const adminContact = dbSettings.private_contact_url || 'https://t.me/admin_boutique';
+                    const adminContact = dbSettings.private_contact_url || 'https://t.me/Farmstegridy_bot';
                     ctx.reply(t(user, 'msg_first_order_welcome', `👋 <b>Première commande !</b>\nContactez l'admin pour valider : {contact}`, { contact: adminContact }), { parse_mode: 'HTML' }).catch(() => {});
                 }
 
@@ -1558,10 +1427,7 @@ function setupOrderSystem(bot) {
                 const payIcon = pModes.find(m => m.id === paymentMethod.toLowerCase())?.icon || '💰';
                 const payLabel = pModes.find(m => m.id === paymentMethod.toLowerCase())?.label || paymentMethod;
 
-                const platformIcon = ctx.platform === 'whatsapp' ? '📱 [WHATSAPP]' : '✈️ [TELEGRAM]';
-
-                const baseNotifLivreur = (dbSettings.msg_order_notif_livreur || `🆕 <b>NOUVELLE COMMANDE !</b>\n\n🌐 Plateforme : {platform}\n📦 {product_list}\n📍 {address}\n{scheduled}\n💰 <b>{total}€ ({pay_icon} {pay_label})</b>`)
-                    .replace('{platform}', platformIcon)
+                const baseNotifLivreur = (dbSettings.msg_order_notif_livreur || `🆕 <b>NOUVELLE COMMANDE !</b>\n\n📦 {product_list}\n📍 {address}\n{scheduled}\n💰 <b>{total}€ ({pay_icon} {pay_label})</b>`)
                     .replace('{product_list}', esc(finalProductList))
                     .replace('{address}', esc(pending.address))
                     .replace('{scheduled}', (pending.scheduled_at ? `🕒 <b>Prévu pour : ${esc(pending.scheduled_at)}</b>` : `🕒 Dès que possible`))
@@ -1569,10 +1435,10 @@ function setupOrderSystem(bot) {
                     .replace('{pay_icon}', payIcon)
                     .replace('{pay_label}', payLabel);
 
-                const badge = isFirstOrder ? `\n🔥 <b>[ NOUVEAU CLIENT ]</b> 🔥\n` : '';
-                const baseNotifAdmin = (dbSettings.msg_order_received_admin || `🚨 <b>NOUVELLE COMMANDE !</b>\n{badge}\n🌐 Plateforme : {platform}\n👤 {client_name} (@{username})\n📦 {product_list}\n📍 {address}\n💰 {total}€ ({pay_icon} {pay_label})\n🔑 ID : <code>{order_id}</code>`)
+                const platformBadge = ctx.platform === 'whatsapp' ? '📱 <b>[ WHATSAPP ]</b>' : '✈️ <b>[ TELEGRAM ]</b>';
+                const badge = (isFirstOrder ? `\n🔥 <b>[ NOUVEAU CLIENT ]</b> 🔥\n` : '') + platformBadge + '\n';
+                const baseNotifAdmin = (dbSettings.msg_order_received_admin || `🚨 <b>NOUVELLE COMMANDE !</b>\n{badge}\n👤 {client_name} (@{username})\n📦 {product_list}\n📍 {address}\n💰 {total}€ ({pay_icon} {pay_label})\n🔑 ID : <code>{order_id}</code>`)
                     .replace('{badge}', badge)
-                    .replace('{platform}', platformIcon)
                     .replace('{client_name}', esc(ctx.from.first_name))
                     .replace('{username}', (ctx.from.username ? esc(ctx.from.username) : 'Inconnu'))
                     .replace('{product_list}', esc(finalProductList))
@@ -1583,8 +1449,8 @@ function setupOrderSystem(bot) {
                     .replace('{order_id}', order.id);
 
                 const adminBtns = Markup.inlineKeyboard([
-                    [Markup.button.callback('🤝 ASSIGNER', `ao_l_${order.id}`)],
-                    [Markup.button.callback('⚙️ GÉRER', `ao_v_${order.id}`)]
+                    [Markup.button.callback('🤝 ASSIGNER', `admin_order_assign_list_${order.id}`)],
+                    [Markup.button.callback('⚙️ GÉRER', `admin_order_view_${order.id}`)]
                 ]).reply_markup;
 
                 // Envois réels
@@ -1610,28 +1476,20 @@ function setupOrderSystem(bot) {
         const orderId = ctx.match[1];
         const order = await getOrder(orderId);
         if (!order) return ctx.answerCbQuery('❌ Commande introuvable.');
-
-        await updateOrderStatus(orderId, 'pending'); // Passe en attente de livreur
+        await updateOrderStatus(orderId, 'pending');
         await ctx.answerCbQuery('✅ Paiement validé !');
-        
-        // Notification client
-        await sendTelegramMessage(order.user_id, `✅ <b>Paiement Validé !</b>\n\nVotre commande <code>#${orderId.slice(-5)}</code> a été confirmée par nos services. Recherche d'un livreur en cours...`, { parse_mode: 'HTML' });
-
-        // Update admin message
-        await ctx.editMessageCaption(`✅ <b>PAIEMENT VALIDÉ</b>\n\nL'ordre <code>#${orderId.slice(-5)}</code> est maintenant en cours de livraison.`, Markup.inlineKeyboard([])).catch(() => {});
+        await sendTelegramMessage(order.user_id, `✅ <b>Paiement Validé !</b>\n\nVotre commande <code>#${orderId.slice(-5)}</code> est confirmée.`, { parse_mode: 'HTML' });
+        await ctx.editMessageCaption(`✅ <b>PAIEMENT VALIDÉ</b>`, Markup.inlineKeyboard([])).catch(() => {});
     });
 
     bot.action(/^reject_payment_(.+)$/, async (ctx) => {
         const orderId = ctx.match[1];
         const order = await getOrder(orderId);
         if (!order) return ctx.answerCbQuery('❌ Commande introuvable.');
-
         await updateOrderStatus(orderId, 'cancelled');
         await ctx.answerCbQuery('❌ Paiement rejeté.');
-
-        await sendTelegramMessage(order.user_id, `❌ <b>Paiement Refusé</b>\n\nVotre preuve de paiement pour la commande <code>#${orderId.slice(-5)}</code> a été refusée. Veuillez contacter le support.`, { parse_mode: 'HTML' });
-
-        await ctx.editMessageCaption(`❌ <b>PAIEMENT REJETÉ</b>\n\nL'ordre <code>#${orderId.slice(-5)}</code> a été annulé.`, Markup.inlineKeyboard([])).catch(() => {});
+        await sendTelegramMessage(order.user_id, `❌ <b>Paiement Refusé</b>\n\nLa preuve pour la commande <code>#${orderId.slice(-5)}</code> a été refusée.`, { parse_mode: 'HTML' });
+        await ctx.editMessageCaption(`❌ <b>PAIEMENT REJETÉ</b>`, Markup.inlineKeyboard([])).catch(() => {});
     });
 
     // ========== SYSTEME LIVREUR ==========
@@ -1700,7 +1558,7 @@ function setupOrderSystem(bot) {
             user.data.is_available = isAvailable;
         }
 
-        const { getLivreurMenuKeyboard } = require('./start');
+        const { getLivreurMenuKeyboard, updateMenuButton } = require('./start');
         const city = user?.current_city || user?.data?.current_city || 'Non défini';
         const text = `${settings.ui_icon_livreur} <b>${settings.label_livreur || 'Espace Livreur'}</b>\n\n` +
             `👤 ${user ? (user.first_name || 'Inconnu') : ctx.from.first_name}\n` +
@@ -1711,8 +1569,8 @@ function setupOrderSystem(bot) {
         const keyboard = await getLivreurMenuKeyboard(ctx, settings, user || { is_available: isAvailable, data: { is_available: isAvailable } });
         await safeEdit(ctx, text, keyboard);
 
-        // 5. Cleanup bouton "Démarrer"
-        ctx.telegram.setChatMenuButton(ctx.chat.id, { type: 'commands' }).catch(() => { });
+        // 5. Update menu button dynamically
+        await updateMenuButton(ctx, user, settings, false);
 
         // 6. Relayer à l'admin
         await notifyAdmins(bot, `🔔 <b>STATUT LIVREUR</b>\n\n👤 ${ctx.from.first_name}\n📍 Secteur : ${city.toUpperCase()}\n🔘 ${isAvailable ? '✅ DISPONIBLE' : '❌ INDISPONIBLE'}`);
@@ -1872,38 +1730,38 @@ function setupOrderSystem(bot) {
 
     bot.action(/^view_order_(.+)$/, async (ctx) => {
         const userId = `${ctx.platform}_${ctx.from.id}`;
-        const user = ctx.state?.user || await getUser(userId);
+        // IMPORTANT: Always fetch fresh from DB to get accurate is_livreur flag
+        const user = await getUser(userId);
         const orderId = ctx.match[1];
         const order = await getOrder(orderId);
         const settings = ctx.state?.settings || await getAppSettings();
         
-        if (!order) return ctx.answerCbQuery('❌ NO ORDER');
+        if (!order) return ctx.answerCbQuery('❌ Commande introuvable.');
 
-        // On vérifie si l'appelant est le livreur (pour le menu de prise en charge) 
-        // ou le client (pour le suivi).
-        const isLivreurRole = user?.is_livreur;
+        // Si c'est un livreur qui regarde une commande disponible, on lui montre le menu d'acceptation
+        const isLivreurRole = user?.is_livreur === true;
+        console.log(`[ViewOrder] User ${userId} is_livreur=${isLivreurRole}, order status=${order.status}`);
         
-        // Si c'est un livreur qui regarde une commande "pending", on lui montre le menu d'acceptation
         if (isLivreurRole && (order.status === 'pending' || order.status === 'supplier_pending')) {
             await ctx.answerCbQuery();
-            const text = t(user, 'msg_order_mission_details_text', `📦 <b>Détails de la mission #${orderId.slice(-5)}</b>\n\n`, { id: orderId.slice(-5) }) +
-                t(user, 'label_product', `🛒 Produit :`) + ` <b>${order.product_name}</b>\n` +
-                t(user, 'label_address', `📍 Adresse :`) + ` <code>${order.address || 'Non spécifiée'}</code>\n` +
-                t(user, 'label_price_total', `💰 Total :`) + ` <b>${order.total_price}€</b>\n` +
-                t(user, 'label_scheduled_for', `🕒 Créneau :`) + ` <b>${order.scheduled_at ? order.scheduled_at : t(user, 'label_delivery_asap', 'Dès que possible (ASAP)')}</b>\n\n` +
-                t(user, 'msg_accept_confirm', `<i>Voulez-vous prendre en charge cette livraison ?</i>`);
+            const text = `📦 <b>Mission disponible #${orderId.slice(-5)}</b>\n\n` +
+                `🛒 Produit : <b>${order.product_name}</b>\n` +
+                `📍 Adresse : <code>${order.address || 'Non spécifiée'}</code>\n` +
+                `💰 Total à encaisser : <b>${order.total_price}€</b>\n` +
+                `🕒 Créneau : <b>${order.scheduled_at ? order.scheduled_at : 'Dès que possible (ASAP)'}</b>\n\n` +
+                `<i>Voulez-vous prendre en charge cette livraison ?</i>`;
 
             const buttons = [
-                [Markup.button.callback(t(user, 'btn_accept_mission_label', '🔥 ACCEPTER LA MISSION 🔥'), `take_order_${orderId}`)],
-                [Markup.button.callback(t(user, 'btn_cancel', settings.btn_cancel || '◀️ Annuler'), 'show_available_orders')]
+                [Markup.button.callback('🔥 ACCEPTER LA MISSION 🔥', `take_order_${orderId}`)],
+                [Markup.button.callback('◀️ Retour Commandes', 'show_available_orders')]
             ];
             return safeEdit(ctx, text, Markup.inlineKeyboard(buttons));
         }
 
         // Sinon, c'est la vue CLIENT (suivi de commande)
         await ctx.answerCbQuery();
-        let statusEmoji = o => o.status === 'pending' ? '⏳' : (o.status === 'taken' ? '🚚' : (o.status === 'delivered' ? '✅' : '❌'));
-        let statusLabel = o => o.status === 'pending' ? t(user, 'label_pending', 'En attente') : (o.status === 'taken' ? t(user, 'label_taken', 'En cours') : (o.status === 'delivered' ? t(user, 'label_delivered', 'Livrée') : t(user, 'label_cancelled', 'Annulée')));
+        let statusEmoji = o => (o.status === 'pending' || o.status === 'supplier_pending') ? '⏳' : (o.status === 'taken' ? '🚚' : (o.status === 'delivered' ? '✅' : '❌'));
+        let statusLabel = o => (o.status === 'pending' || o.status === 'supplier_pending') ? t(user, 'label_pending', 'En attente') : (o.status === 'taken' ? t(user, 'label_taken', 'En cours') : (o.status === 'delivered' ? t(user, 'label_delivered', 'Livrée') : t(user, 'label_cancelled', 'Annulée')));
 
         let text = t(user, 'msg_order_tracking', `📦 <b>Suivi Commande #${orderId.slice(-5)}</b>`, { id: orderId.slice(-5) }) + `\n\n` +
             t(user, 'label_status', `🔹 Statut :`) + ` ${statusEmoji(order)} <b>${statusLabel(order)}</b>\n` +
@@ -1915,40 +1773,12 @@ function setupOrderSystem(bot) {
             text += t(user, 'label_livreur', `👤 Livreur :`) + ` <b>${order.livreur_name}</b>\n`;
         }
         
-        // Section historique du chat en cours pour le client
-        const chatHist = activeChatHistory.get(orderId);
-        if (chatHist) {
-            text += `\n💬 <b>CHAT EN COURS (${chatHist.count || 0}/6) :</b>\n` +
-                `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
-                `"<i>${chatHist.lastMessage}</i>"\n`;
-        }
-
-        let contactButtons = [];
-        if (order.status === 'taken' && order.livreur_id) {
-            const lIdClean = String(order.livreur_id).replace('telegram_', '').replace('whatsapp_', '');
-            if (!isNaN(lIdClean) && !lIdClean.includes('@')) {
-                contactButtons.push(Markup.button.url('✈️ Profil Livreur', `tg://user?id=${lIdClean}`));
-            }
-            const livreurUser = await getUser(order.livreur_id);
-            let phoneNum = livreurUser ? (livreurUser.phone || livreurUser.data?.phone || livreurUser.data?.phoneNumber) : null;
-            if (!phoneNum && String(order.livreur_id).includes('@s.whatsapp.net')) {
-                phoneNum = String(order.livreur_id).split('@')[0];
-            }
-            if (phoneNum) {
-                const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
-                if (cleanPhone.length >= 8) {
-                    contactButtons.push(Markup.button.url('📞 Appeler le livreur', `tel:${cleanPhone}`));
-                }
-            }
-        }
-
-        const feedbackBtn = order.status === 'delivered' ? [Markup.button.callback(t(user, 'btn_leave_review', '⭐ Laisser un avis'), `rate_order_${orderId}`)] : [];
+        const feedbackBtn = order.status === 'delivered' ? [Markup.button.callback(t(user, 'btn_leave_review', '⭐ Laisser un avis'), `feedback_start_${orderId}`)] : [];
         const cancelBtn = (order.status === 'pending' || order.status === 'taken' || order.status === 'supplier_pending') ? [Markup.button.callback(t(user, 'btn_cancel_order_label', '❌ Annuler la commande'), `cancel_order_client_${orderId}`)] : [];
-        const chatBtn = (order.status === 'taken') ? [Markup.button.callback(chatHist ? '💬 Répondre au livreur' : t(user, 'btn_chat_livreur', '💬 Parler au livreur'), `chat_livreur_${orderId}`)] : [];
+        const chatBtn = (order.status === 'taken') ? [Markup.button.callback(t(user, 'btn_chat_livreur', '💬 Parler au livreur'), `chat_livreur_${orderId}`)] : [];
 
         const buttons = [];
         if (chatBtn.length) buttons.push(chatBtn);
-        if (contactButtons.length) buttons.push(contactButtons);
         if (cancelBtn.length) buttons.push(cancelBtn);
         if (feedbackBtn.length) buttons.push(feedbackBtn);
         buttons.push([Markup.button.callback(t(user, 'btn_back_orders', '◀️ Retour mes commandes'), 'my_orders')]);
@@ -1957,17 +1787,24 @@ function setupOrderSystem(bot) {
     });
 
     bot.action(/^take_order_(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
         const orderId = ctx.match[1];
+        console.log(`[TakeOrder] Recu pour #${orderId} par ${ctx.from.id}`);
+        await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
         const order = await getOrder(orderId);
 
-        if (!order || order.status !== 'pending') return safeEdit(ctx, settings.msg_order_not_available || '❌ Cette commande n\'est plus disponible.', Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'show_available_orders')]]));
+        if (!order || order.status !== 'pending') {
+            console.warn(`[TakeOrder] Commande #${orderId} non disponible (statut: ${order?.status})`);
+            return safeEdit(ctx, settings.msg_order_not_available || '❌ Cette commande n\'est plus disponible.', Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'show_available_orders')]]));
+        }
 
+        console.log(`[TakeOrder] Updating status to taken for #${orderId}`);
         await updateOrderStatus(orderId, 'taken', {
             livreur_id: `${ctx.platform}_${ctx.from.id}`,
             livreur_name: ctx.from.first_name
         });
+
+        console.log(`[TakeOrder] Notifying driver ${ctx.from.id} for #${orderId}`);
         await safeEdit(ctx,
             `${settings.ui_icon_success} <b>Commande #${orderId.slice(-5)} acceptée !</b>\n\n` +
             `📦 Produit : <b>${order.product_name}</b>\n` +
@@ -1987,10 +1824,11 @@ function setupOrderSystem(bot) {
                     [Markup.button.callback('◀️ Retour Menu Livreur', 'livreur_menu')]
                 ])
             }
-        ).catch(() => { });
+        ).catch((e) => { console.error(`[TakeOrder] safeEdit Driver Error:`, e.message); });
 
         // Notifier le client avec option d'annulation et aide
         if (order.user_id) {
+            console.log(`[TakeOrder] Notifying client ${order.user_id} for #${orderId}`);
             await sendTelegramMessage(order.user_id,
                 `🚚 <b>Bonne nouvelle !</b>\n\n` +
                 `Votre commande #${orderId.slice(-5)} est prise en charge par <b>${settings.bot_name || 'notre équipe'}</b>.\n` +
@@ -2070,95 +1908,34 @@ function setupOrderSystem(bot) {
         const count = parseInt(order?.chat_count) || 0;
         const isLivreur = `${ctx.platform}_${ctx.from.id}` === order.livreur_id;
 
-        // Validation stricte du schéma sans créer de bulles textuelles inutiles
+        // Validation stricte du schéma : 1. Client -> 2. Livreur -> 3. Client ... -> 6
         if (count >= 6) {
-            return ctx.answerCbQuery("⚠️ Limite d'échanges atteinte (6/6). Le chat est clôturé.", true);
+            return ctx.reply("⚠️ <b>Limite d'échanges atteinte.</b>\n\nLe chat est clôturé (6/6).", { parse_mode: 'HTML' });
         }
 
-        if (count % 2 === 1 && !isLivreur) {
-            return ctx.answerCbQuery(`⏳ Attendez la réponse du livreur. (Message ${count}/6 déjà envoyé)`, true);
+        // Tour de jeu : client envoie msg 1, livreur répond msg 2, client msg 3...
+        // Quand count est impair (1,3,5) → c'est au livreur de répondre
+        // Quand count est pair et > 0 (2,4) → c'est au client de répondre
+        const isLivreurTurn = (count % 2 === 1);
+        if (isLivreurTurn && !isLivreur) {
+            return ctx.reply(`⏳ <b>Attendez la réponse du livreur.</b> (Message ${count}/6 envoyé)`, { parse_mode: 'HTML' });
         }
-        if (count % 2 === 0 && count > 0 && isLivreur) {
-            return ctx.answerCbQuery(`✅ Vous avez déjà répondu. Le client doit renvoyer un message (${count}/6).`, true);
+        if (!isLivreurTurn && count > 0 && isLivreur) {
+            return ctx.reply(`⏳ <b>Attendez que le client réponde.</b> (Message ${count}/6 envoyé)`, { parse_mode: 'HTML' });
         }
 
         // Nettoyage des autres états
         awaitingDelayReason.delete(userId);
-        awaitingAddressDetails.delete(userId);
 
         const targetId = isLivreur ? order.user_id : order.livreur_id;
         const targetRole = isLivreur ? "client" : "livreur";
 
-        // Sauvegarde de l'ID du message de prompt pour effacer proprement le clavier inline une fois répondu
-        awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { 
-            orderId, 
-            targetId, 
-            role: targetRole,
-            promptMsgId: ctx.callbackQuery?.message?.message_id 
-        });
+        awaitingChatReply.set(`${ctx.platform}_${ctx.from.id}`, { orderId, targetId, role: targetRole });
 
-        const backBtnTarget = isLivreur ? `view_active_${orderId}` : `view_order_${orderId}`;
-        const chatHist = activeChatHistory.get(orderId);
-        
-        let promptText = `💬 <b>SESSION DE CHAT (${count}/6)</b>\n\n`;
-        if (chatHist) {
-            promptText += `📜 <b>Dernier échange :</b>\n` +
-                `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
-                `"<i>${chatHist.lastMessage}</i>"\n\n`;
-        }
+        let promptText = `💬 <b>Message (${count + 1}/6)</b>\nEnvoyez votre message :`;
+        if (count === 5) promptText = "💬 <b>Dernier message de conclusion (6/6)</b>\nEnvoyez votre message final :";
 
-        promptText += `👉 <b>À votre tour :</b>\n` +
-            (count === 5 ? "⚠️ <i>Ceci est le dernier message de conclusion (6/6).</i>\n" : "") +
-            `Saisissez et envoyez votre message ci-dessous :`;
-
-        let contactButtons = [];
-        const seenUrls = new Set();
-        const addContactBtn = (label, url) => {
-            if (!seenUrls.has(url)) {
-                seenUrls.add(url);
-                contactButtons.push(Markup.button.url(label, url));
-            }
-        };
-
-        if (targetId) {
-            const targetUKey = targetId.includes('@') || targetId.startsWith('whatsapp') ? targetId : `telegram_${targetId.replace('telegram_', '')}`;
-            const targetUser = await getUser(targetUKey);
-            
-            const cleanId = targetUser ? String(targetUser.id).replace('telegram_', '').replace('whatsapp_', '') : targetId.replace('telegram_', '').replace('whatsapp_', '');
-            if (!isNaN(cleanId) && !cleanId.includes('@')) {
-                if (!isLivreur) {
-                    addContactBtn('✈️ Telegram Livreur', `tg://user?id=${cleanId}`);
-                }
-            }
-
-            let phoneNum = targetUser ? (targetUser.phone || targetUser.data?.phone || targetUser.data?.phoneNumber) : null;
-            if (!phoneNum && isLivreur && order.phone) {
-                phoneNum = order.phone;
-            }
-            if (!phoneNum && targetUser?.platform === 'whatsapp') {
-                phoneNum = String(targetUser.platform_id || '').split('@')[0].split(':')[0];
-            }
-            if (!phoneNum && targetId.includes('@s.whatsapp.net')) {
-                phoneNum = targetId.split('@')[0];
-            }
-            
-            if (phoneNum) {
-                const cleanPhone = String(phoneNum).replace(/[^\d+]/g, '');
-                if (cleanPhone.length >= 8) {
-                    addContactBtn(isLivreur ? '📞 Appeler le client' : '📞 Appeler le livreur', `tel:${cleanPhone}`);
-                }
-            }
-        }
-
-        const buttons = [];
-        if (contactButtons.length > 0) {
-            for (let i = 0; i < contactButtons.length; i += 2) {
-                buttons.push(contactButtons.slice(i, i + 2));
-            }
-        }
-        buttons.push([Markup.button.callback('◀️ Retour aux détails', backBtnTarget)]);
-
-        await safeEdit(ctx, promptText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+        await ctx.reply(promptText, { parse_mode: 'HTML' });
     });
 
     bot.action(/^abandon_(.+)$/, async (ctx) => {
@@ -2169,7 +1946,6 @@ function setupOrderSystem(bot) {
         if (!order) return safeEdit(ctx, settings.msg_order_not_found || '❌ Commande introuvable.');
 
         await updateOrderStatus(orderId, 'validated', { livreur_id: null, livreur_name: null });
-        activeChatHistory.delete(orderId);
         await safeEdit(ctx, `⚠️ <b>COMMANDE ABANDONNÉE</b>\n\nLa commande #${orderId.slice(-5)} a été remise dans le pool.`, {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Retour Menu', 'livreur_menu')]])
@@ -2192,7 +1968,6 @@ function setupOrderSystem(bot) {
             livreur_name: ctx.from.first_name
         });
         await incrementOrderCount(`${ctx.platform}_${ctx.from.id}`);
-        activeChatHistory.delete(orderId);
 
         await safeEdit(ctx, `✅ Commande <b>#${orderId.slice(-5)}</b> marquée comme LIVRÉE !\nFélicitations pour votre livraison.`, {
             parse_mode: 'HTML',
@@ -2228,11 +2003,16 @@ function setupOrderSystem(bot) {
         }
 
         await updateOrderStatus(orderId, 'cancelled');
-        activeChatHistory.delete(orderId);
         await ctx.answerCbQuery('Votre commande a été annulée. ❌', true);
 
         const shortId = orderId.slice(-5);
         await safeEdit(ctx, `❌ <b>Commande #${shortId} annulée</b>\n\nVotre demande d'annulation a bien été prise en compte.`, Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Retour Menu', 'main_menu')]]));
+        
+        const { appendChatHistory } = require('../services/database');
+        appendChatHistory(order.user_id, {
+            role: 'system',
+            text: `⚠️ La commande #${shortId} a été annulée par vous.`
+        }).catch(() => {});
 
         // Notifier Admin
         const alertMsg = `⚠️ <b>ANNULATION CLIENT</b>\n\nLa commande <b>#${shortId}</b> a été annulée par le client.\n👤 Client: ${ctx.from.first_name}`;
@@ -2254,11 +2034,16 @@ function setupOrderSystem(bot) {
         }
 
         await updateOrderStatus(orderId, 'cancelled');
-        activeChatHistory.delete(orderId);
         await ctx.answerCbQuery('La commande a été annulée. ❌', true);
 
         const shortId = orderId.slice(-5);
         await safeEdit(ctx, `🚩 <b>COMMANDE #${shortId} ANNULÉE</b>\n\nL'annulation a bien été effectuée.`, Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_to_livreur_menu || '◀️ Menu Livreur', 'livreur_menu')]]));
+        
+        const { appendChatHistory } = require('../services/database');
+        appendChatHistory(order.user_id, {
+            role: 'system',
+            text: `⚠️ La commande #${shortId} a été annulée par le livreur.`
+        }).catch(() => {});
 
         // Notifier Admin
         const alertMsg = `🚩 <b>ANNULATION LIVREUR</b>\n\nLa commande <b>#${shortId}</b> a été annulée par le livreur.\n👤 Livreur: ${ctx.from.first_name}`;
@@ -2813,7 +2598,11 @@ function setupOrderSystem(bot) {
                         return await ctx.reply("❌ Cette commande est terminée ou annulée. La discussion est fermée.").catch(() => { });
                     }
 
-                    const reply = String(ctx.message.text || '');
+                    const reply = String(ctx.message.text || ctx.message.caption || '');
+                    let photo = null, video = null;
+                    if (ctx.message.photo && ctx.message.photo.length > 0) photo = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+                    if (ctx.message.video) { video = ctx.message.video.file_id; }
+                    
                     const newCount = await incrementChatCount(orderId);
                     const shortId = String(orderId).slice(-5);
 
@@ -2829,50 +2618,40 @@ function setupOrderSystem(bot) {
                     const roleLabel = isLivreur ? "livreur" : "client";
                     const targetLabelText = isLivreur ? "le livreur" : "au client"; // Inversé pour la logique de bouton
 
-                    const chatMsg = await sendTelegramMessage(targetId,
-                        `💬 <b>Message du ${roleLabel} (Commande #${shortId})</b>\n\n"<i>${safeHtml(reply)}</i>"\n\n` +
-                        `📊 <i>Message ${newCount}/6</i>${newCount >= 6 ? '\n⚠️ <b>Dernier échange consommé.</b>' : ''}`,
-                        {
-                            ...Markup.inlineKeyboard([
-                                ...(newCount < 6 ? [[Markup.button.callback(`💬 Répondre (Tour ${newCount + 1}/6)`, `chat_livreur_${orderId}`)]] : []),
-                                [Markup.button.callback('◀️ Menu', isLivreur ? 'livreur_menu' : 'main_menu')]
-                            ])
-                        }
-                    );
+                    const extraOpts = {
+                        ...Markup.inlineKeyboard([
+                            ...(newCount < 6 ? [[Markup.button.callback(`💬 Répondre (Tour ${newCount + 1}/6)`, `chat_livreur_${orderId}`)]] : []),
+                            [Markup.button.callback('◀️ Menu', isLivreur ? 'livreur_menu' : 'main_menu')]
+                        ])
+                    };
+                    if (photo) extraOpts.photo = photo;
+                    if (video) extraOpts.video = video;
+
+                    let msgText = `💬 <b>Message du ${roleLabel} (Commande #${shortId})</b>\n\n`;
+                    if (reply) msgText += `"<i>${safeHtml(reply)}</i>"\n\n`;
+                    else if (photo) msgText += `📸 <i>Photo reçue</i>\n\n`;
+                    else if (video) msgText += `🎥 <i>Vidéo reçue</i>\n\n`;
+                    msgText += `📊 <i>Message ${newCount}/6</i>${newCount >= 6 ? '\n⚠️ <b>Dernier échange consommé.</b>' : ''}`;
+
+                    const chatMsg = await sendTelegramMessage(targetId, msgText, extraOpts);
                     if (chatMsg) addMessageToTrack(targetId, chatMsg.message_id).catch(() => { });
 
-                    // Sauvegarder l'historique du dernier message en cours
-                    activeChatHistory.set(orderId, {
-                        lastMessage: reply,
-                        senderRole: roleLabel,
-                        senderName: ctx.from.first_name,
-                        timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                        count: newCount
-                    });
-                    saveClientReply(orderId, reply).catch(() => {});
+                    // Enregistrer dans l'historique de chat global
+                    const { appendChatHistory } = require('../services/database');
+                    appendChatHistory(order.user_id, {
+                        role: isLivreur ? 'livreur' : 'client',
+                        target: isLivreur ? 'client' : 'livreur',
+                        text: reply || (photo ? '(Photo)' : (video ? '(Vidéo)' : '')),
+                        orderId: orderId
+                    }).catch(() => {});
 
                     // Alerte aux admins via service central
-                    const alertMsg = `💬 <b>CHAT ${roleLabel.toUpperCase()}</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 De : ${safeHtml(ctx.from.first_name)}\n📝 Message : "<i>${safeHtml(reply)}</i>"`;
+                    const alertMsg = `💬 <b>CHAT ${roleLabel.toUpperCase()}</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 De : ${safeHtml(ctx.from.first_name)}\n📝 Message : ${reply ? `"<i>${safeHtml(reply)}</i>"` : (photo ? '📸 Photo' : '🎥 Vidéo')}`;
                     await notifyAdmins(bot, alertMsg);
 
                     const targetRoleLabel = isLivreur ? "client" : "livreur";
                     const successIcon = settings ? (settings.ui_icon_success || '✅') : '✅';
-                    const backAction = isLivreur ? `view_active_${orderId}` : `view_order_${orderId}`;
-                    const successKeyboard = Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour à la commande', backAction)]]);
-
-                    if (chatData.promptMsgId) {
-                        // Remplacement de l'ancien message de prompt par la confirmation pour effacer proprement le menu obsolète
-                        ctx.telegram.editMessageText(ctx.from.id, chatData.promptMsgId, null, 
-                            `${successIcon} <b>Message ${newCount}/6 transmis au ${targetRoleLabel}.</b>\n\n"<i>${safeHtml(reply)}</i>"`, 
-                            { parse_mode: 'HTML', ...successKeyboard }
-                        ).catch(() => {});
-                        // Suppression native de la bulle de saisie de l'utilisateur pour un rendu irréprochable
-                        ctx.deleteMessage().catch(() => {});
-                        addMessageToTrack(userId, chatData.promptMsgId, true).catch(() => {});
-                    } else {
-                        const fb = await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`, { parse_mode: 'HTML', ...successKeyboard }).catch(() => { });
-                        if (fb && fb.message_id) addMessageToTrack(userId, fb.message_id, true).catch(() => {});
-                    }
+                    await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`).catch(() => { });
                 } else {
                     await ctx.reply("❌ Commande introuvable pour ce chat.").catch(() => { });
                 }
@@ -2951,7 +2730,7 @@ function setupOrderSystem(bot) {
         // settings already defined above
         let detailText = `📦 <b>Détails Livraison #${orderId.slice(-5)}</b>\n\n` +
             `📍 Adresse : <code>${order.address}</code>\n` +
-            `💰 À encaisser : <b>${order.total_price}€</b>\n\n`;
+            `💰 À encaisser : <b>${order.total_price || 0}€</b>\n\n`;
 
         if (order.scheduled_at) {
             detailText = `🗓 <b>LIVRAISON PLANIFIÉE</b>\n` +
@@ -2960,29 +2739,19 @@ function setupOrderSystem(bot) {
             detailText = `🚀 <b>LIVRAISON IMMÉDIATE (ASAP)</b>\n\n` + detailText;
         }
 
-        // Section historique du chat en cours
-        const chatHist = activeChatHistory.get(orderId);
-        if (chatHist) {
-            detailText += `💬 <b>CHAT EN COURS (${chatHist.count || 0}/6) :</b>\n` +
-                `👤 <b>${chatHist.senderRole === 'client' ? 'Client' : 'Livreur'} (${chatHist.senderName || ''})</b> à ${chatHist.timestamp || ''} :\n` +
-                `"<i>${chatHist.lastMessage}</i>"\n\n`;
-        }
-
-        const actionButtons = [
-            [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
-            [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
-            [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
-            [Markup.button.callback(chatHist ? '💬 Répondre au client' : '💬 Parler au client', `chat_livreur_${orderId}`)],
-            [Markup.button.callback(`${settings.ui_icon_success} MARQUER COMME LIVRÉE`, `finish_${orderId}`)],
-            [Markup.button.callback(settings.btn_abandon_delivery || '❌ Abandonner la livraison', `abandon_${orderId}`)],
-            [Markup.button.callback('🚩 ANNULER LA COMMANDE', `cancel_order_livreur_${orderId}`)],
-            [Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'active_deliveries')]
-        ];
-
         await safeEdit(ctx, detailText + `Utilisez les boutons ci-dessous pour avancer :`,
             {
                 parse_mode: 'HTML',
-                ...Markup.inlineKeyboard(actionButtons)
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback('⏰ Arrivée -1h', `notify_${orderId}_1h`)],
+                    [Markup.button.callback(settings.btn_notify_30min || '⏳ 30 min', `notify_${orderId}_30m`), Markup.button.callback(settings.btn_notify_10min || '⏳ 10 min', `notify_${orderId}_10m`)],
+                    [Markup.button.callback('⚡ 5 min', `notify_${orderId}_5m`), Markup.button.callback('📍 Arrivé', `notify_${orderId}_here`)],
+                    [Markup.button.callback('💬 Parler au client', `chat_livreur_${orderId}`)],
+                    [Markup.button.callback(`${settings.ui_icon_success} MARQUER COMME LIVRÉE`, `finish_${orderId}`)],
+                    [Markup.button.callback(settings.btn_abandon_delivery || '❌ Abandonner la livraison', `abandon_${orderId}`)],
+                    [Markup.button.callback('🚩 ANNULER LA COMMANDE', `cancel_order_livreur_${orderId}`)],
+                    [Markup.button.callback(settings.btn_back_generic || '◀️ Retour', 'active_deliveries')]
+                ])
             }
         );
     });
@@ -3007,8 +2776,9 @@ function setupOrderSystem(bot) {
             const settings = await getAppSettings();
             const activeOrders = await getClientActiveOrders(`${ctx.platform}_${ctx.from.id}`);
 
-            let text = `<b>${settings.label_help || 'Aide & Support'}</b>\n\n` +
-                `${settings.msg_help_intro || 'Besoin d\'aide ? Choisissez une option ci-dessous :'}`;
+            let text = `<b>✨ CENTRE D’ASSISTANCE — ${settings.bot_name || 'Farmstegridy_bot'}</b>\n\n` +
+                `<i>Votre satisfaction est notre priorité. Nos équipes sont disponibles pour vous accompagner.</i>\n\n` +
+                `<b>Comment pouvons-nous vous aider aujourd'hui ?</b>`;
 
             const buttons = [];
             if (activeOrders.length > 0) {
@@ -3052,27 +2822,17 @@ function setupOrderSystem(bot) {
         const settings = await getAppSettings();
         await notifyAdmins(bot, `❓ <b>DEMANDE "OÙ EST MA COMMANDE"</b>\n\n🆔 ID : <code>#${shortId}</code>\n👤 Client : ${ctx.from.first_name}`);
 
-        await safeEdit(ctx, `✅ <b>Votre demande a été transmise !</b>\n\nLe livreur (ID #${shortId}) a été notifié de votre attente. Il reviendra vers vous très vite par message.`,
+        await safeEdit(ctx, `✅ <b>DEMANDE PRIORITAIRE ENVOYÉE</b>\n\n` +
+            `Nous avons alerté votre livreur pour la commande <code>#${shortId}</code>.\n\n` +
+            `Une mise à jour de votre estimation d'arrivée vous sera envoyée dans les plus brefs délais par message direct.\n\n` +
+            `<i>Merci de votre patience et de votre confiance.</i>`,
             Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'help_menu')]])
         );
     });
 
     // Note: help_chat_admin est géré par handlers/admin.js pour éviter les duplications
 
-    bot.action('user_chat_reply_admin', async (ctx) => {
-        await ctx.answerCbQuery();
-        awaitingUserSupportReply.set(`${ctx.platform}_${ctx.from.id}`, true);
-        return ctx.reply(`💬 <b>Réponse à l'administration</b>\n\nEnvoyez votre message maintenant (texte, photo ou vidéo) :`, {
-            parse_mode: 'HTML',
-            ...Markup.inlineKeyboard([[Markup.button.callback('❌ Annuler', 'cancel_user_support')]])
-        });
-    });
-
-    bot.action('cancel_user_support', async (ctx) => {
-        awaitingUserSupportReply.delete(`${ctx.platform}_${ctx.from.id}`);
-        await ctx.answerCbQuery('Annulé');
-        return showHelpMenu(ctx);
-    });
+    // Note: user_chat_reply_admin et cancel_user_support sont gérés par handlers/admin.js pour éviter les duplications (Map not defined)
 
 
     // Mode client pour les livreurs
@@ -3179,25 +2939,29 @@ function setupOrderSystem(bot) {
     bot.action('set_dispo_true', async (ctx) => {
         await ctx.answerCbQuery("✅ Vous êtes maintenant DISPONIBLE !");
         const docId = `${ctx.platform}_${ctx.from.id}`;
-        const { setLivreurAvailability, getUser, getAppSettings } = require('../services/database');
+        const { setLivreurAvailability, getUser, getAppSettings, getLivreurOrders } = require('../services/database');
         await setLivreurAvailability(docId, true);
-        const { getMainMenuKeyboard } = require('./start');
+        const { getLivreurMenuKeyboard } = require('./start');
         const settings = await getAppSettings();
         const user = await getUser(docId);
-        const keyboard = await getMainMenuKeyboard(ctx, settings, user);
-        await safeEdit(ctx, `🔘 Statut mis à jour : <b>DISPONIBLE ✅</b>`, { parse_mode: 'HTML', ...keyboard });
+        const activeOrders = await getLivreurOrders(user.id);
+        const hasActive = activeOrders.length > 0;
+        const keyboard = await getLivreurMenuKeyboard(ctx, settings, user, hasActive);
+        await safeEdit(ctx, `🚴 <b>Bienvenue, ${user.first_name} !</b>\n\n📍 Secteur : <b>${(user.current_city || 'INCONNU').toUpperCase()}</b>\n\n🔘 Statut mis à jour : <b>DISPONIBLE ✅</b>`, { parse_mode: 'HTML', ...keyboard });
     });
 
     bot.action('set_dispo_false', async (ctx) => {
         await ctx.answerCbQuery("❌ Vous êtes maintenant INDISPONIBLE.");
         const docId = `${ctx.platform}_${ctx.from.id}`;
-        const { setLivreurAvailability, getUser, getAppSettings } = require('../services/database');
+        const { setLivreurAvailability, getUser, getAppSettings, getLivreurOrders } = require('../services/database');
         await setLivreurAvailability(docId, false);
-        const { getMainMenuKeyboard } = require('./start');
+        const { getLivreurMenuKeyboard } = require('./start');
         const settings = await getAppSettings();
         const user = await getUser(docId);
-        const keyboard = await getMainMenuKeyboard(ctx, settings, user);
-        await safeEdit(ctx, `🔘 Statut mis à jour : <b>INDISPONIBLE ❌</b>`, { parse_mode: 'HTML', ...keyboard });
+        const activeOrders = await getLivreurOrders(user.id);
+        const hasActive = activeOrders.length > 0;
+        const keyboard = await getLivreurMenuKeyboard(ctx, settings, user, hasActive);
+        await safeEdit(ctx, `🚴 <b>Bienvenue, ${user.first_name} !</b>\n\n📍 Secteur : <b>${(user.current_city || 'INCONNU').toUpperCase()}</b>\n\n🔘 Statut mis à jour : <b>INDISPONIBLE ❌</b>`, { parse_mode: 'HTML', ...keyboard });
     });
 
     // ========== SYSTEME FOURNISSEUR ==========
@@ -3398,20 +3162,6 @@ module.exports = {
     pendingOrderConfirmation,
     awaitingDelayReason,
     awaitingChatReply,
-    awaitingReviewText,
     checkAbandonedCarts,
-    userLastActivity,
-    awaitingPaymentProof,
-    activeChatHistory,
-    hasActiveOrderState: (userId) => {
-        const id = String(userId);
-        const numericId = id.replace(/\D/g, '');
-        return awaitingAddressDetails.has(id) || awaitingAddressDetails.has(numericId) ||
-               pendingOrderConfirmation.has(id) || pendingOrderConfirmation.has(numericId) ||
-               pendingOrders.has(id) || pendingOrders.has(numericId) ||
-               awaitingDelayReason.has(id) || awaitingDelayReason.has(numericId) ||
-               awaitingChatReply.has(id) || awaitingChatReply.has(numericId) ||
-               awaitingReviewText.has(id) || awaitingReviewText.has(numericId) ||
-               awaitingPaymentProof.has(id) || awaitingPaymentProof.has(numericId);
-    }
+    userLastActivity
 };

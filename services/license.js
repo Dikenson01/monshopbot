@@ -24,8 +24,26 @@ function generateLicense(supabaseUrl) {
  * Returns true if LICENSE_KEY matches the HMAC of SUPABASE_URL.
  */
 function validateLicense() {
-    // License check bypassed as per owner instruction
-    return true;
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.LICENSE_KEY;
+    if (!url || !key) {
+        console.log(`[License] Manquant: URL=${!!url}, KEY=${!!key}`);
+        return false;
+    }
+    const normalized = url.replace(/\/+$/, '').toLowerCase();
+    const expected = _hmac(normalized);
+    
+    if (key !== expected) {
+        console.log(`[License] URL détectée: ${normalized}`);
+        console.log(`[License] Clé fournie: ${key.substring(0, 8)}...`);
+        console.log(`[License] Clé attendue: ${expected.substring(0, 8)}...`);
+    }
+
+    try {
+        return crypto.timingSafeEqual(Buffer.from(key, 'hex'), Buffer.from(expected, 'hex'));
+    } catch (e) {
+        return false;
+    }
 }
 
 module.exports = { generateLicense, validateLicense };

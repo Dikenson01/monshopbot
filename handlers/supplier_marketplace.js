@@ -590,8 +590,8 @@ function setupMarketplaceHandlers(bot) {
         await notifyAdmins(null, `🏪 <b>${supplier.name}</b>\n✅ Commande <b>#${orderId.slice(-5)}</b> acceptée.\n\nLe client a été notifié.`);
 
         // Notifier le client
-            const alertMsg = `⚠️ <b>RÉCUPÉRATION DE COMPTE</b>\n\nUne demande de réinitialisation du mot de passe a été faite depuis LE PLUG IDF.\n\nSouhaitez-vous modifier le mot de passe d'administration ?`;
-        await sendMessageToUser(order.user_id, alertMsg);
+        const clientMsg = `⭐️ <b>Bonne nouvelle !</b>\n\nVotre commande <b>#${orderId.slice(-5)}</b> a été validée par notre partenaire <b>${supplier.name}</b>.\n\nElle est en cours de préparation. 📦`;
+        await sendMessageToUser(order.user_id, clientMsg);
 
         // UI Fournisseur
         const text = (ctx.message.text || '').replace('NOUVELLE COMMANDE', 'COMMANDE ACCEPTÉE') + `\n\n✅ <b>Statut : Préparation</b>`;
@@ -1424,11 +1424,11 @@ function setupMarketplaceHandlers(bot) {
                     `🏪 Fournisseur : <b>${esc(data.supplierName || 'Inconnu')}</b>\n` +
                     `📦 Produit : <b>${esc(data.name)}</b>\n` +
                     `💰 Prix : <b>${data.price}€</b>\n\n` +
-                    `<i>Ce produit est masqué (is_available=false) dans le catalogue client jusqu'à votre validation DNS Mon Shop.</i>`;
+                    `<i>Ce produit est masqué (is_available=false) dans le catalogue client jusqu'à votre validation DNS le dashboard.</i>`;
 
                 await notifyAdmins(bot, adminMsg, {
                     reply_markup: {
-                        inline_keyboard: [[{ text: '⚙️ Gérer dans Mon Shop', url: process.env.DASHBOARD_URL || 'https://dashboard.example.com' }]]
+                        inline_keyboard: [[{ text: '⚙️ Gérer dans Dashboard', url: process.env.DASHBOARD_URL || 'https://dashboard.example.com' }]]
                     }
                 });
 
@@ -1483,21 +1483,4 @@ function setupMarketplaceHandlers(bot) {
     return { handleMarketplaceText, handleMarketplacePhoto, handleMarketplaceVideo };
 }
 
-module.exports = { 
-    setupMarketplaceHandlers, 
-    initMarketplaceState, 
-    clearAllAwaitingMaps,
-    hasActiveMarketplaceState: (userId) => {
-        const id = String(userId);
-        // On check à la fois avec le format complet (ex: telegram_12345) et purement numérique (12345)
-        const numericId = id.replace(/\D/g, '');
-        return awaitingProductName.has(id) || awaitingProductName.has(numericId) ||
-               awaitingProductPrice.has(id) || awaitingProductPrice.has(numericId) ||
-               awaitingProductDesc.has(id) || awaitingProductDesc.has(numericId) ||
-               awaitingProductPhoto.has(id) || awaitingProductPhoto.has(numericId) ||
-               awaitingProductStock.has(id) || awaitingProductStock.has(numericId) ||
-               awaitingProductCategory.has(id) || awaitingProductCategory.has(numericId) ||
-               awaitingProductEdit.has(id) || awaitingProductEdit.has(numericId) ||
-               awaitingSupplierAdminChat.has(id) || awaitingSupplierAdminChat.has(numericId);
-    }
-};
+module.exports = { setupMarketplaceHandlers, initMarketplaceState, clearAllAwaitingMaps };

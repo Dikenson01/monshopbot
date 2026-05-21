@@ -1,523 +1,169 @@
+require('dotenv').config();
+const server = require('./server');
+const Dispatcher = require('./services/dispatcher');
+const { database, getAppSettings } = require('./services/database');
 const fs = require('fs');
-const envPath = fs.existsSync('.env.railway') ? '.env.railway' : '.env';
-require('dotenv').config({ path: envPath });
-// [TEST RECONNECT] Supabase session persistence — push sans déconnexion WA
+const path = require('path');
 
-console.log(`[System] Loading environment from: ${envPath}`);
-if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID) {
-    console.log('[System] Detected Railway Environment');
-    console.log('[System] Deployment ID:', process.env.RAILWAY_DEPLOYMENT_ID || 'Unknown');
-    console.log('[System] Replica Index:', process.env.RAILWAY_REPLICA_INDEX || '0');
-    console.log('[System] Process ID:', process.pid);
-}
+// Détection d'environnement strict
+const IS_RAILWAY = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+const IS_RENDER = !!process.env.RENDER_EXTERNAL_URL;
 
-const { createServer, setBotInstance } = require('./server');
-const { dispatcher } = require('./services/dispatcher');
-const { registry } = require('./channels/ChannelRegistry');
-const { initChannels } = require('./services/channel_init');
-const { registerUser, getAppSettings, markUserBlocked, markUserUnblocked, getAllUsersForBroadcast, getAllActiveUsers, updateUserData } = require('./services/database');
-const { setBroadcastBot, broadcastMessage } = require('./services/broadcast');
-const { safeEdit, cleanupUserChat } = require('./services/utils');
-const { notifyAdmins } = require('./services/notifications');
-const { runAutomatedMarketing } = require('./services/marketing');
-
-// Handlers
-const { setupStartHandler, initStartState, getMainMenuKeyboard, getLivreurMenuKeyboard } = require('./handlers/start');
-const { setupAdminHandlers } = require('./handlers/admin');
-const { setupOrderSystem, initOrderState, checkAbandonedCarts } = require('./handlers/order_system');
-const { setupMarketplaceHandlers, initMarketplaceState } = require('./handlers/supplier_marketplace');
-
-const PORT = process.env.PORT || 3000;
-console.log(`[System] Final PORT determined: ${PORT}`);
-const awaitingPollResponse = new Map();
-let handleMarketplaceText = () => false;
-let handleMarketplacePhoto = () => false;
-let handleMarketplaceVideo = () => false;
-
-let isStarting = false;
-
-async function main() {
-    if (isStarting) return;
-    isStarting = true;
-
-    console.log('🚀 DÉMARRAGE VERSION RAILWAY STABLE...');
-    
-    const finalPort = process.env.PORT || 3000;
-
-    // 1. Démarrage du serveur Web IMMEDIAT
-    const server = createServer();
-    server.listen(finalPort, '0.0.0.0', () => {
-        const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
-        console.log(`\n✅ SERVEUR WEB ACTIF SUR LE PORT ${finalPort}`);
-        console.log(`🔗 TEST HEALTH : https://${baseDomain}/_health\n`);
-    });
-
-    // 2. Initialisation du Dispatcher (Simule Telegraf)
-    console.log('📦 Initialisation du Dispatcher...');
-    await dispatcher.init();
-
-    // Middleware de maintenance et tracking
-    dispatcher.use(async (ctx, next) => {
-        console.log(`[Middleware] Entry for user ${ctx.from.id} on ${ctx.platform}`);
-        try {
-            const settings = ctx.state.settings;
-
-            // 1. Check if the platform itself is enabled
-            if (ctx.platform === 'telegram' && settings.enable_telegram === false) {
-                if (ctx.callbackQuery) return ctx.answerCbQuery("ℹ️ Le service Telegram est actuellement désactivé.", { show_alert: true }).catch(() => {});
-                return ctx.reply("ℹ️ <b>Service Temporairement Indisponible</b>\n\nLe bot Telegram est actuellement désactivé par l'administration. Veuillez nous contacter sur WhatsApp ou réessayer plus tard.", { parse_mode: 'HTML' }).catch(() => {});
+async function bootstrap() {
+    try {
+        // Chargement dynamique de .env.railway si présent (en priorité)
+        if (IS_RAILWAY && fs.existsSync('.env.railway')) {
+            console.log("[System] Loading environment from: .env.railway");
+            const envContent = fs.readFileSync('.env.railway', 'utf-8');
+            const envConfig = require('dotenv').parse(envContent);
+            for (const k in envConfig) {
+                process.env[k] = envConfig[k];
             }
-            if (ctx.platform === 'whatsapp' && settings.enable_whatsapp === false) {
-                return ctx.reply("ℹ️ *Service Temporairement Indisponible*\n\nLe service WhatsApp est actuellement désactivé. Veuillez utiliser notre bot Telegram ou réessayer plus tard.").catch(() => {});
-            }
-
-            // 2. Check if maintenance mode is enabled
-            if (settings && (settings.maintenance_mode === true || settings.maintenance_mode === 'true')) {
-                const adminContact = settings.maintenance_contact || 'https://t.me/admin_boutique';
-                const maintenanceMessage = settings.maintenance_message || '🔧 <b>Le bot est actuellement en maintenance.</b>\n\nNous revenons bientôt !\n\nContactez l\'admin : @admin_boutique';
-
-                if (ctx.callbackQuery) {
-                    await ctx.answerCbQuery(maintenanceMessage, { show_alert: true }).catch(() => { });
-                    return;
-                }
-
-                if (ctx.message) {
-                    await ctx.reply(maintenanceMessage + `\n\n📱 Contact : ${adminContact}`, { parse_mode: 'HTML' }).catch(() => { });
-                    if (ctx.platform === 'telegram') await ctx.deleteMessage().catch(() => { });
-                    return;
-                }
-                return;
-            }
-
-            // Tracking activité pour paniers abandonnés
-            const { userLastActivity } = require('./handlers/order_system');
-            if (userLastActivity && ctx.from?.id) {
-                userLastActivity.set(ctx.from.id, Date.now());
-            }
-
-            // Gestion des bannissements
-            const registeredUser = ctx.state.user;
-            if (registeredUser && registeredUser.is_blocked) {
-                if (!registeredUser.data || registeredUser.data.blocked_by_admin !== true) {
-                    await markUserUnblocked(registeredUser.id);
-                    registeredUser.is_blocked = false;
-                } else {
-                    if (ctx.callbackQuery) {
-                        return ctx.answerCbQuery("⛔️ Votre compte est suspendu.", { show_alert: true }).catch(() => { });
-                    }
-                    return ctx.reply("⛔️ <b>ACCÈS REFUSÉ</b>\n\nVotre compte a été suspendu par l'administration. Contactez le support pour plus d'informations.", { parse_mode: 'HTML' }).catch(() => { });
-                }
-            }
-
-            // 3. Force Channel Join (Telegram only)
-            if (ctx.platform === 'telegram' && !ctx.callbackQuery?.data?.startsWith('check_sub')) {
-                const requiredChannelId = '-1001880590480'; // Id du canal t.me/+PsQMCG9p36o0Njhk
-                const channelLink = 'https://t.me/+PsQMCG9p36o0Njhk';
-
-                // Skip check for admins
-                const { isAdmin } = require('./handlers/admin');
-                const isPrivileged = await isAdmin(ctx);
-
-                if (!isPrivileged) {
-                    try {
-                        const tgCh = registry.query('telegram');
-                        const tgBot = tgCh?.getBotInstance?.();
-                        if (tgBot) {
-                            const member = await tgBot.telegram.getChatMember(requiredChannelId, ctx.from.id);
-                            const allowed = ['member', 'administrator', 'creator'].includes(member.status);
-                            
-                            if (!allowed) {
-                                const text = `👋 <b>ACCÈS RÉSERVÉ</b>\n\nPour accéder au bot, vous devez rejoindre notre canal officiel :\n\n👉 <a href="${channelLink}">REJOINDRE LE CANAL</a>\n\n<i>Une fois rejoint, cliquez sur le bouton ci-dessous pour continuer.</i>`;
-                                const keyboard = Markup.inlineKeyboard([
-                                    [Markup.button.url('📢 Rejoindre le canal', channelLink)],
-                                    [Markup.button.callback('✅ C\'est fait, j\'ai rejoint !', 'check_sub')]
-                                ]);
-
-                                if (ctx.callbackQuery) {
-                                    await ctx.answerCbQuery("⚠️ Vous devez rejoindre le canal d'abord !").catch(() => {});
-                                    return ctx.editMessageText(text, { parse_mode: 'HTML', ...keyboard }).catch(() => {});
-                                }
-                                return ctx.reply(text, { parse_mode: 'HTML', ...keyboard }).catch(() => {});
-                            }
-                        }
-                    } catch (e) {
-                        console.error('[Force-Join-Error]', e.message);
-                        // En cas d'erreur API (bot pas admin du canal), on laisse passer pour ne pas bloquer le bot
-                    }
-                }
-            }
-
-            await next();
-
-            // Nettoyage messages telegram
-            if (ctx.platform === 'telegram' && ctx.message && ctx.chat?.type === 'private') {
-                await ctx.deleteMessage().catch(() => { });
-            }
-        } catch (e) {
-            console.error('❌ Middleware Fatal Error:', e.message);
-            throw e;
+        } else {
+            console.log("[System] Loading environment from: .env");
         }
-    });
 
-    // Liaison des Handlers existants au dispatcher
-    setupStartHandler(dispatcher);
-    setupOrderSystem(dispatcher);
-    setupAdminHandlers(dispatcher);
-    const { setupHotlineHandlers } = require('./handlers/hotline');
-    setupHotlineHandlers(dispatcher);
-    
-    // Marketplace handlers capture
-    const mpHandlers = setupMarketplaceHandlers(dispatcher);
-    handleMarketplaceText = mpHandlers.handleMarketplaceText;
-    handleMarketplacePhoto = mpHandlers.handleMarketplacePhoto;
-    handleMarketplaceVideo = mpHandlers.handleMarketplaceVideo;
-
-    // Initialisation des états persistants
-    const { initAdminState } = require('./handlers/admin');
-    const { initOrderState } = require('./handlers/order_system');
-    
-    await Promise.all([
-        initOrderState(),
-        initAdminState(),
-        initMarketplaceState()
-    ]);
-    console.log('✅ Tous les états persistants sont chargés');
-
-    // Gestion des demandes d'adhésion (Auto-Approbation)
-    dispatcher.on('chat_join_request', async (ctx) => {
-        try {
-            console.log(`[Auto-Approve] Approbation de ${ctx.from.id}...`);
-            const tgCh = registry.query('telegram');
-            const tgBot = tgCh?.getBotInstance?.();
-            if (tgBot) {
-                await tgBot.telegram.approveChatJoinRequest(ctx.chat.id, ctx.from.id);
-                // Optionnel: Envoyer un message de bienvenue en privé
-                await tgBot.telegram.sendMessage(ctx.from.id, "✅ <b>Votre demande a été approuvée !</b>\n\nVous pouvez maintenant utiliser le bot.", { parse_mode: 'HTML' }).catch(() => {});
-            }
-        } catch (e) {
-            console.error('[Auto-Approve-Error]', e.message);
-        }
-    });
-
-    // Action de vérification de l'abonnement
-    dispatcher.action('check_sub', async (ctx) => {
-        await ctx.answerCbQuery("Vérification en cours...").catch(() => {});
-        // Le middleware repassera au prochain update, on renvoie juste vers /start
-        if (setupStartHandler) {
-            return setupStartHandler(dispatcher).handleStart(ctx);
-        }
-        await ctx.reply("🔄 Chargement...");
-    });
-
-    // Sondages (Actions & Messages)
-    dispatcher.action(/^poll_free_([\w-]+)(?:_(\d+))?$/, async (ctx) => {
-        const bcId = ctx.match[1];
-        const bcIndex = ctx.match[2];
-        const userId = ctx.from.id;
-        awaitingPollResponse.set(userId, { bcId, bcIndex });
-        await ctx.answerCbQuery();
-        await cleanupUserChat(ctx);
-        await ctx.reply("🖋 <b>Veuillez écrire votre réponse ci-dessous :</b>", { parse_mode: 'HTML' });
-    });
-
-    dispatcher.action(/^poll_vote_([\w-]+)_(\d+)(?:_(\d+))?$/, async (ctx) => {
-        const bcId = ctx.match[1];
-        const optIdx = parseInt(ctx.match[2]);
-        const bcIndex = ctx.match[3];
-        const userId = `${ctx.platform}_${ctx.from.id}`;
-        const { recordPollVote } = require('./services/database');
-
-        try {
-            const userName = ctx.from.first_name || 'Utilisateur';
-            const result = await recordPollVote(bcId, optIdx, userId, userName, ctx.platform);
-            
-            if (result === 'already_voted') {
-                await ctx.answerCbQuery("⚠️ Vous avez déjà voté pour ce sondage !", { show_alert: true });
-                return;
-            }
-
-            await ctx.answerCbQuery("✅ Vote enregistré, merci !");
-            await cleanupUserChat(ctx);
-
-            if (bcIndex !== undefined) {
-                await ctx.reply("✅ Vote enregistré !");
-                return;
-            }
-
-            const settings = ctx.state.settings;
-            const user = ctx.state.user;
-
-            let text = `✅ <b>Merci pour votre participation !</b>\n\nQue souhaitez-vous faire maintenant ?`;
-            let keyboard = user.is_livreur ? await getLivreurMenuKeyboard(ctx, settings, user) : await getMainMenuKeyboard(ctx, settings, user);
-            
-            await ctx.reply(text, keyboard);
-        } catch (e) {
-            console.error('[POLL-VOTE] Error:', e);
-            await ctx.answerCbQuery("⚠️ Erreur lors du vote.", { show_alert: true });
-        }
-    });
-
-    dispatcher.on('text', async (ctx, next) => {
-        const userId = ctx.from.id;
-        if (awaitingPollResponse.has(userId)) {
-            const { bcId, bcIndex } = awaitingPollResponse.get(userId);
-            awaitingPollResponse.delete(userId);
-            const text = (ctx.message.text || '').trim();
-            if (text) {
-                const { recordPollFreeResponse } = require('./services/database');
-                try {
-                    const userName = ctx.from.first_name || 'Utilisateur';
-                    await recordPollFreeResponse(bcId, userId, userName, text);
-                    const replyText = `✅ <b>Votre réponse a été enregistrée :</b>\n\n<i>"${text}"</i>\n\nMerci pour votre participation !`;
-                    
-                    await cleanupUserChat(ctx);
-                    if (bcIndex !== undefined) {
-                        await ctx.reply(replyText);
-                        return ctx.reply("🔄 Menu Principal", await getMainMenuKeyboard(ctx, ctx.state.settings, ctx.state.user));
-                    }
-                    await ctx.reply(replyText, await getMainMenuKeyboard(ctx, ctx.state.settings, ctx.state.user));
-                    return;
-                } catch (e) {
-                    console.error('[POLL-FREE] Error:', e);
-                    await ctx.reply("⚠️ Une erreur est survenue.");
-                }
-            }
-        }
-        // Marketplace text handler (flows ajout/édition produit fournisseur)
-        const mpResult = handleMarketplaceText(ctx);
-        if (mpResult !== false) { await mpResult; return; }
-
-        await next();
-    });
-
-    // Marketplace photo handler
-    dispatcher.on('photo', async (ctx, next) => {
-        console.log(`[Marketplace-Photo] Photo received from ${ctx.from.id}`);
-        const mpPhotoResult = handleMarketplacePhoto(ctx);
-        if (mpPhotoResult !== false) { 
-            console.log(`[Marketplace-Photo] Photo handled by marketplace`);
-            await mpPhotoResult; 
-            return; 
-        }
-        await next();
-    });
-
-    // Marketplace video handler
-    dispatcher.on('video', async (ctx, next) => {
-        console.log(`[Marketplace-Video] Video received from ${ctx.from.id}`);
-        const mpVideoResult = handleMarketplaceVideo(ctx);
-        if (mpVideoResult !== false) { 
-            console.log(`[Marketplace-Video] Video handled by marketplace`);
-            await mpVideoResult; 
-            return; 
-        }
-        await next();
-    });
-
-
-    // 2. Initialisation des Canaux
-    const replicaIndex = process.env.RAILWAY_REPLICA_INDEX || '0';
-    if (replicaIndex === '0') {
-        console.log('[System] Replica 0: Starting all channels (WA + TG)...');
-        await initChannels();
+        // Logique de Port : 8080 par défaut pour Railway
+        const portToUse = process.env.PORT || 8080;
         
-        // Background Broadcast Worker
-        const { processPendingBroadcasts } = require('./services/broadcast');
-        const bcInterval = 15000;
+        console.log(`[System] Final PORT determined: ${portToUse}`);
+        console.log('🚀 DÉMARRAGE VERSION RAILWAY STABLE FARMSTEGRIDY BOT...');
         
-        // Execute immediately on startup, then every 15s
-        const runBcWorker = async () => {
-            try {
-                await processPendingBroadcasts();
-            } catch (e) {
-                console.error('[BC-WORKER-ERR] Loop error:', e.message);
+        // 1. Initialisation de la BDD
+        if (database && database.init) {
+            await database.init();
+        }
+
+        // 2. Initialisation du Dispatcher (Service central)
+        console.log('📦 Initialisation du Dispatcher...');
+        const dispatcher = new Dispatcher();
+        await dispatcher.init();
+        
+        // --- CHARGEMENT DES HANDLERS ---
+        const { setupStartHandler } = require('./handlers/start');
+        const { setupAdminHandlers } = require('./handlers/admin');
+        const { setupOrderSystem } = require('./handlers/order_system');
+        const { setupSupplierMarketplaceHandlers } = require('./handlers/supplier_marketplace');
+
+        if (typeof setupStartHandler === 'function') setupStartHandler(dispatcher);
+        if (typeof setupAdminHandlers === 'function') setupAdminHandlers(dispatcher);
+        if (typeof setupOrderSystem === 'function') setupOrderSystem(dispatcher);
+        if (typeof setupSupplierMarketplaceHandlers === 'function') setupSupplierMarketplaceHandlers(dispatcher);
+        
+        console.log(`[Dispatcher] Dispatcher initialisé avec ses handlers.`);
+
+        // 3. Initialisation du Serveur Web (Dashboard)
+        console.log(`[System] Initializing server on port: ${portToUse}`);
+        const app = server.createServer(portToUse);
+        
+        // --- IMPORTANT: Enregistrement du bot dans le serveur pour les notifs admin ---
+        const { TelegramChannel } = require('./channels/TelegramChannel');
+        let tgToken = process.env.BOT_TOKEN;
+        
+        try {
+            const settings = await getAppSettings();
+            if (settings && settings.telegram_token) {
+                tgToken = settings.telegram_token;
+                console.log('[System] Using Telegram token from Database configuration');
             }
-        };
-        runBcWorker();
-        setInterval(runBcWorker, bcInterval);
-        console.log('👷 Broadcast Worker active (Replica 0)');
+        } catch (e) {
+            console.warn('[System] Failed to load telegram token from Database, using env fallback:', e.message);
+        }
+        
+        let telegramChannel = null;
+        if (tgToken) {
+            telegramChannel = new TelegramChannel(tgToken);
+            dispatcher.registerChannel('telegram', telegramChannel);
+            server.setBotInstance(telegramChannel.bot); // Permet au dashboard d'envoyer des messages
+        }
 
-        // Marketing Automatisé (Vérification toutes les 15 minutes pour les heures stratégiques)
-        const marketingInterval = 15 * 60 * 1000;
-        runAutomatedMarketing().catch(e => console.error('[MARKETING-INIT-ERR]', e.message)); 
-        setInterval(async () => {
-            try {
-                await runAutomatedMarketing();
-            } catch (e) {
-                console.error('[MARKETING-ERR]', e.message);
-            }
-        }, marketingInterval);
-        console.log('📢 Marketing Automatique (Smart Scheduler) planifié (15m)');
-    } else {
-        console.log(`[System] Replica ${replicaIndex}: Bot background channels disabled to avoid conflicts.`);
-    }
+        const staticUrl = process.env.RENDER_EXTERNAL_URL || process.env.RAILWAY_STATIC_URL || 'localhost';
+        console.log(`🔗 TEST HEALTH : https://${staticUrl}/_health`);
 
-    // 3. Liaison Canaux -> Dispatcher
-    const channels = registry.query();
-    for (const channel of channels) {
-        channel.onMessage(async (msg) => {
-            await dispatcher.handleUpdate(channel, msg);
-        });
-        if (channel.type === 'telegram') {
-            const bot = channel.getBotInstance ? channel.getBotInstance() : null;
-            if (bot) {
-                setBotInstance(bot);
-                setBroadcastBot(bot);
-
-                // Config Telegram (Description, Commandes)
+        // 4. Initialisation des canaux de communication
+        console.log('📦 Initialisation des canaux...');
+        
+        // Initialisation des canaux enregistrés dans le dispatcher
+        const channels = await dispatcher.initChannels();
+        
+        const replicaIndex = process.env.RAILWAY_REPLICA_INDEX || process.env.RENDER_REPLICA_INDEX || 0;
+        console.log(`[System] Replica ${replicaIndex}: Starting Telegram channel...`);
+        
+        // Lancement du canal telegram
+        if (telegramChannel && replicaIndex == 0) {
+            telegramChannel.start().then(() => {
+                // Sync bot descriptions on startup
                 getAppSettings().then(settings => {
-                    if (settings.bot_description) bot.telegram.setMyDescription(settings.bot_description).catch(() => { });
-                    if (settings.bot_short_description) bot.telegram.setMyShortDescription(settings.bot_short_description).catch(() => { });
-                    bot.telegram.setMyCommands([
+                    if (!telegramChannel.bot) return;
+                    if (settings.bot_description) telegramChannel.bot.telegram.setMyDescription(settings.bot_description).catch(() => { });
+                    if (settings.bot_short_description) telegramChannel.bot.telegram.setMyShortDescription(settings.bot_short_description).catch(() => { });
+                    
+                    // Set default commands
+                    telegramChannel.bot.telegram.setMyCommands([
                         { command: 'start', description: '🏠 Lancer le bot / Accueil' },
                         { command: 'menu', description: '🛒 Voir le catalogue' },
                         { command: 'orders', description: '📦 Mes commandes' },
                         { command: 'help', description: '❓ Aide et support' }
                     ]).catch(() => { });
                 }).catch(() => { });
-            }
+            }).catch(err => {
+                console.error('❌ Error launching Telegram:', err.message);
+            });
+        } else if (telegramChannel) {
+            console.log(`[System] Replica ${replicaIndex}: Bot instance idle (Replica 0 handles bot)`);
         }
-    }
 
-    // 5. États persistants & Timers
-    await Promise.all([initOrderState(), initStartState(), require('./handlers/admin').initAdminState()]);
-
-    const runAutomatedTasks = () => {
-        const tgChannel = registry.query('telegram');
-        const bot = tgChannel?.getBotInstance();
-        if (bot) {
-            // startAutomatedTimer(bot); // RETIRÉ — Notification catalogue à jour
-            setInterval(() => checkPlannedOrders(bot), 60000);
-            setInterval(() => checkAbandonedCarts(bot), 1800000);
-            setInterval(() => runAutomatedSync(bot), 900000);
-        }
-        // Removed duplicate checkScheduledBroadcasts - handled by Replica 0 worker in broadcast.js
-    };
-    runAutomatedTasks();
-
-    console.log('\n🚀 Environnement Multi-Canaux prêt !');
-}
-
-// Fonctionnalités héritées de l'ancien index.js
-async function checkPlannedOrders(bot) {
-    try {
-        const { getUpcomingPlannedOrders, markNotifSent } = require('./services/database');
-        const orders = await getUpcomingPlannedOrders();
-        if (orders.length === 0) return;
-        const nowParis = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" }));
-        for (const order of orders) {
-            if (!order.scheduled_at || !order.scheduled_at.includes(' ')) continue;
-            
-            const parts = order.scheduled_at.split(' ');
-            const datePart = parts[0];
-            const timePart = parts[1];
-            if (!timePart) continue;
-
-            const timeClean = timePart.replace('h', ':');
-            const [h, m] = timeClean.split(':');
-            if (h === undefined || m === undefined) continue;
-
-            const schedDate = new Date(`${datePart}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:00`);
-            if (isNaN(schedDate.getTime())) continue;
-
-            const diffMin = Math.round((schedDate - nowParis) / 60000);
-            if (diffMin <= 60 && diffMin > 30 && !order.notif_1h_sent) {
-                await sendPlannedAlert(bot, order, '1h');
-                await markNotifSent(order.id, '1h');
+        if (replicaIndex == 0) {
+            try {
+                const { startBroadcastWorker } = require('./services/broadcast');
+                if (telegramChannel) {
+                    startBroadcastWorker(telegramChannel).catch(err => {
+                        console.error('[System] Failed to start broadcast worker:', err.message);
+                    });
+                    console.log('👷 Broadcast Worker active (Replica 0)');
+                }
+            } catch (e) {
+                console.warn('[System] Broadcast worker failed to start:', e.message);
             }
-            if (diffMin <= 30 && diffMin > 0 && !order.notif_30m_sent) {
-                await sendPlannedAlert(bot, order, '30m');
-                await markNotifSent(order.id, '30m');
-            }
-        }
-    } catch (e) {
-        console.error('❌ Error checkPlannedOrders:', e.message);
-    }
-}
 
-async function sendPlannedAlert(bot, order, type) {
-    const text = `⏰ <b>RAPPEL COMMANDE PLANIFIÉE (${type})</b>\n\n...`;
-    if (order.livreur_id) {
-        const livreurTgId = order.livreur_id.replace('telegram_', '');
-        await bot.telegram.sendMessage(livreurTgId, text, { parse_mode: 'HTML' }).catch(() => { });
-    }
-    notifyAdmins(bot, `📢 [INFO ADMIN] ${text}`);
-}
-
-async function checkScheduledBroadcasts() {
-    try {
-        const { supabase, COL_BROADCASTS, COL_USERS } = require('./services/database'); // Added COL_USERS
-        const { broadcastMessage } = require('./services/broadcast');
-        const now = new Date().toISOString();
-        const { data: pending } = await supabase.from(COL_BROADCASTS).select('*').eq('status', 'pending').lte('start_at', now);
-        if (!pending || pending.length === 0) return;
-        for (const bc of pending) {
-            let finalMsg = bc.message || '';
-            let mediaUrls = [];
-            if (finalMsg.includes('|||MEDIA_URLS|||')) {
-                const parts = finalMsg.split('|||MEDIA_URLS|||');
-                finalMsg = parts[0];
-                try { mediaUrls = JSON.parse(parts[1]); } catch (e) { }
-            }
-            await broadcastMessage(bc.target_platform, finalMsg, { id: bc.id, mediaUrls: mediaUrls, start_at: bc.start_at, end_at: bc.end_at, badge: bc.badge });
-        }
-    } catch (e) { console.error('❌ Error checkScheduledBroadcasts:', e.message); }
-}
-
-function startAutomatedTimer(bot) {
-    setInterval(async () => {
-        try {
-            const settings = await getAppSettings();
-            if (settings.msg_auto_timer && settings.msg_auto_timer.length > 5) {
-                await broadcastMessage('all', settings.msg_auto_timer);
-            }
-        } catch (e) { }
-    }, 6 * 60 * 60 * 1000);
-}
-
-async function runAutomatedSync(bot) {
-    try {
-        const users = await getAllUsersForBroadcast('telegram', 'user');
-        if (!users || users.length === 0) return;
-        
-        console.log(`[Sync] Starting sync for ${users.length} users...`);
-        
-        // Process in batches of 20 to avoid rate limits and event loop blocking
-        const batchSize = 20;
-        for (let i = 0; i < users.length; i += batchSize) {
-            const batch = users.slice(i, i + batchSize);
-            await Promise.allSettled(batch.map(async (u) => {
-                try {
-                    const chatId = String(u.platform_id || u.id || '').replace('telegram_', '');
-                    if (!chatId || isNaN(chatId)) return;
-                    
-                    // On teste si l'utilisateur a bloqué le bot
+            // Start expired reservations cleanup interval
+            try {
+                const { cleanupExpiredReservations } = require('./services/inventory_manager');
+                setInterval(async () => {
                     try {
-                        await bot.telegram.sendChatAction(chatId, 'typing');
-                        
-                        // Si le bot n'est pas bloqué mais l'user était marqué bloqué (auto) -> on débloque
-                        if (u.is_blocked && (!u.data || u.data.blocked_by_admin !== true)) {
-                            await markUserUnblocked(u.id);
-                            console.log(`[Sync] User ${u.id} reachable again, unblocking.`);
-                        }
+                        await cleanupExpiredReservations();
                     } catch (err) {
-                        // 403 = l'utilisateur a bloqué le bot
-                        if (err.code === 403) {
-                            // On ne re-marque bloqué QUE s'il ne l'est pas déjà
-                            if (!u.is_blocked) {
-                                await markUserBlocked(u.id, false);
-                                console.log(`[Sync] User ${u.id} blocked the bot.`);
-                            }
-                        }
+                        console.error('[System] Error in cleanupExpiredReservations:', err.message);
                     }
-                } catch (e) { }
-            }));
-            await new Promise(r => setTimeout(r, 500));
+                }, 60000); // run every 1 minute
+                console.log('⏰ Reservation Cleanup Worker active (every 1m, Replica 0)');
+            } catch (e) {
+                console.warn('[System] Reservation Cleanup Worker failed to start:', e.message);
+            }
         }
-        console.log(`[Sync] Finished sync for ${users.length} users.`);
-    } catch (e) {
-        console.error('❌ Error runAutomatedSync:', e.message);
+
+    } catch (error) {
+        console.error('❌ ERREUR FATALE AU DÉMARRAGE:', error);
+        process.exit(1);
     }
 }
 
-main().catch(console.error);
+bootstrap();
+
+// Shutdown handling — libère le verrou TG avant de s'arrêter
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM received. Releasing TG lock and shutting down...');
+    try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+        await supabase.from('bot_stats').update({ tg_lock_owner: null, tg_lock_expires: null }).eq('id', 1);
+        console.log('[TG-LOCK] 🔓 Lock released on SIGTERM.');
+    } catch (e) {
+        console.warn('[TG-LOCK] Could not release lock on SIGTERM:', e.message);
+    }
+    process.exit(0);
+});
+
+module.exports = {};
+// Version 1.0.1 Stable
+// Trigger railway deploy

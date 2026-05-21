@@ -1,9 +1,5 @@
 const { getAppSettings } = require('./database');
 const { registry } = require('../channels/ChannelRegistry');
-const { createPersistentMap } = require('./persistent_map');
-
-const hotlineAdmins = createPersistentMap('hotlineAdmins');
-hotlineAdmins.load().catch(() => {});
 
 // Résolution ultra-robuste de l'instance du bot Telegram
 function getBotForNotification(providedBot = null) {
@@ -44,39 +40,53 @@ async function notifyAdmins(bot, message, options = {}) {
             return;
         }
 
-        // --- Parsing des IDs Administrateurs et Modérateurs ---
+        // --- Parsing des IDs Administrateurs ---
         let admins = [];
-        let moderators = [];
-        
         const dbRaw = settings.admin_telegram_id;
-        const modRaw = settings.moderator_telegram_id;
+        console.log('[Notification-Admin] rawAdmins en base:', typeof dbRaw, dbRaw);
         
-        const parseIds = (raw) => {
-            if (Array.isArray(raw)) return raw.map(String);
-            if (typeof raw === 'string') return raw.replace(/[\[\]"']/g, '').split(/[\s,]+/).filter(Boolean);
-            if (raw && typeof raw === 'object') return Object.values(raw).map(String);
-            if (raw) return [String(raw)];
-            return [];
-        };
+        if (Array.isArray(dbRaw)) {
+            admins = dbRaw.map(String);
+        } else if (typeof dbRaw === 'string') {
+            // Nettoyage complet (espaces, guillemets, crochets JSON mal formés)
+            admins = dbRaw.replace(/[\[\]"']/g, '').split(/[\s,]+/).filter(Boolean);
+        } else if (dbRaw && typeof dbRaw === 'object') {
+             admins = Object.values(dbRaw).map(String);
+        } else if (dbRaw) {
+            admins = [String(dbRaw)];
+        }
 
-        admins = parseIds(dbRaw);
-        moderators = parseIds(modRaw);
-        
         const envAdmin = process.env.ADMIN_TELEGRAM_ID;
         
-        // Inclure les admins hotline "secrets" (ceux qui ont fait le code 2442)
-        const secretAdmins = Array.from(hotlineAdmins.keys());
-        
-        const allRecipients = [...new Set([...admins, ...moderators, envAdmin, ...secretAdmins].filter(Boolean))];
+        // --- Récupération dynamique depuis la DB ---
+        let dynamicAdmins = [];
+        let dynamicMods = [];
+        try {
+            const { getAllAdmins, getAllModerators } = require('./database');
+            const [dbAdmins, dbMods] = await Promise.all([getAllAdmins(), getAllModerators()]);
+            dynamicAdmins = dbAdmins.map(u => u.platform_id).filter(Boolean);
+            dynamicMods = dbMods.map(u => u.platform_id).filter(Boolean);
+        } catch (dbErr) {
+            console.error('[Notification-Admin] Erreur récupération roles DB:', dbErr.message);
+        }
 
-        if (allRecipients.length === 0) {
-            console.warn('[Notification-Admin] AUCUN admin/mod trouvé (Base + ENV vides)');
+        // Par défaut, on ne notifie QUE les admins. 
+        // Les modos sont notifiés seulement si explicitement demandé (ex: approbation user)
+        const targetAdmins = [...admins, envAdmin, ...dynamicAdmins];
+        if (options.includeModerators) {
+            targetAdmins.push(...dynamicMods);
+        }
+
+        const allAdmins = [...new Set(targetAdmins.filter(Boolean))];
+
+        if (allAdmins.length === 0) {
+            console.warn('[Notification-Admin] AUCUN admin trouvé (Base + ENV vides)');
             return;
         }
 
-        console.log(`[Notification-Admin] 🚀 Liaison vers ${allRecipients.length} destinataires: ${allRecipients.join(', ')}`);
+        console.log(`[Notification-Admin] 🚀 Liaison vers ${allAdmins.length} admins: ${allAdmins.join(', ')}`);
 
-        const sendPromises = allRecipients.map(async (adminId) => {
+        const sendPromises = allAdmins.map(async (adminId) => {
             const idStr = String(adminId).trim();
             if (!idStr) return null;
             // Normaliser l'ID (ajouter telegram_ si besoin pour le dispatcheur interne)
@@ -199,89 +209,26 @@ async function notifySuppliers(bot, cart, orderId, address, settings = null, isF
  */
 async function sendMessageToUser(userId, message, options = {}, providedBot = null) {
     const idStr = String(userId);
-    const platform = idStr.startsWith('whatsapp_') ? 'whatsapp' : 
-                     (idStr.startsWith('telegram_') ? 'telegram' : 
-                     (idStr.includes('@') ? 'whatsapp' : 'telegram'));
-    const cleanId = idStr.replace(/^(telegram_|whatsapp_)/, '');
+    const cleanId = idStr.replace('telegram_', '');
 
     try {
-        if (platform === 'whatsapp') {
-            const wa = registry.query('whatsapp');
-            if (!wa || !wa.isActive) return null;
-
-            let waButtons = [];
-            const srcKeyboard = options.inline_keyboard || options.keyboard || options.reply_markup?.inline_keyboard;
-            if (srcKeyboard) {
-                waButtons = srcKeyboard.flat().map(b => ({
-                    id: b.callback_data || b.id || b.title,
-                    title: b.text || b.title,
-                    url: b.url
-                })).filter(b => b.id || b.url || b.title);
-            }
-
-            if (waButtons.length > 0) {
-                try {
-                    const { dispatcher } = require('./dispatcher');
-                    if (dispatcher && typeof dispatcher.setUserLastButtons === 'function') {
-                        dispatcher.setUserLastButtons(idStr, waButtons);
-                    }
-                } catch (e) {
-                    console.error('[MSG-WA] Hydrate failed:', e.message);
-                }
-                return await wa.sendInteractive(cleanId, message, waButtons, options);
-            }
-
-            // Gestion média pour WhatsApp
-            if (options.photo || options.video || options.media_url) {
-                const mediaUrl = options.photo || options.video || options.media_url;
-                const mediaType = options.video ? 'video' : (options.photo ? 'photo' : (options.media_type || 'photo'));
-                return await wa.sendMessage(cleanId, message, { ...options, media_url: mediaUrl, media_type: mediaType });
-            }
-
-            return await wa.sendMessage(cleanId, message, options);
-        }
-
-        // --- Telegram ---
         let realBot = getBotForNotification(providedBot);
         if (!realBot || !realBot.telegram) {
             console.error(`[MSG-Gen] BOT INTROUVABLE pour notifier Telegram ${cleanId}`);
             return null;
         }
 
-        // Normalisation ultra-robuste des options
+        console.log(`[MSG-Gen] Sending to ${cleanId} (raw: ${userId})`);
+
         const extra = { parse_mode: 'HTML' };
-        
-        // Gestion récursive du reply_markup
         if (options.reply_markup) {
              extra.reply_markup = options.reply_markup;
         } else if (options.inline_keyboard || options.keyboard) {
              extra.reply_markup = options;
         }
 
-        // Si options contient lui-même parse_mode ou d'autres trucs
         if (options.parse_mode) extra.parse_mode = options.parse_mode;
         if (options.protect_content !== undefined) extra.protect_content = options.protect_content;
-
-        // RÈGLE D'ARCHITECTURE ABSOLUE : "Il ne doit y avoir qu'un module dans le bot et rien d'autre, tous les anciens menus doivent disparaître"
-        // Nettoyage atomique universel de tous les anciens messages/menus de l'utilisateur avant d'afficher le nouveau
-        try {
-            const { getUser } = require('./database');
-            const targetUser = await getUser(userId);
-            if (targetUser) {
-                const toDelete = new Set();
-                if (targetUser.last_menu_id) toDelete.add(targetUser.last_menu_id);
-                if (Array.isArray(targetUser.tracked_messages)) {
-                    targetUser.tracked_messages.forEach(id => toDelete.add(id));
-                }
-                if (toDelete.size > 0) {
-                    for (const oldId of toDelete) {
-                        realBot.telegram.deleteMessage(cleanId, oldId).catch(() => {});
-                    }
-                }
-            }
-        } catch (cleanErr) {
-            console.error('[MSG-CLEANUP] Failed to eradicate old menus:', cleanErr.message);
-        }
 
         let sent;
         try {
@@ -293,28 +240,20 @@ async function sendMessageToUser(userId, message, options = {}, providedBot = nu
                 sent = await realBot.telegram.sendMessage(cleanId, message, extra);
             }
         } catch (botErr) {
-            // Fallback en cas d'erreur média (URL invalide, file_id expiré)
+            console.error(`[MSG-Gen] Telegram API Error for ${cleanId}:`, botErr.message);
             if (options.photo || options.video) {
-                console.warn(`[MSG-Gen] Fallback texte pur car média échoué pour ${cleanId}: ${botErr.message}`);
-                sent = await realBot.telegram.sendMessage(cleanId, message || 'Fichier média (erreur de chargement)', extra);
+                console.warn(`[MSG-Gen] Fallback texte car média échoué pour ${cleanId}: ${botErr.message}`);
+                sent = await realBot.telegram.sendMessage(cleanId, message || 'Média non disponible', extra);
             } else throw botErr;
         }
 
         if (sent && sent.message_id) {
-            const { trackIntermediateMessage } = require('./utils');
-            trackIntermediateMessage(userId, sent.message_id).catch(() => {});
-            
+            console.log(`[MSG-Gen] ✅ SUCCESS - Message ID ${sent.message_id} for ${cleanId}`);
             try {
-                const { addMessageToTrack, supabase, COL_USERS } = require('./database');
-                // Synchronisation parfaite : on enregistre ce message comme l'UNIQUE module/menu actif du bot
-                if (supabase && COL_USERS) {
-                    supabase.from(COL_USERS).update({
-                        tracked_messages: [sent.message_id],
-                        last_menu_id: sent.message_id
-                    }).eq('id', userId).then(() => {}).catch(() => {});
-                } else {
-                    addMessageToTrack(userId, sent.message_id, true).catch(() => {});
-                }
+                const { trackIntermediateMessage } = require('./utils');
+                trackIntermediateMessage(userId, sent.message_id).catch(() => {});
+                const { addMessageToTrack } = require('./database');
+                addMessageToTrack(userId, sent.message_id, false).catch(() => {});
             } catch (e) {}
         }
         return sent;
@@ -325,62 +264,7 @@ async function sendMessageToUser(userId, message, options = {}, providedBot = nu
 }
 
 async function sendTelegramMessage(userId, message, options = {}) {
-    console.log(`[MSG-OUT] Attempting to send message to ${userId}...`);
-    const res = await sendMessageToUser(userId, message, options);
-    if (res) {
-        console.log(`[MSG-OUT] SUCCESS: Message sent to ${userId}`);
-    } else {
-        console.error(`[MSG-OUT] FAILED: Message not sent to ${userId}`);
-    }
-    return res;
+    return sendMessageToUser(userId, message, options);
 }
 
-/**
- * Publier automatiquement une nouveauté ou mise à jour sur le canal officiel du bot
- * avec un lien de retour pointant directement vers le bot.
- */
-async function publishToOfficialChannel(bot, messageText, options = {}) {
-    try {
-        const settings = await getAppSettings();
-        const channelId = settings.force_subscribe_channel_id || '-1001880590480';
-        
-        let realBot = getBotForNotification(bot);
-        if (!realBot || !realBot.telegram) {
-            console.error('[Publish-Channel] Bot instance introuvable');
-            return null;
-        }
-
-        const botInfo = realBot.botInfo || await realBot.telegram.getMe().catch(() => ({ username: 'monshopbot' }));
-        const botUsername = botInfo.username || 'monshopbot';
-        const botLink = `https://t.me/${botUsername}?start=canal`;
-
-        // Construire un superbe bouton de retour
-        const extra = {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '👉 Découvrir dans le Bot ✨', url: botLink }]
-                ]
-            }
-        };
-
-        let sent;
-        if (options.photo || (options.mediaUrls && options.mediaUrls[0]?.type === 'photo')) {
-            const photoObj = options.photo || options.mediaUrls[0].file_id || options.mediaUrls[0].url;
-            sent = await realBot.telegram.sendPhoto(channelId, photoObj, { caption: messageText, ...extra });
-        } else if (options.video || (options.mediaUrls && options.mediaUrls[0]?.type === 'video')) {
-            const videoObj = options.video || options.mediaUrls[0].file_id || options.mediaUrls[0].url;
-            sent = await realBot.telegram.sendVideo(channelId, videoObj, { caption: messageText, ...extra });
-        } else {
-            sent = await realBot.telegram.sendMessage(channelId, messageText, extra);
-        }
-
-        console.log(`[Publish-Channel] ✅ Publié avec succès sur le canal ${channelId}`);
-        return sent;
-    } catch (e) {
-        console.error('[Publish-Channel] ❌ Erreur lors de la publication sur le canal:', e.message);
-        return null;
-    }
-}
-
-module.exports = { notifyAdmins, notifyLivreurs, notifySuppliers, sendTelegramMessage, sendMessageToUser, publishToOfficialChannel };
+module.exports = { notifyAdmins, notifyLivreurs, notifySuppliers, sendTelegramMessage, sendMessageToUser };

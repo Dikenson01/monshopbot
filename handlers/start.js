@@ -1,6 +1,5 @@
 const { Markup } = require('telegraf');
-const path = require('path');
-const { registerUser, getUser, incrementDailyStat, getAppSettings, addMessageToTrack, getLastMenuId, getSupplierByTelegramId, getStatsOverview } = require('../services/database');
+const { registerUser, getUser, incrementDailyStat, getAppSettings, addMessageToTrack, getLastMenuId, getSupplierByTelegramId } = require('../services/database');
 const { t } = require('../services/i18n');
 const { safeEdit, cleanupUserChat, clearActiveMediaGroup } = require('../services/utils');
 const { createPersistentMap } = require('../services/persistent_map');
@@ -15,47 +14,14 @@ async function initStartState() {
 }
 
 /**
- * Génère un message d'accueil dynamique et professionnel
- */
-function getDynamicWelcomeMessage(ctx, user) {
-    const name = user.first_name || 'Partenaire';
-    const hour = new Date().getHours();
-    
-    let greeting = "Bonjour";
-    if (hour >= 18 || hour < 5) greeting = "Bonsoir";
-
-    const variations = [
-        `✦ <b>${greeting} ${name}, Bienvenue dans l'Élite.</b>\n\n` +
-        `Vous venez d'entrer dans l'univers <b>SHOPTONBOT</b>, où l'ingénierie logicielle rencontre l'excellence commerciale.\n\n` +
-        `🚀 <i>Prêt à propulser vos revenus vers de nouveaux sommets ?</i>`,
-
-        `💎 <b>${greeting} ${name}, L'Efficacité sans Compromis.</b>\n\n` +
-        `Bienvenue chez <b>SHOPTONBOT</b>. Nous ne créons pas de simples bots, nous bâtissons des empires automatisés pour nos clients les plus exigeants.\n\n` +
-        `⚡ <i>L'automatisation de demain, disponible aujourd'hui.</i>`,
-
-        `🛰 <b>${greeting} ${name}, Prenez les Commandes.</b>\n\n` +
-        `Bienvenue dans le cockpit de <b>SHOPTONBOT</b>. Notre infrastructure de pointe est désormais à votre entière disposition pour automatiser chaque aspect de votre business.\n\n` +
-        `🏆 <i>L'excellence est notre seul standard.</i>`,
-
-        `⚙️ <b>${greeting} ${name}, La Machine est Lancée.</b>\n\n` +
-        `Bienvenue chez <b>SHOPTONBOT</b>. Votre vision, notre technologie. Ensemble, nous transformons vos processus manuels en un flux de revenus passifs et optimisés.\n\n` +
-        `🔥 <i>Préparez-vous à une croissance exponentielle.</i>`
-    ];
-
-    const index = parseInt(String(user.id).slice(-1)) % variations.length;
-    return variations[index];
-}
-
-/**
  * Vérifie si l'utilisateur est abonné au canal requis
  */
 async function checkSubscription(bot, ctx, settings) {
     if (ctx.platform !== 'telegram') return true;
-    const channelId = settings.force_subscribe_channel_id || '-1001880590480';
-    if (!settings.force_subscribe) return true;
+    if (!settings.force_subscribe || !settings.force_subscribe_channel_id) return true;
 
     try {
-        const member = await ctx.telegram.getChatMember(channelId, ctx.from.id);
+        const member = await ctx.telegram.getChatMember(settings.force_subscribe_channel_id, ctx.from.id);
         const status = member.status;
         return ['creator', 'administrator', 'member'].includes(status);
     } catch (e) {
@@ -74,6 +40,8 @@ function setupStartHandler(bot) {
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('🇫🇷 Français', 'set_lang_fr')],
             [Markup.button.callback('🇺🇸 English', 'set_lang_en')],
+            [Markup.button.callback('🇪🇸 Español', 'set_lang_es')],
+            [Markup.button.callback('🇩🇪 Deutsch', 'set_lang_de')],
             [Markup.button.callback('◀️ Menu', 'main_menu')]
         ]);
         return ctx.reply(text, { parse_mode: 'HTML', ...keyboard });
@@ -84,22 +52,25 @@ function setupStartHandler(bot) {
         const { supabase, COL_USERS, clearUserCache } = require('../services/database');
         const docId = `${ctx.platform}_${ctx.from.id}`;
         
-        // 1. Patch state immediately so the menu renders in the new language now
+        // 1. Mettre à jour l'état immédiatement pour que le menu s'affiche dans la nouvelle langue
         if (!ctx.state.user) ctx.state.user = {};
         if (!ctx.state.user.data) ctx.state.user.data = {};
         ctx.state.user.data.language = lang;
         ctx.state.user.language_code = lang;
 
-        // 2. Persist to DB (awaited so cache is cleared after write, not before)
+        // 2. Persister en base de données (attendu pour que le cache soit vidé après l'écriture)
         await supabase.from(COL_USERS).update({ 
             language_code: lang, 
             data: { ...(ctx.state.user.data), language: lang } 
         }).eq('id', docId);
         
-        // 3. Bust cache AFTER the write completes
+        // 3. Vider le cache après la fin de l'écriture
         clearUserCache(docId);
 
-        const msg = lang === 'fr' ? '✅ Langue réglée sur Français !' : '✅ Language set to English!';
+        let msg = '✅ Langue réglée sur Français !';
+        if (lang === 'en') msg = '✅ Language set to English!';
+        if (lang === 'es') msg = '✅ ¡Idioma configurado en Español!';
+        if (lang === 'de') msg = '✅ Sprache auf Deutsch eingestellt!';
         await ctx.answerCbQuery(msg);
         return showMainMenu(ctx);
     });
@@ -110,11 +81,11 @@ function setupStartHandler(bot) {
             const docId = `${ctx.platform}_${user.id}`;
             const settings = ctx.state?.settings || await getAppSettings();
 
-            // Nettoyage instantané et non bloquant de l'historique
+            // Nettoyage agressif : Supprimer la commande /start de l'utilisateur + tous les anciens messages bot
             try { 
-                ctx.deleteMessage().catch(() => {});
+                await ctx.deleteMessage().catch(() => {});
                 clearActiveMediaGroup(docId); 
-                cleanupUserChat(ctx).catch(() => {}); 
+                await cleanupUserChat(ctx); 
             } catch(e) {}
 
             // Vérifier si un code de parrainage
@@ -123,6 +94,16 @@ function setupStartHandler(bot) {
             if (payload && payload.startsWith('ref_')) {
                 referrerId = payload;
                 if (payload.includes(`_${user.id}_`)) referrerId = null;
+            }
+
+
+            
+            // --- FIX: Si l'utilisateur est restreint, on force un rafraîchissement du cache pour voir s'il a été approuvé
+            const { _userCache, registerUser } = require('../services/database');
+            const cached = _userCache?.get(docId);
+            if (cached && cached.data?.is_approved === false) {
+                console.log(`[WA-Refresh] Suppression du cache pour ${docId} (attente approbation)`);
+                _userCache.delete(docId);
             }
 
             const { isNew, user: registeredUser } = await registerUser(user, ctx.platform, referrerId);
@@ -139,7 +120,7 @@ function setupStartHandler(bot) {
                         `C'est ici que nous publions nos nouveautés et promotions ! 🚀`;
                     
                     const subKeyboard = Markup.inlineKeyboard([
-                        [Markup.button.url('📢 Rejoindre le Canal', 'https://t.me/+PsQMCG9p36o0Njhk')],
+                        [Markup.button.url('📢 Rejoindre le Canal', settings.channel_url || 'https://t.me/channel')],
                         [Markup.button.callback(settings.btn_verify_sub || '✅ Vérifier / Nouveau Lien', 'check_sub')]
                     ]);
 
@@ -147,13 +128,12 @@ function setupStartHandler(bot) {
                         photo: settings.welcome_photo || null,
                         ...subKeyboard
                     });
-                    // --- NOUVEAU : SYSTÈME D'APPROBATION ---
-                    // On ne fait plus d'auto-approbation ici pour forcer la validation manuelle admin.
                 }
             }
 
             // --- NOUVEAU : SYSTÈME D'APPROBATION (STRICT) ---
-            const isApproved = registeredUser.is_approved !== false || registeredUser.is_livreur === true || (await isAdmin(ctx));
+            const isApproved = (registeredUser.is_approved === true) || (registeredUser.is_approved === undefined) || (registeredUser.is_livreur === true) || (await isAdmin(ctx));
+            console.log(`[WA-ACCESS] User: ${registeredUser.id} | is_approved: ${registeredUser.is_approved} | is_livreur: ${registeredUser.is_livreur} | isApproved: ${isApproved}`);
 
             if (!isApproved) {
                 // NOUVEAU: Prévenir les doublons (Debounce)
@@ -181,30 +161,22 @@ function setupStartHandler(bot) {
                 }
                 
                 const isWa = ctx.platform === 'whatsapp';
-                const restrictedText = `🔒 <b>ACCÈS VIP : VÉRIFICATION EN COURS</b>\n\n` +
+                const restrictedText = `🛑 <b>ACCÈS RESTREINT</b>\n\n` +
                     `Bonjour <b>${user.first_name}</b>,\n\n` +
-                    `Bienvenue chez <b>SHOPTONBOT</b>. Pour garantir l'excellence de nos services et la sécurité de nos échanges, l'accès à notre plateforme est soumis à validation.\n\n` +
-                    `🛰 <b>ÉTAT DE VOTRE DEMANDE :</b>\n` +
-                    `• Identité : <i>Vérifiée</i>\n` +
-                    `• Statut : ⏳ <code>EN ATTENTE DE VALIDATION</code>\n\n` +
-                    `🛡 <i>Un administrateur examine votre profil. Cette étape prend généralement quelques minutes.</i>\n\n` +
-                    (isWa ? `📝 <i>Une fois validé, écrivez <b>/start</b> pour activer votre console.</i>\n\n` +
-                            `👇 <b>Liens prioritaires :</b>\n` +
+                    `Pour accéder au bot, vous devez d'abord envoyer un message à l'administrateur.\n` +
+                    `Une fois que l'admin aura validé votre accès, vous pourrez commander.\n\n` +
+                    (isWa ? `📝 <i>Une fois validé, écrivez <b>/start</b> pour actualiser le menu.</i>\n\n` +
+                            `👇 <b>Cliquez sur les liens ci-dessous :</b>\n` +
                             (settings.private_contact_wa_url ? `• *WhatsApp Admin :* ${settings.private_contact_wa_url}\n` : '') +
                             (settings.private_contact_url ? `• *Telegram Admin :* ${settings.private_contact_url}\n` : '') +
-                            `• *Notre Canal :* https://t.me/+PsQMCG9p36o0Njhk\n` : 
-                            `👇 <b>Utilisez les boutons ci-dessous pour accélérer le processus :</b>`);
+                            (settings.channel_url ? `• *Notre Canal :* ${settings.channel_url}\n` : '') : 
+                            `👇 <b>Veuillez cliquer ci-dessous :</b>`);
                 
                 const b = [];
-                const topRow = [];
-                if (settings.private_contact_url) topRow.push(Markup.button.url('✉️ Telegram : Admin', settings.private_contact_url));
-                if (settings.private_contact_wa_url) topRow.push(Markup.button.url('✉️ WhatsApp : Admin', settings.private_contact_wa_url));
-                if (topRow.length > 0) b.push(topRow);
-
-                b.push([
-                    Markup.button.url('📢 S’abonner au canal', 'https://t.me/+PsQMCG9p36o0Njhk'),
-                    Markup.button.callback('🔄 Rafraîchir mon statut', 'start')
-                ]);
+                if (settings.private_contact_url) b.push([Markup.button.url('✉️ Telegram : Admin', settings.private_contact_url)]);
+                if (settings.private_contact_wa_url) b.push([Markup.button.url('✉️ WhatsApp : Admin', settings.private_contact_wa_url)]);
+                b.push([Markup.button.url('📢 S’abonner au canal', settings.channel_url || 'https://t.me/channel')]);
+                b.push([Markup.button.callback('🔄 Rafraîchir mon statut', 'start')]);
                 
                 const restrictedKeyboard = Markup.inlineKeyboard(b);
 
@@ -226,79 +198,72 @@ function setupStartHandler(bot) {
                 notifyAdmins(bot, newMsg).catch(() => {});
             }
 
-            // --- BIFURCATION HOTLINE (EXISTING VS NEW) ---
+            let hasActive = false;
+            if (registeredUser.is_livreur) {
+                const { getLivreurOrders } = require('../services/database');
+                const activeOrders = await getLivreurOrders(registeredUser.id);
+                hasActive = activeOrders.length > 0;
+
+                const city = registeredUser.current_city || registeredUser.data?.current_city || 'Non défini';
+                const isAvail = registeredUser.is_available || registeredUser.data?.is_available;
+
+                welcomeText = `${settings.ui_icon_livreur} <b>Bienvenue, ${user.first_name} !</b>\n\n` +
+                    `📍 Secteur : <b>${city.toUpperCase()}</b>\n` +
+                    `🔘 Statut : <b>${isAvail ? (settings.ui_icon_success || '✅') + ' DISPONIBLE' : (settings.ui_icon_error || '❌') + ' INDISPONIBLE'}</b>\n\n`;
+
+                if (hasActive) {
+                    welcomeText += `🚀 <b>VOUS AVEZ ${activeOrders.length} COMMANDE(S) EN COURS !</b>\n\n` +
+                        activeOrders.map(o => `📦 #${o.id.slice(-5)} - ${o.address || '?'}`).join('\n') +
+                        `\n\n<i>Cliquez sur "Mes livraisons en cours" pour les gérer.</i>`;
+                }
+            } else {
+                const paymentLine = settings.payment_modes
+                    ? `\n🚨 <b>Le paiement s'effectue en : ${settings.payment_modes}</b>‼️\n`
+                    : '';
+                
+                // --- TOGGLE WELCOME MESSAGE ---
+                const useWelcome = settings.welcome_message_enabled !== false;
+                
+                if (isNew && useWelcome) {
+                    welcomeText = t(ctx, 'msg_welcome', `✨ <b>Bienvenue sur {bot_name}, {first_name} !</b>`, {
+                        bot_name: settings.bot_name,
+                        first_name: user.first_name
+                    }) + '\n\n' +
+                        `${settings.welcome_message || ''}\n${paymentLine}\n` +
+                        `📍 <i>En utilisant ce service, vous acceptez d'être localisé tacitement.</i>\n\n` +
+                        `🔗 <b>Votre lien de parrainage :</b>\n` +
+                        `<code>https://t.me/${ctx.botInfo?.username || 'bot'}?start=${registeredUser.referral_code}</code>`;
+                    if (!referrerId) pendingReferralInput.set(docId, true);
+                } else {
+                    const defaultText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`);
+                    welcomeText = t(ctx, 'msg_welcome_back', defaultText, {
+                        first_name: user.first_name,
+                        bot_name: settings.bot_name,
+                        payment_line: paymentLine
+                    });
+                }
+            }
+            
+            // Lookups optimisés (Admin + Fournisseur)
             const [isAdminUser, supplier] = await Promise.all([
                 isAdmin(ctx),
                 getSupplierByTelegramId(String(ctx.from.id))
             ]);
-            
-            if (isAdminUser) {
-                // RÉCUPÉRATION DES STATS LIVE POUR L'ADMIN (Effet "Command Center")
-                const overview = await getStatsOverview().catch(() => ({}));
-                const stats = overview.totalStats || {};
-                
-                const welcomeBackText = (settings.msg_welcome_back || `💎 <b>SYSTÈME SHOPTONBOT : CONSOLE ADMIN</b>\n\n` +
-                    `👋 Bienvenue, <b>{first_name}</b>. Votre infrastructure est stable.\n\n` +
-                    `📊 <b>ÉTAT DU RÉSEAU :</b>\n` +
-                    `• Clients : <code>${overview.totalUsers || 0}</code>\n` +
-                    `• Ventes : <code>${overview.totalOrders || stats.total_orders || 0}</code>\n` +
-                    `• C.A Global : <code>${parseFloat(overview.totalCA || stats.total_ca || 0).toLocaleString()}€</code>\n\n` +
-                    `🚀 <i>Toutes les fonctions de gestion sont opérationnelles.</i>`)
-                    .replace('{first_name}', user.first_name);
-                
-                const keyboard = await getWelcomeKeyboard(ctx, settings, registeredUser);
-                await safeEdit(ctx, welcomeBackText, {
-                    photo: settings.welcome_photo || null,
-                    ...keyboard
-                });
-            } else if (isNew) {
-                // NOUVEAU : Onboarding guidé pour les nouveaux clients
-                const dynamicText = getDynamicWelcomeMessage(ctx, user);
-                const isFromCanal = payload === 'canal';
-                const extraBadge = isFromCanal ? "📢 <i>Bienvenue depuis notre canal officiel ! Profitez de nos offres exclusives ci-dessous.</i>\n\n" : "";
-                const text = `${dynamicText}\n\n${extraBadge}<b>Bienvenue à bord !</b>\nLaissez-moi vous présenter rapidement ce que nous pouvons faire pour vous en 30 secondes.`;
-                const keyboard = Markup.inlineKeyboard([
-                    [Markup.button.callback('✨ DÉCOUVRIR LE CONCEPT (30s)', 'tour_1')],
-                    [Markup.button.callback('⏩ Accéder directement au Menu', 'main_menu')]
-                ]);
-                await safeEdit(ctx, text, { 
-                    photo: settings.welcome_photo || null,
-                    ...keyboard 
-                });
-            } else {
-                // Bifurcation pour les clients existants
-                const dynamicText = getDynamicWelcomeMessage(ctx, user);
-                const isFromCanal = payload === 'canal';
-                const extraBadge = isFromCanal ? "📢 <i>Bon retour depuis notre canal officiel ! Profitez de nos nouveautés ci-dessous.</i>\n\n" : "";
-                const text = `${dynamicText}\n\n${extraBadge}Heureux de vous revoir ! Que souhaitez-vous faire aujourd'hui ?`;
-                const keyboard = Markup.inlineKeyboard([
-                    [Markup.button.callback('📂 Mon Projet & Abonnements', 'view_my_project')],
-                    [Markup.button.callback('🏗 Créer mon propre Bot', 'config_start')],
-                    [Markup.button.callback('💎 Découvrir nos Offres', 'show_pricing')],
-                    [Markup.button.callback('🆘 Support & Hotline', 'hotline_menu')],
-                    [Markup.button.callback('🛒 Tester le Catalogue', 'main_menu')]
-                ]);
-                await safeEdit(ctx, text, { 
-                    photo: settings.welcome_photo || null,
-                    ...keyboard 
-                });
-            }
+            const isFournisseur = !!supplier;
+            const isLivreur = registeredUser.is_livreur;
+
+            const keyboard = isLivreur ? await getLivreurMenuKeyboard(ctx, settings, registeredUser, hasActive, isAdminUser) : await getMainMenuKeyboard(ctx, settings, registeredUser, isFournisseur, isAdminUser);
+            await safeEdit(ctx, welcomeText, {
+                photo: settings.welcome_photo || null,
+                ...keyboard
+            });
 
             if (ctx.telegram) {
-                setTimeout(() => {
-                    ctx.telegram.setMyCommands([
-                        { command: 'start', description: '🏠 Lancer le bot / Accueil' },
-                        { command: 'menu', description: '🛒 Voir le catalogue' },
-                        { command: 'orders', description: '📦 Mes commandes' },
-                        { command: 'admin', description: '🔐 Console Admin' },
-                        { command: 'help', description: '❓ Aide et support' }
-                    ]).catch(() => {});
-                    ctx.telegram.setChatMenuButton(ctx.chat.id, { type: 'commands' }).catch(() => {});
-                }, 100);
+                await updateMenuButton(ctx, registeredUser, settings);
             }
 
         } catch (error) {
-            console.error('❌ Erreur fatale /start:', error.message, error.stack);
+            console.error('❌ Erreur /start:', error);
         }
     });
 
@@ -311,7 +276,7 @@ function setupStartHandler(bot) {
                 return ctx.reply('❌ Vous n\'êtes pas encore abonné au canal. Veuillez cliquer sur "Rejoindre le Canal" puis réessayer.', { parse_mode: 'HTML' });
             } else {
                 ctx.reply('✅ Abonnement vérifié avec succès !', { parse_mode: 'HTML' });
-                // Simulate a /start command to re-evaluate the user logic
+                // Simuler une commande /start pour réévaluer la logique utilisateur
                 return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
             }
         }
@@ -321,21 +286,6 @@ function setupStartHandler(bot) {
     bot.action('main_menu', async (ctx) => {
         if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
         return showMainMenu(ctx);
-    });
-
-    bot.action('start_welcome', async (ctx) => {
-        if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
-        const settings = ctx.state?.settings || await getAppSettings();
-        const user = ctx.state?.user;
-        const welcomeText = `🛰 <b>BIENVENUE SUR NOTRE PLATEFORME</b>\n\n` +
-            `Découvrez le bot de vente le plus avancé du marché.\n` +
-            `Que vous soyez un client fidèle ou un futur partenaire, nous avons la solution qu'il vous faut.\n\n` +
-            `👇 <b>Faites votre choix :</b>`;
-        const keyboard = await getWelcomeKeyboard(ctx, settings, user);
-        return safeEdit(ctx, welcomeText, {
-            photo: settings.welcome_photo || null,
-            ...keyboard
-        });
     });
 
     bot.action('user_settings', async (ctx) => {
@@ -355,6 +305,8 @@ function setupStartHandler(bot) {
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('🇫🇷 Français', 'set_lang_fr')],
             [Markup.button.callback('🇺🇸 English', 'set_lang_en')],
+            [Markup.button.callback('🇪🇸 Español', 'set_lang_es')],
+            [Markup.button.callback('🇩🇪 Deutsch', 'set_lang_de')],
             [Markup.button.callback('◀️ Retour aux réglages', 'user_settings')]
         ]);
         return safeEdit(ctx, text, keyboard);
@@ -423,12 +375,11 @@ function setupStartHandler(bot) {
     bot.action('channel_link', async (ctx) => {
         await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
-        const channelUrl = 'https://t.me/+PsQMCG9p36o0Njhk';
         const buttons = [
-            [Markup.button.url('📢 Rejoindre le canal', channelUrl), Markup.button.callback('◀️ Retour', 'main_menu')]
+            [Markup.button.url('📢 Rejoindre le canal', settings.channel_url || 'https://t.me/channel'), Markup.button.callback('◀️ Retour', 'main_menu')]
         ];
-        let text = `${settings.ui_icon_channel || '📢'} <b>${settings.label_channel || 'Lien Canal'}</b>\n\n` +
-                   `📢 Lien direct : <a href="${channelUrl}">${channelUrl}</a>\n\n` +
+        let text = `${settings.ui_icon_channel} <b>${settings.label_channel || 'Lien Canal'}</b>\n\n` +
+                   (settings.channel_url ? `📢 Lien direct : <a href="${settings.channel_url}">${settings.channel_url}</a>\n\n` : '') +
                    `Restez informé de nos nouveautés en rejoignant notre canal officiel.`;
         await safeEdit(ctx, text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
     });
@@ -472,77 +423,25 @@ function setupStartHandler(bot) {
         // Relancer le start
         return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
     });
-    bot.action('tour_1', async (ctx) => {
-        await ctx.answerCbQuery('✨ BIENVENUE DANS L\'EXPÉRIENCE SHOPTONBOT !');
-        const settings = ctx.state?.settings || await getAppSettings();
-        const text = `🛰 <b>ÉTAPE 1 : AUTOMATISATION TOTALE</b>\n\n` +
-            `Dites adieu à la gestion manuelle. Notre système gère vos stocks, vos commandes et vos clients 24h/24.\n\n` +
-            `• <b>Ventes Instantanées</b> : Le client commande, vous encaissez.\n` +
-            `• <b>Zéro Erreur</b> : Calculs automatiques des prix et frais.\n` +
-            `• <b>Multi-Plateforme</b> : Telegram & WhatsApp synchronisés.`;
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('Suivant ⏩', 'tour_2')],
-            [Markup.button.callback('Accéder au Menu', 'main_menu')]
-        ]);
-        return safeEdit(ctx, text, { photo: settings.welcome_photo || null, ...keyboard });
-    });
-
-    bot.action('tour_2', async (ctx) => {
-        await ctx.answerCbQuery('💎 SÉCURITÉ MAXIMALE ACTIVÉE');
-        const settings = ctx.state?.settings || await getAppSettings();
-        const text = `💎 <b>ÉTAPE 2 : PAIEMENTS SÉCURISÉS</b>\n\n` +
-            `Nous intégrons les méthodes les plus fiables du marché :\n\n` +
-            `• <b>Crypto-monnaies</b> : BTC, USDT, ETH (Validation auto).\n` +
-            `• <b>Virements Bancaires</b> : Avec système de preuve photo.\n` +
-            `• <b>Cartes Cadeaux</b> : Rechargez votre wallet en un clic.`;
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('Suivant ⏩', 'tour_3')],
-            [Markup.button.callback('◀️ Précédent', 'tour_1')]
-        ]);
-        return safeEdit(ctx, text, { photo: settings.welcome_photo || null, ...keyboard });
-    });
-
-    bot.action('tour_3', async (ctx) => {
-        await ctx.answerCbQuery('🚀 PRÊT POUR LE DÉCOLLAGE ?');
-        const settings = ctx.state?.settings || await getAppSettings();
-        const text = `🏆 <b>ÉTAPE 3 : VOTRE EMPIRE, VOS RÈGLES</b>\n\n` +
-            `Gérez tout depuis votre console admin intuitive.\n\n` +
-            `• <b>Broadcast Massif</b> : Touchez 100% de vos clients.\n` +
-            `• <b>Système de Parrainage</b> : Laissez vos clients faire votre pub.\n` +
-            `• <b>Fidélisation AI</b> : Offrez des bonus automatiques.`;
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('🚀 COMMENCER MAINTENANT', 'main_menu')],
-            [Markup.button.callback('◀️ Précédent', 'tour_2')]
-        ]);
-        return safeEdit(ctx, text, { photo: settings.welcome_photo || null, ...keyboard });
-    });
 }
 /**
  * Affiche le menu principal (Standard ou Livreur)
  */
 async function showMainMenu(ctx) {
     const userId = `${ctx.platform}_${ctx.from.id}`;
-    // Nettoyer les états marketplace et globaux
+    // Nettoyer les états marketplace
     clearAllAwaitingMaps(ctx.from.id);
-    try {
-        const { awaitingAdminChat } = require('./admin');
-        const { awaitingPaymentProof } = require('./order_system');
-        const { cleanupUserChat } = require('../services/utils');
-        if (awaitingAdminChat) awaitingAdminChat.delete(String(ctx.from.id));
-        if (awaitingPaymentProof) awaitingPaymentProof.delete(String(ctx.from.id));
-        await cleanupUserChat(ctx);
-    } catch(e) {}
     const settings = await getAppSettings();
-    // Use already-patched ctx.state.user if available (e.g. right after language change),
-    // otherwise fetch fresh from DB.
+    // Utiliser ctx.state.user déjà corrigé si disponible (ex: juste après un changement de langue),
+    // sinon récupérer les données fraîches de la DB.
     const freshUser = await getUser(userId);
-    // Merge: prefer freshUser data but keep in-memory language if it was just changed
+    // Fusion : préférer les données de freshUser mais garder la langue en mémoire si elle vient d'être changée
     let user = freshUser;
     if (user && ctx.state.user?.language_code && ctx.state.user.language_code !== user.language_code) {
         // In-memory language is newer (race condition guard)
         user = { ...user, language_code: ctx.state.user.language_code, data: { ...(user.data || {}), language: ctx.state.user.language_code } };
     }
-    if (user) ctx.state.user = user; // Ensure ctx.state.user is up-to-date for t()
+    if (user) ctx.state.user = user; // S'assurer que ctx.state.user est à jour pour t()
     
     // Anti-blocage unapproved en retour menu
     const isApproved = (user && user.is_approved !== false) || (await isAdmin(ctx));
@@ -550,10 +449,7 @@ async function showMainMenu(ctx) {
         return ctx.reply(t(user, 'msg_access_denied', '🛑 Accès restreint.'));
     }
 
-    const { isAdmin } = require('./admin');
-    const isAdminUser = await isAdmin(ctx);
-
-    if (user && user.is_livreur && !isAdminUser) {
+    if (user && user.is_livreur) {
         const { getLivreurOrders } = require('../services/database');
         const activeOrders = await getLivreurOrders(user.id);
         const hasActive = activeOrders.length > 0;
@@ -567,35 +463,34 @@ async function showMainMenu(ctx) {
                 status: (isAvail ? (settings.ui_icon_success || '✅') : (settings.ui_icon_error || '❌')) + ' ' + statusLabel
             }) + '\n\n';
 
-        const keyboard = await getLivreurMenuKeyboard(ctx, settings, user, hasActive, isAdminUser);
+        const keyboard = await getLivreurMenuKeyboard(ctx, settings, user, hasActive);
         return await safeEdit(ctx, livreurText, { photo: settings.welcome_photo || null, ...keyboard });
     }
 
-    const text = t(freshUser, 'menu_main', `⚡️ <b>CONSOLE DE COMMANDE</b>\n\nExplorez notre catalogue et testez la fluidité de notre système.\n\n👇 <i>Utilisez les boutons ci-dessous pour naviguer :</i>`);
+    const text = t(user, 'menu_main', `📋 <b>Menu principal</b>`);
     const supplier = await getSupplierByTelegramId(String(ctx.from.id));
     const isFournisseur = !!supplier;
-    const keyboard = await getMainMenuKeyboard(ctx, settings, freshUser, isFournisseur, isAdminUser);
+    const keyboard = await getMainMenuKeyboard(ctx, settings, user, isFournisseur);
 
     await safeEdit(ctx, text, {
         photo: settings.welcome_photo || null,
         ...keyboard
     });
+    
+    await updateMenuButton(ctx, user, settings);
 }
 
 async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, isAdminUser = false) {
     if (!settings) settings = ctx.state?.settings || await getAppSettings();
     const buttons = [];
 
-    // Ligne 0 : VIP ACCESS (Bouton ultra-premium)
-    buttons.push([Markup.button.callback(`👑 DÉPLOYER MON PROPRE EMPIRE (BOT) 👑`, 'show_pricing')]);
+    const baseDomain = process.env.RENDER_EXTERNAL_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://farmstegridy-bot.onrender.com');
+    const langCode = user?.language_code || 'fr';
+    const catalogUrl = (settings.mini_app_url ? `${settings.mini_app_url}/catalog` : `${baseDomain}/catalog`) + `?lang=${langCode}`;
 
-    // Ligne 1 : Catalogue (Classique + Mini App)
-    const baseDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app';
-    const catalogUrl = settings.mini_app_url ? `${settings.mini_app_url}/catalog` : `https://${baseDomain}/catalog`;
-    buttons.push([
-        Markup.button.callback('🛒 CATALOGUE (CLASSIQUE)', 'view_catalog'),
-        Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl)
-    ]);
+    // Ligne 1 : Commander (Gros bouton principal)
+    buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '🛍'} CATALOGUE CLASSIQUE`, 'view_catalog')]);
+    buttons.push([Markup.button.webApp(`✨ CATALOGUE MINI APP ✨`, catalogUrl)]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
@@ -606,8 +501,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
 
     // Ligne 2 : Panier & Mes Commandes
     buttons.push([
-        Markup.button.callback(`🛒 ${t(user, 'btn_cart', 'PANIER')}`, 'view_cart'),
-        Markup.button.callback(`📦 ${t(user, 'btn_orders', 'COMMANDES')}`, 'my_orders')
+        Markup.button.callback(`${settings.ui_icon_cart || '🛒'} ${t(user, 'btn_cart', 'Panier')}`, 'view_cart'),
+        Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${t(user, 'btn_orders', 'Commandes')}`, 'my_orders')
     ]);
 
     // Ligne 3 : Aide & Contact
@@ -637,28 +532,22 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     if (spaces.length > 0) buttons.push(spaces);
 
     // Ligne de fin : Paramètres & Admin
-    const footers = [Markup.button.callback(`${settings.btn_settings || '⚙️'} RÉGLAGES`, 'user_settings')];
+    const footers = [Markup.button.callback(`${settings.btn_settings || '⚙️'} ${t(user, 'btn_settings', 'Réglages')}`, 'user_settings')];
     if (user?.is_admin || isAdminUser) {
-        footers.push(Markup.button.callback(`🛠 CONSOLE ADMIN`, 'admin_menu'));
+        footers.push(Markup.button.callback(`${settings.ui_icon_admin || '🛠'} ${t(user, 'btn_admin', 'Admin')}`, 'admin_menu'));
     }
     if (footers.length > 0) buttons.push(footers);
-    
-    // NOUVEAU: RACCOURCIS ADMIN (Uniquement si admin)
-    if (user?.is_admin || isAdminUser) {
-        buttons.push([
-            Markup.button.callback('📢 BROADCAST', 'admin_broadcast_menu'),
-            Markup.button.callback('⏳ ATTENTE', 'admin_pending_users')
-        ]);
-    }
 
     return Markup.inlineKeyboard(buttons);
 }
 
 async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = false, isAdminUser = false) {
     const isAvail = user?.is_available || user?.data?.is_available;
-    const livreurUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/livreur`;
+    const baseDomain = process.env.RENDER_EXTERNAL_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://farmstegridy-bot.onrender.com');
+    const livreurUrl = settings.mini_app_url ? `${settings.mini_app_url}/livreur` : `${baseDomain}/livreur`;
+
     const buttons = [
-        [Markup.button.webApp('✨ ESPACE LIVREUR MINI APP ✨', livreurUrl)],
+        [Markup.button.webApp('✨ ESPACE LIVREUR (MINI APP) ✨', livreurUrl)],
         [Markup.button.callback(isAvail ? '🔴 ' + t(user, 'btn_avail_off', 'Indisponible') : '🟢 ' + t(user, 'btn_avail_on', 'Disponible'), isAvail ? 'set_dispo_false' : 'set_dispo_true')],
         [
             Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${t(user, 'btn_orders_available_label', 'Commandes')}`, 'show_available_orders'), 
@@ -676,18 +565,40 @@ async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = fal
     return Markup.inlineKeyboard(buttons);
 }
 
-async function getWelcomeKeyboard(ctx, settings, user) {
-    const catalogUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'monshopbot-production.up.railway.app'}/catalog`;
-    return Markup.inlineKeyboard([
-        [
-            Markup.button.callback('🚀 DÉPLOYER MON PROPRE BOT', 'sales_menu_start'),
-            Markup.button.callback('🤖 TESTER LE BOT', 'main_menu')
-        ],
-        [
-            Markup.button.webApp('✨ CATALOGUE MINI APP ✨', catalogUrl),
-            Markup.button.callback('🎧 SUPPORT / HOTLINE CLIENT', 'hotline_menu')
-        ]
-    ]);
+async function updateMenuButton(ctx, user, settings, forceClient = false) {
+    if (!ctx.telegram || !ctx.chat) return;
+    try {
+        if (!settings) settings = await getAppSettings();
+        const baseDomain = process.env.RENDER_EXTERNAL_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://farmstegridy-bot.onrender.com');
+        const langCode = user?.language_code || 'fr';
+        const catalogUrl = (settings.mini_app_url ? `${settings.mini_app_url}/catalog` : `${baseDomain}/catalog`) + `?lang=${langCode}`;
+        const livreurUrl = (settings.mini_app_url ? `${settings.mini_app_url}/livreur` : `${baseDomain}/livreur`) + `?lang=${langCode}`;
+        const dashboardUrl = (settings.mini_app_url ? `${settings.mini_app_url}/dashboard` : `${baseDomain}/dashboard`) + `?lang=${langCode}`;
+
+        const isAdminUser = await isAdmin(ctx);
+
+        if (isAdminUser && !forceClient) {
+            await ctx.telegram.setChatMenuButton(ctx.chat.id, {
+                type: 'web_app',
+                text: `${settings.ui_icon_admin || '🛠️'} Dashboard`,
+                web_app: { url: dashboardUrl }
+            }).catch(() => {});
+        } else if (user && user.is_livreur && !forceClient) {
+            await ctx.telegram.setChatMenuButton(ctx.chat.id, {
+                type: 'web_app',
+                text: `${settings.ui_icon_livreur || '🚴'} Livreur`,
+                web_app: { url: livreurUrl }
+            }).catch(() => {});
+        } else {
+            await ctx.telegram.setChatMenuButton(ctx.chat.id, {
+                type: 'web_app',
+                text: `${settings.ui_icon_catalog || '🛍️'} Catalogue`,
+                web_app: { url: catalogUrl }
+            }).catch(() => {});
+        }
+    } catch (e) {
+        console.error('Error updating chat menu button:', e.message);
+    }
 }
 
-module.exports = { setupStartHandler, initStartState, getLivreurMenuKeyboard, getMainMenuKeyboard, getWelcomeKeyboard, showMainMenu };
+module.exports = { setupStartHandler, initStartState, getLivreurMenuKeyboard, getMainMenuKeyboard, updateMenuButton };

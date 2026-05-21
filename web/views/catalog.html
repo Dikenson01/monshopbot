@@ -3,7 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ShopTonBot</title>
+    <title>Farmstegridy</title>
+    <script>
+        window.addEventListener('error', function(e) {
+            var err = e.error ? e.error.stack : e.message;
+            fetch('/api/log-error', { method: 'POST', headers: {'Content-Type':'application/json', 'ngrok-skip-browser-warning': '69420'}, body: JSON.stringify({error: err, type: 'error', ua: navigator.userAgent}) });
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+            fetch('/api/log-error', { method: 'POST', headers: {'Content-Type':'application/json', 'ngrok-skip-browser-warning': '69420'}, body: JSON.stringify({error: e.reason ? (e.reason.stack || e.reason) : 'Unknown', type: 'promise', ua: navigator.userAgent}) });
+        });
+    </script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -182,20 +191,48 @@
         .empty-state { text-align: center; padding: 60px 20px; opacity: 0.4; font-weight: 700; font-size: 14px; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     </style>
+    <script src="/js/translations.js"></script>
 </head>
 <body>
     <div id="loading-screen">
-        <h1 style="font-size:28px; font-weight:900; letter-spacing:-1px;">Shop<span style="color:var(--accent);">TonBot</span></h1>
+        <div style="margin-bottom:15px; text-align:center;">
+            <img id="main-logo-1" class="app-dynamic-logo" src="/public/img/logo.png" style="width:100px; height:100px; object-fit:contain; border-radius:50%; margin-bottom:10px;" onerror="this.onerror=null; document.getElementById('loading-text-logo').style.display='block';">
+            <div id="loading-text-logo" style="display:none; font-size:32px; font-weight:900; letter-spacing:-1px; margin-bottom:15px;">
+                <span style="color:#fff;">Farm</span><span style="color:var(--accent);">stegridy</span>
+            </div>
+        </div>
         <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
     </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const bust = "?v=" + Date.now();
+            document.querySelectorAll('.app-dynamic-logo').forEach(img => {
+                if (img.src && img.src.includes('bot_media/mini_app_logo.png') && !img.src.includes('?v=')) {
+                    img.src = img.src + bust;
+                }
+            });
+        });
+        
+        function updateAppLogo(url) {
+            if (!url) return;
+            document.querySelectorAll('.app-dynamic-logo').forEach(img => {
+                img.src = url;
+            });
+        }
+    </script>
 
     <div id="page-shop" class="page active">
         <div class="app-header">
             <div>
-                <div class="logo">Shop<span>TonBot</span></div>
-                <div id="shop-stats" style="font-size:10px; font-weight:800; opacity:0.5; margin-top:2px; display:flex; gap:8px;">
-                    <span style="color:#ffaa00;"><i class="ph-fill ph-star"></i> <span id="shop-rating-avg">4.9</span></span>
-                    <span><i class="ph-fill ph-users"></i> <span id="shop-review-count">128</span> AVIS</span>
+                <div class="logo" style="display:flex; align-items:center; gap:10px;">
+                    <img id="main-logo-2" class="app-dynamic-logo" src="/public/img/logo.png" style="height:32px; width:32px; object-fit:cover; border-radius:50%;" onerror="this.onerror=null; this.style.display='none';">
+                    <div id="header-text-logo" style="font-size:18px; font-weight:900; letter-spacing:-0.5px; display:block;"><span style="color:#fff;">Farm</span><span style="color:var(--accent);">stegridy</span></div>
+                </div>
+                <div onclick="openAddressModal()" style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11px; font-weight:800; opacity:0.8; cursor:pointer;">
+                    <i class="ph-fill ph-map-pin" style="color:var(--accent);"></i>
+                    <div style="max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Livraison à : <span id="shop-default-address" style="color:var(--text); opacity:0.9;">Chargement...</span></div>
+                    <i class="ph-bold ph-caret-down" style="font-size:10px; opacity:0.5;"></i>
                 </div>
             </div>
             <div class="header-actions">
@@ -205,6 +242,8 @@
                 <div class="cart-icon-btn" onclick="openCheckout()"><i class="ph-fill ph-shopping-cart"></i><div class="cart-badge-dot" id="cart-dot"></div></div>
             </div>
         </div>
+        
+        <!-- Address bar moved to header -->
 
         <div id="news-section" style="padding: 0 20px 20px 20px; display:none;">
             <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;">À LA UNE ⚡</div>
@@ -216,59 +255,96 @@
             <div class="carousel" id="featured-carousel"></div>
         </div>
 
-        <div class="search-area"><div class="search-bar"><i class="ph-bold ph-magnifying-glass"></i><input type="text" placeholder="Rechercher..." id="search-input" oninput="handleSearch()"></div></div>
+        <div class="search-area"><div class="search-bar"><i class="ph-bold ph-magnifying-glass"></i><input type="text" placeholder="Rechercher..." data-i18n="search" id="search-input" oninput="handleSearch()"></div></div>
 
         <div class="categories-scroll" id="categories"></div>
 
         <div class="main-grid" id="products"></div>
     </div>
 
-    <div id="page-bots" class="page" style="display:none;">
-        <div class="app-header">
-            <div>
-                <div class="logo">Offres<span>BaaS</span></div>
-                <div style="font-size:10px; font-weight:800; opacity:0.5; margin-top:2px;">
-                    <span>✨ SOLUTIONS CLÉS EN MAIN & SUR MESURE</span>
-                </div>
-            </div>
-            <div class="header-actions">
-                <div class="cart-icon-btn" onclick="openCheckout()"><i class="ph-fill ph-shopping-cart"></i><div class="cart-badge-dot" id="cart-dot-bots"></div></div>
-            </div>
-        </div>
-
-        <div class="featured-section" style="margin-top:15px;">
-            <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;">LES FORMULES RECOMMANDÉES</div>
-            <div class="carousel" id="bots-featured-carousel"></div>
-        </div>
-
-        <div class="categories-scroll" id="bots-categories" style="margin-top:10px;"></div>
-
-        <div class="main-grid" id="bots-products"></div>
-    </div>
-
     <div id="page-orders" class="page" style="display:none; padding:30px 20px 150px 20px;">
-        <h1 style="font-size:28px; font-weight:900; margin-bottom:20px;">HISTORIQUE 📦</h1>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h1 style="font-size:28px; font-weight:900; margin:0;">SUIVI & AIDE</h1>
+            <div onclick="openGlobalSupportModal()" style="width:40px; height:40px; background:var(--card); border:1px solid var(--border); border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+                <i class="ph-fill ph-headset" style="font-size:20px; color:var(--text);"></i>
+            </div>
+        </div>
+        <div style="background:var(--accent); color:#fff; padding:12px 15px; border-radius:12px; font-weight:800; font-size:12px; display:flex; align-items:center; gap:10px; margin-bottom:20px; cursor:pointer;" onclick="openGlobalSupportModal()">
+            <i class="ph-fill ph-chat-circle-dots" style="font-size:18px;"></i>
+            Besoin d'aide avec une commande ? Discutez avec nous !
+        </div>
         <div id="orders-list"></div>
     </div>
 
     <div id="page-profile" class="page" style="display:none; padding:30px 20px 150px 20px;">
-        <h1 style="font-size:28px; font-weight:900; margin-bottom:20px;">MON COMPTE <i class="ph-fill ph-user-circle"></i></h1>
-        <div style="background:var(--card); padding:25px; border-radius:30px; text-align:center; margin-bottom:20px; border:1px solid var(--border);">
-            <div style="font-size:36px; font-weight:900; color:var(--accent);" id="user-balance">0.00€</div>
-            <div style="font-size:11px; font-weight:800; opacity:0.4; letter-spacing:1.5px; margin-top:5px;">SOLDE DISPONIBLE</div>
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
+            <div style="width:60px; height:60px; background:var(--accent); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; font-weight:900;" id="profile-initial">👤</div>
+            <div style="flex:1;">
+                <h1 style="font-size:24px; font-weight:900; margin:0; line-height:1;" id="profile-name">Client</h1>
+                <div style="font-size:13px; opacity:0.6; margin-top:5px;" id="profile-phone">Membre Farmstegridy</div>
+            </div>
         </div>
-        <div style="background:var(--card); border-radius:24px; overflow:hidden; border:1px solid var(--border); margin-bottom:20px;">
-            <div onclick="copyReferral()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
-                <div><div style="font-weight:800; font-size:15px;"><i class="ph-fill ph-handshake"></i> PARRAINAGE</div><div style="font-size:11px; opacity:0.4;">Invitez & Encaissez</div></div>
-                <div style="color:var(--accent); font-weight:900; font-size:12px;">PARTAGER</div>
+
+        <div style="display:flex; gap:10px; margin-bottom:30px;">
+            <div onclick="switchPage('orders')" style="flex:1; background:var(--card); padding:15px; border-radius:18px; text-align:center; border:1px solid var(--border); cursor:pointer;">
+                <i class="ph-fill ph-receipt" style="font-size:24px; color:var(--text); margin-bottom:5px;"></i>
+                <div style="font-size:12px; font-weight:800;" data-i18n="orders">>Commandes</div>
             </div>
-            <div onclick="openAddressModal()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
-                <div><div style="font-weight:800; font-size:15px;"><i class="ph-fill ph-map-pin"></i> MES ADRESSES</div><div style="font-size:11px; opacity:0.4;">Gérer vos lieux de livraison</div></div>
-                <div style="font-size:22px; color:var(--accent);"><i class="ph-fill ph-house"></i></div>
+            <div onclick="openAddressModal()" style="flex:1; background:var(--card); padding:15px; border-radius:18px; text-align:center; border:1px solid var(--border); cursor:pointer;">
+                <i class="ph-fill ph-map-pin" style="font-size:24px; color:var(--text); margin-bottom:5px;"></i>
+                <div style="font-size:12px; font-weight:800;">Adresses</div>
             </div>
-            <div id="hotline-btn" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center;">
-                <div><div style="font-weight:800; font-size:15px;"><i class="ph-fill ph-lifebuoy"></i> SUPPORT CLIENT</div><div style="font-size:11px; opacity:0.4;">Assistance 24/7</div></div>
-                <div style="font-size:22px; color:var(--accent);"><i class="ph-fill ph-chat-circle-dots"></i></div>
+        </div>
+
+        <div style="font-size:11px; font-weight:900; opacity:0.4; letter-spacing:1.5px; margin-bottom:12px;">VOTRE COMPTE</div>
+        <div style="background:var(--card); border-radius:24px; overflow:hidden; border:1px solid var(--border); margin-bottom:25px;">
+            <div style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i class="ph-fill ph-wallet" style="font-size:20px; opacity:0.7;"></i>
+                    <div><div style="font-weight:800; font-size:15px;">Portefeuille</div><div style="font-size:11px; opacity:0.5;">Solde disponible</div></div>
+                </div>
+                <div style="font-weight:900; font-size:16px; color:var(--accent);" id="user-balance">0.00€</div>
+            </div>
+            <div onclick="copyReferral()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i class="ph-fill ph-gift" style="font-size:20px; opacity:0.7;"></i>
+                    <div><div style="font-weight:800; font-size:15px;">Parrainage</div><div style="font-size:11px; opacity:0.5;">Gagnez des crédits</div></div>
+                </div>
+                <i class="ph-bold ph-caret-right" style="color:var(--accent);"></i>
+            </div>
+            <div onclick="switchPage('shop'); setTimeout(()=> { const search = document.getElementById('search-input'); search.focus(); }, 100);" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i class="ph-fill ph-heart" style="font-size:20px; opacity:0.7; color:var(--accent);"></i>
+                    <div><div style="font-weight:800; font-size:15px;">Mes Favoris</div><div style="font-size:11px; opacity:0.5;">Retrouver mes produits préférés</div></div>
+                </div>
+                <i class="ph-bold ph-caret-right" style="color:var(--accent);"></i>
+            </div>
+            <div onclick="openUserReviewsModal()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i class="ph-fill ph-star" style="font-size:20px; opacity:0.7;"></i>
+                    <div><div style="font-weight:800; font-size:15px;">Mes Avis</div><div style="font-size:11px; opacity:0.5;">Voir et gérer mes avis</div></div>
+                </div>
+                <i class="ph-bold ph-caret-right" style="color:var(--accent);"></i>
+            </div>
+            <div onclick="openAdminTelegram()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i class="ph-fill ph-telegram-logo" style="font-size:20px; opacity:0.7;"></i>
+                    <div><div style="font-weight:800; font-size:15px;" id="hotline-btn">Contacter l'Admin</div><div style="font-size:11px; opacity:0.5;">Lien direct Telegram</div></div>
+                </div>
+                <i class="ph-bold ph-caret-right" style="color:var(--accent);"></i>
+            </div>
+        </div>
+
+        <div style="font-size:11px; font-weight:900; opacity:0.4; letter-spacing:1.5px; margin-bottom:12px;">OPPORTUNITÉS</div>
+        <div style="background:var(--card); border-radius:24px; overflow:hidden; border:1px solid var(--border); margin-bottom:25px;">
+            <div onclick="requestCourierRole()" style="padding:18px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:36px; height:36px; background:var(--secondary); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; color:#000;">
+                        <i class="ph-fill ph-moped"></i>
+                    </div>
+                    <div><div style="font-weight:800; font-size:15px;">Devenir Livreur</div><div style="font-size:11px; opacity:0.5;">Rejoignez l'équipe</div></div>
+                </div>
+                <i class="ph-bold ph-caret-right" style="color:var(--accent);"></i>
             </div>
         </div>
 
@@ -282,9 +358,8 @@
 
     <div class="bottom-nav">
         <div class="nav-item active" onclick="switchPage('shop', this)"><div class="nav-icon"><i class="ph-fill ph-diamond"></i></div><div class="nav-label">Shop</div></div>
-        <div class="nav-item" onclick="switchPage('bots', this)"><div class="nav-icon" style="color:var(--secondary);"><i class="ph-fill ph-rocket"></i></div><div class="nav-label">BaaS</div></div>
-        <div class="nav-item" onclick="switchPage('orders', this)"><div class="nav-icon"><i class="ph-fill ph-package"></i></div><div class="nav-label">Suivi</div></div>
-        <div class="nav-item" onclick="switchPage('profile', this)"><div class="nav-icon"><i class="ph-fill ph-crown"></i></div><div class="nav-label">Profil</div></div>
+        <div class="nav-item" onclick="switchPage('orders', this)"><div class="nav-icon"><i class="ph-fill ph-package"></i></div><div class="nav-label" data-i18n="orders">>Commandes</div></div>
+        <div class="nav-item" onclick="switchPage('profile', this)"><div class="nav-icon"><i class="ph-fill ph-user"></i></div><div class="nav-label" data-i18n="profile">>Profil</div></div>
     </div>
 
     <div class="sheet" id="selection-modal">
@@ -311,7 +386,7 @@
                 <div id="p-promo-encart" style="display:none; background:linear-gradient(135deg, rgba(255,170,0,0.15), rgba(255,0,80,0.15)); border:1px solid #ffaa00; color:#ffaa00; font-size:12px; font-weight:900; padding:8px 12px; border-radius:10px; margin-bottom:15px;"></div>
                 <div id="p-desc" style="font-size:14px; opacity:0.6; line-height:1.6; margin-bottom:30px;">Description...</div>
                 
-                <div style="font-size:11px; font-weight:900; opacity:0.3; letter-spacing:1px; margin-bottom:15px;">FORMATS DISPONIBLES 📦</div>
+                <div id="p-options-title" style="font-size:11px; font-weight:900; opacity:0.3; letter-spacing:1px; margin-bottom:15px;">FORMATS DISPONIBLES 📦</div>
                 <div id="p-options" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:40px;"></div>
 
                 <div style="font-size:11px; font-weight:900; opacity:0.3; letter-spacing:1px; margin-bottom:15px;">AVIS CLIENTS ⭐</div>
@@ -321,6 +396,34 @@
         </div>
         <div style="position:absolute; bottom:0; left:0; right:0; padding:20px; background:rgba(0,0,0,0.8); backdrop-filter:blur(10px);">
             <button class="btn-primary" id="p-add-cart-btn">AJOUTER AU PANIER</button>
+        </div>
+    </div>
+
+    <div class="modal" id="support-modal">
+        <div class="modal-header">
+            <div style="font-size:24px" onclick="closeSupportModal()"><i class="ph-bold ph-x"></i></div>
+            <div style="font-weight:900; font-size:18px; color:var(--accent)">SUPPORT GÉNÉRAL</div>
+            <div></div>
+        </div>
+        <div style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column;">
+            <div style="font-size:11px; opacity:0.5; font-weight:800; letter-spacing:1px; margin-bottom:10px;">COMMANDES RÉCENTES</div>
+            <div id="help-recent-orders-list" style="margin-bottom:20px;"></div>
+            <div style="font-size:11px; opacity:0.5; font-weight:800; letter-spacing:1px; margin-bottom:10px;">DISCUSSION AVEC L'ÉQUIPE</div>
+            <div id="admin-chat-messages" style="flex:1; overflow-y:auto; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:15px; margin-bottom:15px;"></div>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="admin-chat-input" placeholder="Votre message..." style="flex:1; background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:12px; padding:0 15px; color:#fff; font-size:14px; outline:none;">
+                <button class="btn-primary" id="admin-chat-send-btn" onclick="sendAdminChatMessage()" style="width:50px; height:50px; border-radius:12px; display:flex; align-items:center; justify-content:center;"><i class="ph-fill ph-paper-plane-right" style="font-size:20px;"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="order-support-modal">
+        <div class="modal-header">
+            <div style="font-size:24px" onclick="closeOrderSupportModal()"><i class="ph-bold ph-x"></i></div>
+            <div style="font-weight:900; font-size:18px; color:var(--accent)" id="order-support-title">Commande</div>
+            <div></div>
+        </div>
+        <div style="flex:1; overflow-y:auto; padding:20px;" id="order-support-content">
         </div>
     </div>
 
@@ -346,7 +449,7 @@
         </div>
     </div>
 
-    <div class="modal" id="custom-modal-overlay">
+    <div class="modal" id="custom-modal-overlay" style="z-index: 10010;">
         <div class="modal-header">
             <h2 style="font-weight:900; font-size:24px;" id="cmodal-title">TITRE</h2>
             <div style="font-size:28px" onclick="closeCustomModal()"><i class="ph-bold ph-x"></i></div>
@@ -355,35 +458,159 @@
     </div>
 
     <script>
+        const originalFetch = window.fetch;
+        window.fetch = function() {
+            let resource = arguments[0];
+            let config = arguments[1] || {};
+            if (typeof resource === 'string' && resource.startsWith('/')) {
+                if (!config.headers) config.headers = {};
+                if (!(config.headers instanceof Headers)) {
+                    config.headers['ngrok-skip-browser-warning'] = '69420';
+                } else {
+                    config.headers.append('ngrok-skip-browser-warning', '69420');
+                }
+            }
+            return originalFetch.call(window, resource, config);
+        };
+
         const tg = window.Telegram.WebApp;
         tg.expand(); tg.ready();
+        
+        function safeGetStorage(key, def) {
+            try { return JSON.parse(localStorage.getItem(key) || def); }
+            catch(e) { return JSON.parse(def); }
+        }
+        function safeSetStorage(key, val) {
+            try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+        }
 
         let allProducts = [];
-        let categories = [];
-        let cart = JSON.parse(localStorage.getItem('stb_cart') || '[]');
+        let allCategories = [];
+        let cart = safeGetStorage('stb_cart', '[]');
         let userInfo = null;
-        let favorites = JSON.parse(localStorage.getItem('stb_favorites') || '[]');
+        let favorites = safeGetStorage('stb_favorites', '[]');
         let selectedDeliveryTags = [];
         let activeProduct = null;
         let activeOption = null;
         let checkoutStep = 1;
         let appliedPromoCode = '';
         let appliedPromoDiscount = 0;
-
+        let currentCat = 'Tous';
         let allNews = [];
+        let userOrdersCache = [];
+
+        // Support Client <> Admin
+        let adminChatMessages = safeGetStorage('stb_admin_chat', '[]');
+
+        // Helper : extrait tous les médias (vidéos et images)
+        function getAllMedia(product) {
+            const raw = product?.image_url;
+            if (!raw) return [];
+            try {
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            } catch(e) {}
+            if (typeof raw === 'string' && raw.startsWith('http')) return [{url: raw, type: 'image'}];
+            return [];
+        }
+
+        function getImgUrl(product) {
+            const media = getAllMedia(product);
+            return media.length > 0 ? media[0].url : null;
+        }
+
+        function renderMediaGallery(product, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const mediaList = getAllMedia(product);
+            
+            if (mediaList.length === 0) {
+                container.innerHTML = `<img src="https://placehold.co/400x400/111/fff?text=${encodeURIComponent(product.name)}" style="width:100%; height:100%; object-fit:contain;">`;
+                return;
+            }
+
+            if (mediaList.length === 1) {
+                const m = mediaList[0];
+                if (m.type === 'video' || m.url.endsWith('.mp4') || m.url.endsWith('.webm') || m.url.endsWith('.mov')) {
+                    container.innerHTML = `<video controls playsinline style="width:100%; height:100%; object-fit:contain; background:#000;"><source src="${m.url}"></video>`;
+                } else {
+                    container.innerHTML = `<img src="${m.url}" style="width:100%; height:100%; object-fit:contain;">`;
+                }
+                return;
+            }
+
+            // Gallery
+            let html = `<div style="position:relative; width:100%; height:100%; display:flex; overflow-x:auto; scroll-snap-type: x mandatory; background:#000;">`;
+            mediaList.forEach(m => {
+                const isVideo = m.type === 'video' || m.url.endsWith('.mp4') || m.url.endsWith('.webm') || m.url.endsWith('.mov');
+                if (isVideo) {
+                    html += `<div style="flex:0 0 100%; scroll-snap-align:start; position:relative; width:100%; height:100%;">
+                                <video controls playsinline style="width:100%; height:100%; object-fit:contain;"><source src="${m.url}"></video>
+                             </div>`;
+                } else {
+                    html += `<div style="flex:0 0 100%; scroll-snap-align:start; position:relative; width:100%; height:100%;">
+                                <img src="${m.url}" style="width:100%; height:100%; object-fit:contain;">
+                             </div>`;
+                }
+            });
+            html += `</div>
+                     <div style="position:absolute; bottom:10px; width:100%; text-align:center; pointer-events:none;">
+                         <span style="background:rgba(0,0,0,0.5); color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:800; backdrop-filter:blur(4px);">Glisser pour voir plus</span>
+                     </div>`;
+            container.innerHTML = html;
+        }
+
+        function compareCategories(catA, catB) {
+            if (!catA || !catB) return false;
+            const normalize = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+            return normalize(catA) === normalize(catB);
+        }
 
         async function init() {
             setLoader(30);
+            fetch('/api/log-error', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({error: 'Init Started', type: 'debug'}) }).catch(e=>{});
             try {
                 const uid = tg.initDataUnsafe?.user?.id;
-                const [pRes, uRes, newsRes] = await Promise.all([
+                const [pRes, uRes, newsRes, ordersRes] = await Promise.all([
                     fetch('/api/products'),
                     uid ? fetch(`/api/user-info?userId=telegram_${uid}`) : Promise.resolve(null),
-                    fetch('/api/news')
+                    fetch('/api/news'),
+                    uid ? fetch(`/api/user-orders?userId=telegram_${uid}`) : Promise.resolve(null)
                 ]);
                 setLoader(80);
                 allProducts = await pRes.json();
-                if (uRes && uRes.ok) userInfo = await uRes.json();
+                allCategories = ['TOUT', 'FAVORIS ❤️', ...new Set(allProducts.map(p => p.category).filter(c => c))];
+                if (uRes && uRes.ok) {
+                    userInfo = await uRes.json();
+                    
+                    if (userInfo && (userInfo.username || userInfo.first_name)) {
+                        const nameToDisplay = userInfo.username || userInfo.first_name;
+                        const pname = document.getElementById('profile-name');
+                        if (pname) pname.innerText = nameToDisplay;
+                        const pinit = document.getElementById('profile-initial');
+                        if (pinit) pinit.innerText = nameToDisplay.charAt(0).toUpperCase();
+                    }
+
+                    if (userInfo && userInfo.mini_app_logo) {
+                        updateAppLogo(userInfo.mini_app_logo);
+                    }
+                    if (userInfo && userInfo.chat_history) {
+                        adminChatMessages = userInfo.chat_history;
+                        safeSetStorage('stb_admin_chat', adminChatMessages);
+                        if (userInfo.private_contact_url) {
+                            window.privateContactUrl = userInfo.private_contact_url;
+                        }
+                        const chatPage = document.getElementById('page-chat');
+                        if (chatPage && chatPage.style.display === 'block') {
+                            loadSupportChat();
+                        }
+                    }
+                }
+                if (ordersRes && ordersRes.ok) {
+                    window.userOrdersCache = await ordersRes.json();
+                } else {
+                    window.userOrdersCache = [];
+                }
                 
                 allNews = await newsRes.json();
                 renderNews(allNews);
@@ -417,7 +644,7 @@
                 if (userInfo) {
                     msg = msg.replace(/{first_name}/g, userInfo.first_name || '')
                              .replace(/{username}/g, userInfo.username || '')
-                             .replace(/{wallet}/g, (userInfo.balance || 0).toFixed(2) + '€');
+                             .replace(/{wallet}/g, (parseFloat(userInfo.balance) || 0).toFixed(2) + '€');
                 }
 
                 const hasMedia = n.media_url && n.media_url.length > 5;
@@ -448,13 +675,13 @@
         function setLoader(p) { document.getElementById('loader-fill').style.width = p+'%'; }
 
         function switchPage(p, el) {
+            stopAllVideos();
             document.querySelectorAll('.page').forEach(pg => pg.style.display = 'none');
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
             const targetPage = document.getElementById(`page-${p}`);
             if (targetPage) targetPage.style.display = 'block';
             if (el) el.classList.add('active');
             if (p === 'orders') loadOrders();
-            else if (p === 'bots') renderBots();
             else if (p === 'shop') renderShop();
             tg.HapticFeedback.impactOccurred('medium');
             updateCartUI();
@@ -464,18 +691,17 @@
             e.stopPropagation();
             if (favorites.includes(pid)) favorites = favorites.filter(id => id !== pid);
             else favorites.push(pid);
-            localStorage.setItem('stb_favorites', JSON.stringify(favorites));
+            safeSetStorage('stb_favorites', favorites);
             
-            const isBotsActive = document.getElementById('page-bots')?.style.display === 'block';
-            if (isBotsActive) {
-                renderBots();
-            } else {
-                const activeCat = document.querySelector('#categories .cat-chip.active')?.innerText;
-                const demoProducts = allProducts.filter(p => !p.category || (!p.category.includes('PACK') && !p.category.includes('MODULE')));
-                if (activeCat === 'TOUT') renderGrid(demoProducts, 'products');
-                else if (activeCat === 'FAVORIS ❤️') renderGrid(demoProducts.filter(p => favorites.includes(p.id)), 'products');
-                else renderGrid(demoProducts.filter(p => p.category && p.category.toUpperCase() === activeCat), 'products');
-            }
+            favoriteToggle();
+        }
+
+        function favoriteToggle() {
+            const activeCat = document.querySelector('#categories .cat-chip.active')?.innerText;
+            const demoProducts = allProducts.filter(p => !p.category || (!p.category.includes('PACK') && !p.category.includes('MODULE')));
+            if (activeCat === 'TOUT') renderGrid(demoProducts, 'products');
+            else if (activeCat === 'FAVORIS ❤️') renderGrid(demoProducts.filter(p => favorites.includes(p.id)), 'products');
+            else renderGrid(demoProducts.filter(p => compareCategories(p.category, activeCat)), 'products');
             
             tg.HapticFeedback.impactOccurred('light');
         }
@@ -499,15 +725,14 @@
                 const d = document.createElement('div');
                 d.className = 'featured-item';
                 d.onclick = () => openProductModal(f.id);
-                const img = f.image_url || `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(f.name)}`;
+                const img = getImgUrl(f) || `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(f.name)}`;
                 d.innerHTML = `<div class="featured-thumb"><img src="${img}"></div><div class="featured-label">${f.name}</div>`;
                 if (carousel) carousel.appendChild(d);
             });
 
-            const cats = ['TOUT', 'FAVORIS ❤️', ...new Set(demoProducts.map(p => p.category).filter(c => c))];
             const catContainer = document.getElementById('categories');
             if (catContainer) catContainer.innerHTML = '';
-            cats.forEach(c => {
+            allCategories.forEach(c => {
                 const d = document.createElement('div');
                 d.className = `cat-chip ${c === 'TOUT' ? 'active' : ''}`;
                 d.innerText = c.toUpperCase();
@@ -516,47 +741,13 @@
                     d.classList.add('active'); 
                     if (c === 'TOUT') renderGrid(demoProducts, 'products');
                     else if (c === 'FAVORIS ❤️') renderGrid(demoProducts.filter(p => favorites.includes(p.id)), 'products');
-                    else renderGrid(demoProducts.filter(p => p.category === c), 'products'); 
+                    else renderGrid(demoProducts.filter(p => compareCategories(p.category, c)), 'products'); 
                 };
                 if (catContainer) catContainer.appendChild(d);
             });
             renderGrid(demoProducts, 'products');
         }
 
-        function renderBots() {
-            const botProducts = allProducts.filter(p => p.category && (p.category.includes('PACK') || p.category.includes('MODULE')));
-            const carousel = document.getElementById('bots-featured-carousel');
-            const featured = botProducts.filter(p => p.is_featured);
-            if (carousel) carousel.innerHTML = '';
-            
-            const displayFeatured = featured.length ? featured : botProducts.slice(0, 5);
-
-            displayFeatured.forEach(f => {
-                const d = document.createElement('div');
-                d.className = 'featured-item';
-                d.onclick = () => openProductModal(f.id);
-                const img = f.image_url || `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(f.name)}`;
-                d.innerHTML = `<div class="featured-thumb"><img src="${img}"></div><div class="featured-label">${f.name}</div>`;
-                if (carousel) carousel.appendChild(d);
-            });
-
-            const cats = ['TOUT', ...new Set(botProducts.map(p => p.category).filter(c => c))];
-            const catContainer = document.getElementById('bots-categories');
-            if (catContainer) catContainer.innerHTML = '';
-            cats.forEach(c => {
-                const d = document.createElement('div');
-                d.className = `cat-chip ${c === 'TOUT' ? 'active' : ''}`;
-                d.innerText = c.toUpperCase();
-                d.onclick = () => { 
-                    document.querySelectorAll('#bots-categories .cat-chip').forEach(t => t.classList.remove('active')); 
-                    d.classList.add('active'); 
-                    if (c === 'TOUT') renderGrid(botProducts, 'bots-products');
-                    else renderGrid(botProducts.filter(p => p.category === c), 'bots-products'); 
-                };
-                if (catContainer) catContainer.appendChild(d);
-            });
-            renderGrid(botProducts, 'bots-products');
-        }
 
         function renderGrid(prods, containerId = 'products') {
             const container = document.getElementById(containerId);
@@ -564,7 +755,7 @@
             container.innerHTML = '';
             prods.forEach((p, i) => {
                 const d = document.createElement('div'); d.className = 'card';
-                const img = p.image_url || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(p.name)}`;
+                const img = getImgUrl(p) || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(p.name)}`;
                 const rating = (4.5 + Math.random() * 0.5).toFixed(1);
                 
                 let badgeHtml = '';
@@ -588,7 +779,12 @@
                     </div>
                     <div class="card-content" onclick="openProductModal('${p.id}')">
                         <div class="card-name">${p.name}</div>
-                        <div class="card-price">${p.price}€</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                            <div class="card-price" style="margin-top:0;">${p.price}€</div>
+                            <div id="stock-badge-${p.id}" style="font-size:10px; font-weight:800; background:rgba(255,255,255,0.1); padding:4px 8px; border-radius:8px; display:flex; align-items:center; gap:4px;">
+                                <span class="stock-indicator" style="background:${p.stock>0?'#2ecc71':'#e74c3c'}; width:6px; height:6px; border-radius:50%; display:inline-block;"></span>${p.stock>0 ? p.stock+' en stock' : 'Épuisé'}
+                            </div>
+                        </div>
                     </div>
                     <div class="add-btn" style="animation: pulse 2s infinite;" onclick="openProductModal('${p.id}', event)">+</div>
                 `;
@@ -606,6 +802,7 @@
             try {
                 const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
                 const orders = await res.json();
+                userOrdersCache = orders;
                 
                 let statsHtml = '';
                 if(orders.length > 0) {
@@ -699,7 +896,7 @@
                         `;
                     }
 
-                    const btnContact = (o.status === 'taken' || o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="toggleChatModule('${o.id}')"><i class="ph-fill ph-chat-circle-dots"></i> CHAT ASSISTANCE (${count}/6)</button>` : '';
+                    const btnContact = (!['delivered', 'cancelled', 'refused'].includes(o.status) && o.livreur_id) ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="toggleChatModule('${o.id}')"><i class="ph-fill ph-chat-circle-dots"></i> CHAT LIVREUR (${count}/6)</button>` : '';
                     const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-primary" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="ph-fill ph-star"></i> NOTER</button>` : '';
                     const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
                     const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="ph-bold ph-x"></i> ANNULER</button>` : '';
@@ -720,7 +917,10 @@
                         ${btnCancel}
                         ${btnContact}
                         ${btnNoter}
-                        ${btnReorder}
+                        <div style="display:flex; gap:10px; margin-top:10px;">
+                            ${btnReorder}
+                            <button class="btn-primary" style="flex:1; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.5); color:#ffaa00; height:40px;" onclick="contactSupportForOrder('${o.id}')"><i class="ph-fill ph-headset"></i> AIDE</button>
+                        </div>
 
                         <div class="chat-module" id="chat-module-${o.id}" style="display:${prevState.isOpen ? 'block' : 'none'};">
                             <div style="font-size:10px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">MESSAGERIE SÉCURISÉE :</div>
@@ -825,10 +1025,10 @@
                                 cart.push({ cid, id: it.id, name: prod.name, pr: it.price || prod.price, m: it.qty || 1, unit: prod.unit || 'g', n: 1 });
                             }
                         });
-                        localStorage.setItem('stb_cart', JSON.stringify(cart));
+                        safeSetStorage('stb_cart', cart);
                         updateCartUI();
                         switchPage('shop', document.querySelectorAll('.nav-item')[0]);
-                        tg.showAlert("Articles ajoutés au panier !");
+                        tg.showAlert(t("added_to_cart_notif"));
                     }
                 } catch(e) { tg.showAlert("Impossible de réclamer cette commande."); }
             });
@@ -839,7 +1039,7 @@
             activeProduct = allProducts.find(x => x.id === pid);
             if (!activeProduct) return;
 
-            document.getElementById('p-img').src = activeProduct.image_url || `https://placehold.co/400x400/111/fff?text=${encodeURIComponent(activeProduct.name)}`;
+            renderMediaGallery(activeProduct, 'p-media');
             document.getElementById('p-name').innerText = activeProduct.name;
             document.getElementById('p-price').innerText = activeProduct.price + '€';
             const promoEncart = document.getElementById('p-promo-encart');
@@ -858,7 +1058,7 @@
                 const headerTitle = document.querySelector('#product-detail-modal .modal-header div:nth-child(2)');
                 if (headerTitle) headerTitle.innerText = "CONFIGURATION DU BOT";
                 
-                const optHeader = document.querySelector('#product-detail-modal div:nth-child(2) div:nth-child(2) div:nth-child(5)');
+                const optHeader = document.getElementById('p-options-title');
                 if (optHeader) optHeader.innerText = "OPTIONS DISPONIBLES 🚀";
                 
                 const botOptions = [
@@ -879,7 +1079,7 @@
                 const headerTitle = document.querySelector('#product-detail-modal .modal-header div:nth-child(2)');
                 if (headerTitle) headerTitle.innerText = "DÉTAILS DU PRODUIT";
                 
-                const optHeader = document.querySelector('#product-detail-modal div:nth-child(2) div:nth-child(2) div:nth-child(5)');
+                const optHeader = document.getElementById('p-options-title');
                 if (optHeader) optHeader.innerText = "FORMATS DISPONIBLES 📦";
                 
                 const uv = parseFloat(String(activeProduct.unit_value || '1').replace(',','.')) || 1;
@@ -907,6 +1107,7 @@
         }
 
         function openReviewPrompt(pid) {
+            stopAllVideos();
             const html = `
                 <div style="text-align:center; font-size:14px; margin-bottom:15px; opacity:0.8;">Notez ce produit et partagez votre expérience :</div>
                 <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;" id="review-stars">
@@ -916,8 +1117,17 @@
                     <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(4)"></i>
                     <i class="ph-fill ph-star" style="font-size:32px; color:var(--border);" onclick="setReviewStar(5)"></i>
                 </div>
-                <textarea id="review-text" placeholder="Génial ! Je recommande fortement..." style="width:100%; height:80px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px; font-family:'Outfit', sans-serif; resize:none;"></textarea>
-                <button class="btn-primary" style="background:var(--accent); color:#fff; margin-top:15px;" onclick="submitProductReview('${pid}')">ENVOYER L'AVIS</button>
+                <textarea id="review-text" placeholder="Génial ! Je recommande fortement..." style="width:100%; height:80px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px; font-family:'Outfit', sans-serif; resize:none; margin-bottom:10px;"></textarea>
+                
+                <div style="margin-bottom:15px;">
+                    <label for="review-media-upload" style="display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px 15px; font-size:13px; cursor:pointer;">
+                        <i class="ph-bold ph-image" style="font-size:18px;"></i> Ajouter Photo/Vidéo
+                    </label>
+                    <input type="file" id="review-media-upload" accept="image/*,video/*" style="display:none;" onchange="document.getElementById('review-media-preview').innerText = this.files.length ? this.files[0].name : '';">
+                    <div id="review-media-preview" style="font-size:11px; opacity:0.6; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                </div>
+
+                <button class="btn-primary" id="btn-submit-review" style="background:var(--accent); color:#fff;" onclick="submitProductReview('${pid}')">ENVOYER L'AVIS</button>
             `;
             openCustomModal('VOTRE AVIS', html);
             window.currentReviewRating = 5;
@@ -935,16 +1145,40 @@
         async function submitProductReview(pid) {
             const text = document.getElementById('review-text').value;
             const uid = tg.initDataUnsafe?.user?.id;
+            const fileInput = document.getElementById('review-media-upload');
+            const btn = document.getElementById('btn-submit-review');
+            let media = [];
+            
             try {
+                btn.disabled = true;
+                btn.innerText = "ENVOI EN COURS...";
+                
+                if (fileInput && fileInput.files.length > 0) {
+                    const formData = new FormData();
+                    formData.append('file', fileInput.files[0]);
+                    const upRes = await fetch('/api/client/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (upRes.ok) {
+                        const upData = await upRes.json();
+                        if (upData.url) media.push(upData.url);
+                    }
+                }
+                
                 await fetch('/api/products/reviews', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: `telegram_${uid}`, productId: pid, rating: window.currentReviewRating, text: text })
+                    body: JSON.stringify({ userId: `telegram_${uid}`, productId: pid, rating: window.currentReviewRating, text: text, media: media })
                 });
                 closeCustomModal();
                 tg.showAlert("Merci pour votre avis !");
                 loadProductReviews(pid);
-            } catch(e) {}
+            } catch(e) {
+                btn.disabled = false;
+                btn.innerText = "ENVOYER L'AVIS";
+                tg.showAlert("Une erreur est survenue.");
+            }
         }
 
         async function loadProductReviews(pid) {
@@ -955,24 +1189,108 @@
                 const reviews = await res.json();
                 cont.innerHTML = reviews.length ? '' : '<div style="font-size:12px; opacity:0.4;">Aucun avis pour le moment.</div>';
                 reviews.forEach(r => {
+                    let mediaHtml = '';
+                    if (r.media && r.media.length > 0) {
+                        const m = r.media[0];
+                        if (m.endsWith('.mp4') || m.endsWith('.webm') || m.endsWith('.mov')) {
+                            mediaHtml = `<div style="margin-top:10px;"><video src="${m}" controls style="max-height:120px; border-radius:8px; max-width:100%; border:1px solid rgba(255,255,255,0.1);"></video></div>`;
+                        } else {
+                            mediaHtml = `<div style="margin-top:10px;"><img src="${m}" style="max-height:120px; border-radius:8px; max-width:100%; border:1px solid rgba(255,255,255,0.1); object-fit:contain;"></div>`;
+                        }
+                    }
+                    
                     const d = document.createElement('div');
-                    d.style = "background:var(--card); padding:15px; border-radius:15px; margin-bottom:10px; border:1px solid var(--border);";
-                    d.innerHTML = `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><div style="font-weight:800; font-size:12px;">${r.first_name || 'Client'}</div><div style="color:#ffaa00;">${'⭐'.repeat(r.rating)}</div></div><div style="font-size:12px; opacity:0.7;">${r.text}</div>`;
+                    d.style = 'background:var(--card); border:1px solid var(--border); border-radius:18px; padding:15px; margin-bottom:12px;';
+                    d.innerHTML = `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><div style="font-weight:800; font-size:12px;">Client Farmstegridy</div><div style="color:#ffaa00;">${'⭐'.repeat(r.rating)}</div></div><div style="font-size:12px; opacity:0.7;">${r.text}</div>${mediaHtml}`;
                     cont.appendChild(d);
                 });
             } catch(e) {}
         }
 
-        function closeProductModal() { document.getElementById('product-detail-modal').classList.remove('open'); }
+        async function openUserReviewsModal() {
+            stopAllVideos();
+            openCustomModal('MES AVIS', '<div style="font-size:12px; opacity:0.4; text-align:center;">Chargement de vos avis...</div>');
+            try {
+                const uid = tg.initDataUnsafe?.user?.id;
+                const res = await fetch(`/api/user/reviews?userId=telegram_${uid}`);
+                const reviews = await res.json();
+                
+                let contentHTML = reviews.length ? '' : '<div class="empty-state">Vous n\'avez laissé aucun avis.</div>';
+                
+                reviews.forEach(r => {
+                    const p = allProducts.find(x => String(x.id) === String(r.product_id));
+                    const pName = p ? p.name : 'Produit inconnu';
+                    
+                    let mediaHtml = '';
+                    if (r.media && r.media.length > 0) {
+                        const m = r.media[0];
+                        if (m.endsWith('.mp4') || m.endsWith('.webm') || m.endsWith('.mov')) {
+                            mediaHtml = `<div style="margin-top:10px;"><video src="${m}" controls style="max-height:80px; border-radius:8px; border:1px solid rgba(255,255,255,0.1);"></video></div>`;
+                        } else {
+                            mediaHtml = `<div style="margin-top:10px;"><img src="${m}" style="max-height:80px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); object-fit:contain;"></div>`;
+                        }
+                    }
+                    
+                    contentHTML += `
+                        <div style="background:var(--card); padding:15px; border-radius:15px; margin-bottom:10px; border:1px solid var(--border);" id="user-review-${r.id}">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                <div style="font-weight:900; font-size:14px; color:var(--accent);">${pName}</div>
+                                <div style="color:#ffaa00;">${'⭐'.repeat(r.rating)}</div>
+                            </div>
+                            <div style="font-size:12px; opacity:0.8;">${r.text}</div>
+                            ${mediaHtml}
+                            <div style="margin-top:10px; text-align:right;">
+                                <button class="btn-primary" style="background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; padding:5px 10px; height:auto; font-size:11px; display:inline-block; width:auto;" onclick="deleteUserReview('${r.id}')"><i class="ph-bold ph-trash"></i> SUPPRIMER</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('cmodal-content').innerHTML = contentHTML;
+            } catch (e) {
+                document.getElementById('cmodal-content').innerHTML = '<div class="empty-state">Erreur de chargement.</div>';
+            }
+        }
+
+        async function deleteUserReview(rid) {
+            if (!confirm("Voulez-vous vraiment supprimer cet avis ?")) return;
+            try {
+                const res = await fetch(`/api/user/reviews/${rid}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    const rev = document.getElementById(`user-review-${rid}`);
+                    if (rev) rev.remove();
+                    tg.showAlert("Avis supprimé.");
+                } else {
+                    tg.showAlert("Erreur lors de la suppression.");
+                }
+            } catch(e) {
+                tg.showAlert("Une erreur est survenue.");
+            }
+        }
+
+        function stopAllVideos() {
+            document.querySelectorAll('video').forEach(v => v.pause());
+        }
+
+        function closeProductModal() { 
+            stopAllVideos();
+            document.getElementById('product-detail-modal').classList.remove('open'); 
+        }
 
         function openCustomModal(title, contentHTML) {
+            stopAllVideos();
             document.getElementById('cmodal-title').innerText = title;
             document.getElementById('cmodal-content').innerHTML = contentHTML;
             document.getElementById('custom-modal-overlay').classList.add('open');
         }
-        function closeCustomModal() { document.getElementById('custom-modal-overlay').classList.remove('open'); }
+        function closeCustomModal() { 
+            stopAllVideos();
+            document.getElementById('custom-modal-overlay').classList.remove('open'); 
+        }
 
         function openRating(orderId) {
+            stopAllVideos();
             const html = `
                 <div style="text-align:center; font-size:14px; margin-bottom:20px; opacity:0.8;">Veuillez attribuer une note à cette livraison :</div>
                 <div style="display:flex; flex-direction:column; gap:10px;">
@@ -1005,7 +1323,7 @@
             const item = cart.find(i => i.id === p.id);
             if (item) item.n++;
             else cart.push({ id: p.id, name: p.name, pr: p.price, n: 1, cid: Date.now().toString() });
-            localStorage.setItem('stb_cart', JSON.stringify(cart));
+            safeSetStorage('stb_cart', cart);
             updateCartUI();
             tg.HapticFeedback.notificationOccurred('success');
             renderCheckout();
@@ -1017,7 +1335,7 @@
             const ex = cart.find(i => i.cid === cid);
             if (ex) ex.n++;
             else cart.push({ cid, id: activeProduct.id, name: activeProduct.name, pr: activeOption.pr, m: activeOption.m, label: activeOption.label, unit: activeProduct.unit || 'g', n: 1 });
-            localStorage.setItem('stb_cart', JSON.stringify(cart));
+            safeSetStorage('stb_cart', cart);
             updateCartUI(); closeSelectionModal(); closeProductModal(); tg.HapticFeedback.notificationOccurred('success');
             
             syncCart();
@@ -1029,11 +1347,9 @@
             document.getElementById('cart-count').innerText = count;
             document.getElementById('cart-total').innerText = tot.toFixed(2) + '€';
             document.getElementById('cart-dot').style.display = count > 0 ? 'block' : 'none';
-            const dotBots = document.getElementById('cart-dot-bots');
-            if (dotBots) dotBots.style.display = count > 0 ? 'block' : 'none';
             const bar = document.getElementById('cart-bar');
-            const isShopOrBots = document.getElementById('page-shop').style.display !== 'none' || document.getElementById('page-bots').style.display !== 'none';
-            if (count > 0 && isShopOrBots) bar.classList.add('visible');
+            const isShop = document.getElementById('page-shop').style.display !== 'none';
+            if (count > 0 && isShop) bar.classList.add('visible');
             else bar.classList.remove('visible');
         }
 
@@ -1048,6 +1364,7 @@
         }
 
         function openCheckout() {
+            stopAllVideos();
             if (cart.length === 0) return tg.showAlert("Votre panier est vide");
             checkoutStep = 1;
             document.getElementById('checkout-overlay').classList.add('open');
@@ -1137,7 +1454,7 @@
                 
                 cart.forEach((i, idx) => {
                     const p = allProducts.find(x => x.id === i.id);
-                    const img = p && p.image_url ? p.image_url : `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(i.name.substring(0,5))}`;
+                    const img = getImgUrl(p) || `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(i.name.substring(0,5))}`;
                     
                     let descHtml = '';
                     if (i.label) {
@@ -1181,7 +1498,7 @@
                         upsellHtml += `
                             <div style="width: 120px; flex-shrink: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; scroll-snap-align: start; cursor: pointer;" onclick="openProductModal('${p.id}')">
                                 <div style="width: 100%; height: 90px; background: #111; position: relative;">
-                                    <img src="${p.image_url || `https://placehold.co/120x90/111/fff?text=Photo`}" style="width:100%; height:100%; object-fit:cover;">
+                                    <img src="${getImgUrl(p) || `https://placehold.co/120x90/111/fff?text=Photo`}" style="width:100%; height:100%; object-fit:cover;">
                                     <div style="position:absolute; bottom:5px; right:5px; background:var(--accent); color:#fff; font-size:8px; font-weight:900; padding:3px 6px; border-radius:6px; box-shadow:0 2px 5px rgba(255,0,80,0.5);">+ RECOMMANDÉ</div>
                                 </div>
                                 <div style="padding: 10px;">
@@ -1419,7 +1736,17 @@
         function updateProfileUI() {
             if (!userInfo) return;
             document.getElementById('user-balance').innerText = `${parseFloat(userInfo.balance).toFixed(2)}€`;
-            document.getElementById('hotline-btn').onclick = () => tg.openTelegramLink('https://t.me/+PsQMCG9p36o0Njhk');
+            document.getElementById('hotline-btn').onclick = () => openAdminTelegram();
+            
+            savedAddresses = parseAddresses(userInfo.address);
+            const defaultLabel = document.getElementById('shop-default-address');
+            if (defaultLabel) {
+                if (savedAddresses.length > 0) {
+                    defaultLabel.innerText = savedAddresses[0].address || savedAddresses[0].text || 'Inconnue';
+                } else {
+                    defaultLabel.innerText = 'Sélectionnez une adresse';
+                }
+            }
         }
 
         function copyReferral() { if (userInfo?.referralLink) { navigator.clipboard.writeText(userInfo.referralLink); tg.showAlert("Lien copié !"); } }
@@ -1481,8 +1808,19 @@
         function editAddress(id) {
             const addr = savedAddresses.find(a => a.id === id);
             if (!addr) return;
+            const presets = ['Domicile', 'Bureau', 'Ami(e)', 'Hôtel'];
+            const currentName = addr.name.replace(/"/g, '&quot;');
+            const isPreset = presets.includes(addr.name);
             const html = `
-                <input type="text" id="edit-addr-name" placeholder="Nom (ex: Domicile)" value="${addr.name.replace(/"/g, '&quot;')}" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box;">
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; opacity:0.5; margin-bottom:8px;">Type d'adresse</div>
+                    <div class="address-type-carousel" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch;">
+                        ${presets.map(p => `<div class="addr-chip${addr.name === p ? ' active' : ''}" onclick="selectAddressType('${p}', this, 'edit')" style="flex-shrink:0; padding:10px 18px; border-radius:30px; font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid ${addr.name === p ? 'var(--accent)' : 'var(--border)'}; background:${addr.name === p ? 'rgba(255,0,80,0.15)' : 'rgba(255,255,255,0.04)'}; color:${addr.name === p ? 'var(--accent)' : '#fff'}; transition:all 0.2s;">${p === 'Domicile' ? '🏠' : p === 'Bureau' ? '💼' : p === 'Ami(e)' ? '👥' : '🏨'} ${p}</div>`).join('')}
+                        <div class="addr-chip${!isPreset ? ' active' : ''}" onclick="selectAddressType('Autre', this, 'edit')" style="flex-shrink:0; padding:10px 18px; border-radius:30px; font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid ${!isPreset ? 'var(--accent)' : 'var(--border)'}; background:${!isPreset ? 'rgba(255,0,80,0.15)' : 'rgba(255,255,255,0.04)'}; color:${!isPreset ? 'var(--accent)' : '#fff'}; transition:all 0.2s;">📍 Autre</div>
+                    </div>
+                    <input type="hidden" id="edit-addr-type" value="${isPreset ? addr.name : 'Autre'}">
+                    <input type="text" id="edit-addr-custom" placeholder="Nom personnalisé" value="${!isPreset ? currentName : ''}" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit',sans-serif; font-size:14px; margin-top:10px; box-sizing:border-box; display:${!isPreset ? 'block' : 'none'};">
+                </div>
                 <textarea id="edit-addr-val" placeholder="Adresse complète" oninput="handleAddressAutocomplete(this.value, 'edit-addr-val')" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:5px; box-sizing:border-box; height:80px;">${addr.address.replace(/"/g, '&quot;')}</textarea>
                 <div id="address-suggestions-edit-addr-val" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
                 <input type="text" id="edit-addr-digicode" placeholder="Digicode / Instructions" value="${(addr.digicode || '').replace(/"/g, '&quot;')}" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
@@ -1494,7 +1832,8 @@
         }
 
         async function saveEditedAddress(id) {
-            const name = document.getElementById('edit-addr-name').value.trim();
+            const typeVal = document.getElementById('edit-addr-type').value;
+            const name = typeVal === 'Autre' ? document.getElementById('edit-addr-custom').value.trim() : typeVal;
             const address = document.getElementById('edit-addr-val').value.trim();
             const digicode = document.getElementById('edit-addr-digicode').value.trim();
             
@@ -1560,8 +1899,17 @@
         }
 
         function showAddAddressForm() {
+            const presets = ['Domicile', 'Bureau', 'Ami(e)', 'Hôtel'];
             const html = `
-                <input type="text" id="new-addr-name" placeholder="Nom (ex: Domicile, Bureau)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:10px; box-sizing:border-box;">
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; opacity:0.5; margin-bottom:8px;">Type d'adresse</div>
+                    <div class="address-type-carousel" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch;">
+                        ${presets.map((p, i) => `<div class="addr-chip${i === 0 ? ' active' : ''}" onclick="selectAddressType('${p}', this, 'new')" style="flex-shrink:0; padding:10px 18px; border-radius:30px; font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid ${i === 0 ? 'var(--accent)' : 'var(--border)'}; background:${i === 0 ? 'rgba(255,0,80,0.15)' : 'rgba(255,255,255,0.04)'}; color:${i === 0 ? 'var(--accent)' : '#fff'}; transition:all 0.2s;">${p === 'Domicile' ? '🏠' : p === 'Bureau' ? '💼' : p === 'Ami(e)' ? '👥' : '🏨'} ${p}</div>`).join('')}
+                        <div class="addr-chip" onclick="selectAddressType('Autre', this, 'new')" style="flex-shrink:0; padding:10px 18px; border-radius:30px; font-size:13px; font-weight:700; cursor:pointer; border:1.5px solid var(--border); background:rgba(255,255,255,0.04); color:#fff; transition:all 0.2s;">📍 Autre</div>
+                    </div>
+                    <input type="hidden" id="new-addr-type" value="Domicile">
+                    <input type="text" id="new-addr-custom" placeholder="Nom personnalisé" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit',sans-serif; font-size:14px; margin-top:10px; box-sizing:border-box; display:none;">
+                </div>
                 <textarea id="new-addr-val" placeholder="Adresse complète (Autocomplétion en temps réel)" oninput="handleAddressAutocomplete(this.value, 'new-addr-val')" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:5px; box-sizing:border-box; height:80px;"></textarea>
                 <div id="address-suggestions-new-addr-val" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
                 <input type="text" id="new-addr-digicode" placeholder="Digicode / Instructions (optionnel)" style="width:100%; padding:15px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; color:#fff; font-family:'Outfit', sans-serif; font-size:14px; margin-bottom:20px; box-sizing:border-box;">
@@ -1572,8 +1920,30 @@
             openCustomModal('NOUVELLE ADRESSE', html);
         }
 
+        function selectAddressType(val, chipEl, prefix) {
+            const carousel = chipEl.parentElement;
+            carousel.querySelectorAll('.addr-chip').forEach(c => {
+                c.classList.remove('active');
+                c.style.borderColor = 'var(--border)';
+                c.style.background = 'rgba(255,255,255,0.04)';
+                c.style.color = '#fff';
+            });
+            chipEl.classList.add('active');
+            chipEl.style.borderColor = 'var(--accent)';
+            chipEl.style.background = 'rgba(255,0,80,0.15)';
+            chipEl.style.color = 'var(--accent)';
+            document.getElementById(prefix + '-addr-type').value = val;
+            const customInput = document.getElementById(prefix + '-addr-custom');
+            if (customInput) {
+                customInput.style.display = val === 'Autre' ? 'block' : 'none';
+                if (val !== 'Autre') customInput.value = '';
+            }
+            try { tg.HapticFeedback.impactOccurred('light'); } catch(e){}
+        }
+
         async function saveNewAddress() {
-            const name = document.getElementById('new-addr-name').value.trim();
+            const typeVal = document.getElementById('new-addr-type').value;
+            const name = typeVal === 'Autre' ? document.getElementById('new-addr-custom').value.trim() : typeVal;
             const address = document.getElementById('new-addr-val').value.trim();
             const digicode = document.getElementById('new-addr-digicode').value.trim();
             
@@ -1622,21 +1992,53 @@
         }
 
         function openNotifications(focusId) {
+            stopAllVideos();
             const cont = document.getElementById('notifications-list');
             cont.innerHTML = '';
-            allNews.forEach(n => {
+            
+            let combined = [...allNews];
+            
+            if (window.userOrdersCache) {
+                userOrdersCache.forEach(o => {
+                    let msg = '';
+                    let statusColor = '#fff';
+                    let icon = '📦';
+                    switch(o.status) {
+                        case 'pending': msg = `Votre commande #${o.ref} a bien été prise en compte. Elle est en attente de validation par l'équipe.`; statusColor='#ffaa00'; icon='⏳'; break;
+                        case 'accepted': msg = `Votre commande #${o.ref} a été validée ! Elle est en préparation.`; statusColor='#2ecc71'; icon='✅'; break;
+                        case 'delivering': msg = `Le livreur est en route pour votre commande #${o.ref} ! Préparez-vous.`; statusColor='#3498db'; icon='🛵'; break;
+                        case 'delivered': msg = `Votre commande #${o.ref} a été livrée. Merci pour votre confiance !`; statusColor='#9b59b6'; icon='🎉'; break;
+                        case 'cancelled': msg = `Votre commande #${o.ref} a été annulée.`; statusColor='#e74c3c'; icon='❌'; break;
+                        default: msg = `Mise à jour de votre commande #${o.ref} : ${o.status}`;
+                    }
+                    
+                    combined.push({
+                        id: 'order_' + o.id,
+                        type: 'order',
+                        message: `<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:20px;">${icon}</span> <strong style="color:${statusColor};">Commande #${o.ref}</strong></div><div style="margin-top:5px; font-size:13px; opacity:0.9;">${msg}</div>`,
+                        created_at: o.created_at,
+                        order_ref: o.ref
+                    });
+                });
+            }
+            
+            combined.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+            combined.forEach(n => {
                 const d = document.createElement('div');
                 d.style = `background:var(--card); border:1px solid var(--border); border-radius:24px; padding:20px; margin-bottom:15px; ${n.id === focusId ? 'border-color:var(--accent);' : ''}`;
                 
                 let msg = n.message || '';
                 
-                // Nettoyage des balises MEDIA_URLS brutes
-                msg = msg.replace(/\|\|\|MEDIA_URLS\|\|\|[\s\S]*?(?=\n|$)/g, '').replace(/\[\]/g, '').trim();
+                if (n.type !== 'order') {
+                    // Nettoyage des balises MEDIA_URLS brutes
+                    msg = msg.replace(/\|\|\|MEDIA_URLS\|\|\|[\s\S]*?(?=\n|$)/g, '').replace(/\[\]/g, '').trim();
 
-                if (userInfo) {
-                    msg = msg.replace(/{first_name}/g, userInfo.first_name || '')
-                             .replace(/{username}/g, userInfo.username || '')
-                             .replace(/{wallet}/g, (userInfo.balance || 0).toFixed(2) + '€');
+                    if (window.userInfo) {
+                        msg = msg.replace(/{first_name}/g, userInfo.first_name || '')
+                                 .replace(/{username}/g, userInfo.username || '')
+                                 .replace(/{wallet}/g, (parseFloat(userInfo.balance) || 0).toFixed(2) + '€');
+                    }
                 }
 
                 const hasMedia = n.media_url && n.media_url.length > 5;
@@ -1646,6 +2048,19 @@
                     <div style="font-size:14px; font-weight:500; line-height:1.6; margin-bottom:10px; color:rgba(255,255,255,0.95);">${msg}</div>
                     <div style="font-size:10px; font-weight:900; color:var(--accent);">${new Date(n.created_at).toLocaleString()}</div>
                 `;
+                
+                if (n.type === 'order') {
+                    d.style.cursor = 'pointer';
+                    d.onclick = () => { 
+                        closeNotifications(); 
+                        switchPage('help', document.querySelectorAll('.nav-item')[3]); 
+                        setTimeout(()=> { 
+                            const chatHeader = document.querySelector(`.order-card[data-id="${n.id.replace('order_','')}"]`); 
+                            if(chatHeader) chatHeader.scrollIntoView({behavior:'smooth'}); 
+                        }, 500); 
+                    };
+                }
+
                 cont.appendChild(d);
                 if (n.id === focusId) d.scrollIntoView();
             });
@@ -1659,18 +2074,347 @@
         }
 
         function closeNotifications() { document.getElementById('notifications-modal').classList.remove('open'); }
+        
+        function openAdminTelegram() {
+            openGlobalSupportModal();
+        }
+
+        async function requestCourierRole() {
+            const msg = "Votre demande d'admission a bien été reçue par Farmstegridy. Nous reviendrons vers vous pour vous donner notre décision.";
+            if (tg && tg.showAlert) {
+                tg.showAlert(msg);
+            } else {
+                alert(msg);
+            }
+            try {
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+                    const uid = window.Telegram.WebApp.initDataUnsafe.user.id;
+                    await fetch('/api/courier-application', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: `telegram_${uid}` })
+                    });
+                }
+            } catch (e) {}
+        }
 
         function scrollToNews() {
             document.getElementById('news-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
             tg.HapticFeedback.impactOccurred('light');
         }
 
+
+        // ═══════════════════════════════════════════════════════
+        // CHAT SUPPORT ADMIN-CLIENT (permanent)
+        // ═══════════════════════════════════════════════════════
+
+        function openGlobalSupportModal() {
+            const modal = document.getElementById('support-modal');
+            if (modal) modal.classList.add('open');
+            if (typeof renderAdminChatMessages === 'function') renderAdminChatMessages();
+            setTimeout(() => {
+                const c = document.getElementById('admin-chat-messages');
+                if (c) c.scrollTop = c.scrollHeight;
+            }, 50);
+        }
+
+        function closeSupportModal() {
+            document.getElementById('support-modal').classList.remove('open');
+        }
+        
+        function closeOrderSupportModal() {
+            document.getElementById('order-support-modal').classList.remove('open');
+        }
+
+        async function loadSupportChat() {
+            renderAdminChatMessages();
+            const uid = tg.initDataUnsafe?.user?.id;
+            try {
+                const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
+                const orders = await res.json();
+                
+                // Show all orders (up to 5 recent)
+                const recentOrders = orders.slice(0, 5);
+                const cont = document.getElementById('help-recent-orders-list');
+                if (!cont) return;
+                
+                if (!recentOrders.length) {
+                    cont.innerHTML = '<div class="empty-state">Aucune commande récente.</div>';
+                    return;
+                }
+                
+                cont.innerHTML = '';
+                recentOrders.forEach(o => {
+                    const statusColor = o.status === 'delivered' ? '#00ff88' : (o.status === 'cancelled' || o.status === 'refused' ? '#ff3b30' : '#ffa500');
+                    const statusText = o.status === 'delivered' ? 'Livrée' : (o.status === 'cancelled' || o.status === 'refused' ? 'Annulée' : 'En cours');
+                    
+                    const d = document.createElement('div');
+                    d.style = 'background:var(--card); border:1px solid var(--border); border-radius:18px; padding:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;';
+                    d.onclick = () => openOrderSupport(o);
+                    d.innerHTML = `
+                        <div>
+                            <div style="font-weight:900; font-size:14px; margin-bottom:4px;"><i class="ph-fill ph-receipt"></i> Commande #${o.id.slice(-5).toUpperCase()}</div>
+                            <div style="font-size:12px; opacity:0.6;">${o.product_name || o.product || 'Commande'}</div>
+                            <div style="font-size:11px; font-weight:800; color:${statusColor}; margin-top:6px;">${statusText}</div>
+                        </div>
+                        <div style="width:36px; height:36px; background:rgba(255,255,255,0.05); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;">
+                            <i class="ph-bold ph-caret-right"></i>
+                        </div>
+                    `;
+                    cont.appendChild(d);
+                });
+            } catch(e) {
+                document.getElementById('help-recent-orders-list').innerHTML = '<div class="empty-state">Erreur de chargement.</div>';
+            }
+        }
+        
+        function openOrderSupport(o) {
+            stopAllVideos();
+            document.getElementById('order-support-title').innerText = `Commande #${o.id.slice(-5).toUpperCase()}`;
+            const isDeliveryChat = !['delivered', 'cancelled', 'refused'].includes(o.status) && o.livreur_id;
+            const content = document.getElementById('order-support-content');
+            
+            if (isDeliveryChat) {
+                // Courier chat
+                const h = o.chatHistory;
+                content.innerHTML = `
+                    <div style="background:rgba(0,255,136,0.1); border:1px solid rgba(0,255,136,0.3); border-radius:16px; padding:12px; margin-bottom:15px;">
+                        <div style="font-weight:900; font-size:13px; color:#00ff88; margin-bottom:4px;"><i class="ph-fill ph-moped"></i> Chat Livreur</div>
+                        <div style="font-size:11px; opacity:0.8;">Discutez en direct avec votre livreur</div>
+                    </div>
+                    ${h && h.messages && h.messages.length > 0 ? `
+                        <div style="background:rgba(0,0,0,0.2); border-radius:12px; padding:15px; margin-bottom:15px; max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
+                            ${h.messages.map(m => `
+                                <div style="font-size:13px; opacity:0.9; ${m.role === 'client' ? 'text-align:right; color:var(--accent);' : 'text-align:left; color:#fff;'}">
+                                    <b>${m.role === 'client' ? 'Vous' : '🛵 Livreur'} :</b> ${m.text || m.message}
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : '<div class="empty-state" style="margin-bottom:15px;">Aucun message avec le livreur.</div>'}
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="quick-chat-${o.id}" placeholder="Message au livreur..." maxlength="200"
+                            style="flex:1; background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,136,0.3); border-radius:14px; color:#fff; padding:12px 15px; font-family:'Outfit',sans-serif; font-size:13px; outline:none;"
+                            onkeydown="if(event.key==='Enter') sendQuickCourierMsg('${o.id}')">
+                        <button onclick="sendQuickCourierMsg('${o.id}')" style="background:#00ff88; border:none; border-radius:14px; color:#000; width:48px; height:48px; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:900;"><i class="ph-fill ph-paper-plane-tilt"></i></button>
+                    </div>
+                `;
+            } else {
+                // Past order -> General support with context
+                content.innerHTML = `
+                    <div style="background:rgba(255,255,255,0.05); border-radius:16px; padding:15px; text-align:center; margin-bottom:20px;">
+                        <i class="ph-fill ph-info" style="font-size:32px; color:var(--secondary); margin-bottom:10px;"></i>
+                        <div style="font-size:14px; font-weight:800; margin-bottom:5px;">Besoin d'aide pour cette commande ?</div>
+                        <div style="font-size:12px; opacity:0.6;">Contactez le support avec la référence de la commande pour un traitement rapide.</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="contactSupportForOrder('${o.id}')" style="width:100%;">
+                        Contacter le Support Officiel
+                    </button>
+                `;
+            }
+            
+            document.getElementById('order-support-modal').classList.add('open');
+        }
+        
+        function contactSupportForOrder(orderId) {
+            closeOrderSupportModal();
+            openGlobalSupportModal();
+            const input = document.getElementById('admin-chat-input');
+            if (input) {
+                input.value = `Bonjour, j'ai besoin d'aide concernant ma commande #${orderId.slice(-5).toUpperCase()}. `;
+                input.focus();
+            }
+        }
+
+        async function sendQuickCourierMsg(orderId) {
+            const input = document.getElementById(`quick-chat-${orderId}`);
+            const text = input?.value?.trim();
+            if (!text) return;
+            input.disabled = true;
+            try {
+                const res = await fetch('/api/mini-app/send-chat-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe?.user?.id}`, orderId, text })
+                });
+                const data = await res.json();
+                input.disabled = false;
+                if (data.error) { tg.showAlert(data.error); }
+                else { input.value = ''; try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){} loadSupportChat(); }
+            } catch(e) { input.disabled = false; tg.showAlert("Erreur réseau."); }
+        }
+
+        function renderAdminChatMessages() {
+            const cont = document.getElementById('admin-chat-messages');
+            if (!cont) return;
+            if (!adminChatMessages.length) {
+                cont.innerHTML = `<div style="text-align:center; opacity:0.3; font-size:12px; padding:20px;">👋 Bonjour ! L'historique de vos commandes, notifications, et chats s'affichera ici.</div>`;
+                return;
+            }
+            cont.innerHTML = '';
+            adminChatMessages.forEach(m => {
+                const isMe = m.role === 'client';
+                const bubble = document.createElement('div');
+                
+                if (m.role === 'system') {
+                    bubble.style = `display:flex; justify-content:center; margin: 8px 0;`;
+                    bubble.innerHTML = `
+                        <div style="background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); padding:6px 12px; border-radius:12px; font-size:11px; text-align:center; max-width:90%;">
+                            ${m.text}
+                            <div style="font-size:9px; opacity:0.4; margin-top:2px;">${new Date(m.ts).toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</div>
+                        </div>
+                    `;
+                } else if (m.role === 'livreur') {
+                    bubble.style = `display:flex; justify-content:flex-start; margin: 8px 0;`;
+                    bubble.innerHTML = `
+                        <div style="max-width:80%; background:rgba(255,165,0,0.2); border:1px solid rgba(255,165,0,0.5); color:#fff; padding:10px 14px; border-radius:18px 18px 18px 4px; font-size:13px; line-height:1.5;">
+                            <div style="font-size:10px; font-weight:900; color:orange; margin-bottom:4px;">🚴 LIVREUR</div>
+                            ${m.text}
+                            <div style="font-size:9px; opacity:0.5; margin-top:4px; text-align:left;">${new Date(m.ts).toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</div>
+                        </div>
+                    `;
+                } else if (m.role === 'admin') {
+                    bubble.style = `display:flex; justify-content:flex-start; margin: 8px 0;`;
+                    bubble.innerHTML = `
+                        <div style="max-width:80%; background:rgba(0,150,255,0.2); border:1px solid rgba(0,150,255,0.5); color:#fff; padding:10px 14px; border-radius:18px 18px 18px 4px; font-size:13px; line-height:1.5;">
+                            <div style="font-size:10px; font-weight:900; color:#0096ff; margin-bottom:4px;">🎧 SUPPORT</div>
+                            ${m.text}
+                            <div style="font-size:9px; opacity:0.5; margin-top:4px; text-align:left;">${new Date(m.ts).toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</div>
+                        </div>
+                    `;
+                } else {
+                    bubble.style = `display:flex; justify-content:flex-end; margin: 8px 0;`;
+                    bubble.innerHTML = `
+                        <div style="max-width:80%; background:var(--accent); color:#fff; padding:10px 14px; border-radius:18px 18px 4px 18px; font-size:13px; line-height:1.5;">
+                            ${m.target === 'livreur' ? '<div style="font-size:10px; font-weight:900; color:rgba(255,255,255,0.7); margin-bottom:4px;">Au livreur :</div>' : ''}
+                            ${m.text}
+                            <div style="font-size:9px; opacity:0.5; margin-top:4px; text-align:right;">${new Date(m.ts).toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</div>
+                        </div>
+                    `;
+                }
+                
+                cont.appendChild(bubble);
+            });
+            cont.scrollTop = cont.scrollHeight;
+        }
+
+        async function sendAdminChatMessage() {
+            const input = document.getElementById('admin-chat-input');
+            const text = input?.value?.trim();
+            if (!text) return;
+            const uid = tg.initDataUnsafe?.user?.id;
+            const msg = { role: 'client', text, ts: Date.now() };
+            adminChatMessages.push(msg);
+            safeSetStorage('stb_admin_chat', adminChatMessages);
+            input.value = '';
+            renderAdminChatMessages();
+            try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
+            try {
+                await fetch('/api/admin-chat/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: `telegram_${uid}`, text })
+                });
+            } catch(e) {}
+        }
+
+        async function pollUpdatesSilent() {
+            const uid = tg.initDataUnsafe?.user?.id;
+            try {
+                // Poll Chat
+                if (uid) {
+                    const resChat = await fetch(`/api/admin-chat/history?userId=telegram_${uid}`);
+                    if (resChat.ok) {
+                        const data = await resChat.json();
+                        if (data.messages && data.messages.length > adminChatMessages.length) {
+                            adminChatMessages = data.messages;
+                            safeSetStorage('stb_admin_chat', adminChatMessages);
+                            
+                            if (document.getElementById('page-chat')?.style.display === 'block') {
+                                renderAdminChatMessages();
+                            } else {
+                                const badge = document.getElementById('chat-unread-badge');
+                                if (badge) badge.style.display = 'block';
+                                showNewsPopup("Nouveau message du support !", data.messages[data.messages.length - 1].message || "Consultez l'onglet support pour voir le message.", []);
+                            }
+                        }
+                    }
+                }
+                
+                // Poll Stocks
+                const resStock = await fetch('/api/products');
+                if (resStock.ok) {
+                    const newProds = await resStock.json();
+                    newProds.forEach(np => {
+                        const idx = allProducts.findIndex(p => p.id === np.id);
+                        if (idx > -1 && allProducts[idx].stock !== np.stock) {
+                            allProducts[idx].stock = np.stock;
+                            const qtyBadge = document.getElementById(`stock-badge-${np.id}`);
+                            if (qtyBadge) {
+                                qtyBadge.innerHTML = `<span class="stock-indicator" style="background:${np.stock>0?'#2ecc71':'#e74c3c'}"></span>${np.stock>0 ? np.stock+' en stock' : 'Épuisé'}`;
+                            }
+                        }
+                    });
+                }
+                
+                // Poll Orders
+                if (uid) {
+                    const resOrders = await fetch(`/api/user-orders?userId=telegram_${uid}`);
+                    if (resOrders.ok) {
+                        const newOrders = await resOrders.json();
+                        let statusChanged = false;
+                        newOrders.forEach(no => {
+                            const old = userOrdersCache.find(o => o.id === no.id);
+                            if (old && old.status !== no.status) {
+                                statusChanged = true;
+                                const statusMap = {
+                                    'pending': 'En attente ⏳',
+                                    'accepted': 'Acceptée ✅',
+                                    'livreur_assigned': 'Livreur en route 🛵',
+                                    'delivered': 'Livrée 📦',
+                                    'cancelled': 'Annulée ❌'
+                                };
+                                const statusText = statusMap[no.status] || no.status;
+                                showNewsPopup("Mise à jour Commande", `Votre commande a été mise à jour :\nNouveau statut : ${statusText}`, []);
+                            }
+                            if (old && parseInt(old.chat_count) < parseInt(no.chat_count)) {
+                                statusChanged = true; // Trigger UI refresh for active orders
+                                if (no.chatHistory && no.chatHistory.senderRole === 'livreur') {
+                                    showNewsPopup("Nouveau message du Livreur !", no.chatHistory.lastMessage, []);
+                                }
+                            }
+                        });
+                        userOrdersCache = newOrders;
+                        if (statusChanged && document.getElementById('page-orders')?.style.display === 'block') {
+                            loadOrders();
+                        }
+                    }
+                }
+                
+                // Poll News
+                const resNews = await fetch('/api/news');
+                if (resNews.ok) {
+                    const data = await resNews.json();
+                    if (data.length > 0) {
+                        const latestId = data[0].id;
+                        // allNews is defined globally, we check its first element to compare
+                        const currentLatest = allNews.length > 0 ? allNews[0].id : null;
+                        if (currentLatest && latestId !== currentLatest) {
+                            allNews = data;
+                            renderNews(allNews);
+                            tg.showAlert("Nouvelle diffusion / actualité disponible !");
+                        }
+                    }
+                }
+
+            } catch(e) {}
+        }
+
         init();
         setInterval(() => {
-            if (document.getElementById('page-orders')?.style.display === 'block') {
-                loadOrders();
-            }
-        }, 30000);
+            if (document.getElementById('page-orders')?.style.display === 'block') loadOrders();
+            pollUpdatesSilent();
+        }, 15000);
+
     </script>
 </body>
 </html>

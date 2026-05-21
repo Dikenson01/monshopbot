@@ -1,6 +1,25 @@
 const { Telegraf, Markup } = require('telegraf');
 const { Channel } = require('./Channel');
 const path = require('path');
+const https = require('https');
+const http = require('http');
+
+async function downloadToBuffer(url) {
+    if (typeof url !== 'string' || !url.startsWith('http')) return null;
+    return new Promise((resolve) => {
+        const mod = url.startsWith('https') ? https : http;
+        mod.get(url, { timeout: 10000 }, (res) => {
+            if (res.statusCode !== 200) return resolve(null);
+            const chunks = [];
+            res.on('data', chunk => chunks.push(chunk));
+            res.on('end', () => {
+                const buffer = Buffer.concat(chunks);
+                resolve(buffer.length > 0 ? buffer : null);
+            });
+            res.on('error', () => resolve(null));
+        }).on('error', () => resolve(null));
+    });
+}
 
 class TelegramChannel extends Channel {
     constructor(token) {
@@ -45,16 +64,10 @@ class TelegramChannel extends Channel {
         });
 
         // Relayer tout vers le dispatcher
-        this.bot.on('update', (update) => {
-            if (update.message || update.callback_query) {
-                console.log(`[TG-RAW] Update reçu ID=${update.update_id} de ${update.message?.from?.id || update.callback_query?.from?.id}`);
-            }
-        });
-
         this.bot.on('message', async (ctx) => {
-            console.log(`[TG-DEBUG] Message reçu de ${ctx.from.id}: "${ctx.message.text || 'NO_TEXT'}"`);
+            console.log(`[TG-DEBUG] Message reçu de ${ctx.from.id}: "${ctx.message.text ||'NO_TEXT'}"`);
             if (this.messageHandler) {
-                const payload = {
+                await this.messageHandler({
                     from: ctx.from.id,
                     name: ctx.from.first_name,
                     text: ctx.message.text || ctx.message.caption,
@@ -62,17 +75,8 @@ class TelegramChannel extends Channel {
                     video: ctx.message.video,
                     message_id: ctx.message.message_id,
                     type: 'message',
-                    ctx: ctx
-                };
-
-                // Gestion des données Mini App
-                if (ctx.message.web_app_data) {
-                    payload.type = 'web_app_data';
-                    payload.text = ctx.message.web_app_data.data;
-                    payload.web_app_data = ctx.message.web_app_data;
-                }
-
-                await this.messageHandler(payload);
+                    ctx: ctx // On garde le ctx original pour compatibilité ascendante si besoin
+                });
             }
         });
 
@@ -91,104 +95,113 @@ class TelegramChannel extends Channel {
                 console.error('[TG-CB] ERREUR: Pas de messageHandler !');
             }
         });
-
-        this.bot.on('chat_join_request', async (ctx) => {
-            console.log(`[TG-JOIN] Demande de join de ${ctx.from.id} pour le chat ${ctx.chat.id}`);
-            if (this.messageHandler) {
-                await this.messageHandler({
-                    from: ctx.from.id,
-                    name: ctx.from.first_name,
-                    text: 'chat_join_request',
-                    type: 'chat_join_request',
-                    ctx: ctx
-                });
-            }
-        });
     }
 
     async start() {
+        if (this.isActive) {
+            console.log('[TG] Telegram channel is already active. Skipping start.');
+            return;
+        }
+
         // --- DISTRIBUTED LOCK ---
         const { claimLock, checkLock } = require('../services/database');
-        const instanceId = `${process.env.RAILWAY_SERVICE_NAME || 'local'}-${process.env.RAILWAY_REPLICA_INDEX || '0'}-${process.pid}`;
+        
+        // Use a stable ID for the replica (index is better than PID for reboots)
+        const replicaIndex = process.env.RAILWAY_REPLICA_INDEX || 0;
+        const processUniqueId = Math.random().toString(36).substring(2, 8);
+        const instanceId = `replica-${replicaIndex}-${processUniqueId}`;
         const telegramLockId = `tg_lock`;
 
-        const lock = await checkLock(telegramLockId);
-        const isStale = lock && (Date.now() - lock.updatedAt > 120000); // Stale après 2 minutes sans heartbeat
+        try {
+            const lock = await checkLock(telegramLockId);
+            
+            // If lock exists and isn't ours, check if it's expired
+            if (lock && lock.owner && lock.owner !== instanceId) {
+                const now = Date.now();
+                const expiresAtDate = new Date(lock.expires).getTime();
+                
+                if (expiresAtDate > now) {
+                    const expiresAt = new Date(lock.expires).toLocaleTimeString();
+                    console.log(`[TG-LOCK] ⚠️ Session busy (Owner: ${lock.owner}, Expires: ${expiresAt}). Retrying in 30s...`);
+                    setTimeout(() => this.start(), 30000);
+                    return;
+                }
+            }
 
-        if (lock && lock.owner !== instanceId && !isStale) {
-            console.log(`[TG-LOCK] Telegram session busy (Owner: ${lock.owner}). Waiting 30s...`);
+            // Try to claim
+            const claimed = await claimLock(telegramLockId, instanceId);
+            if (!claimed) {
+                console.log(`[TG-LOCK] ❌ Claim failed. Retrying in 30s...`);
+                setTimeout(() => this.start(), 30000);
+                return;
+            }
+
+            console.log(`[TG-LOCK] 🎉 Lock obtained by ${instanceId}. launching bot...`);
+            
+            // Launch bot via heartbeat
+            if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = setInterval(async () => {
+                await claimLock(telegramLockId, instanceId);
+            }, 45000); // refresh every 45s (lock TTL is 60s)
+        } catch (err) {
+            console.error('[TG-LOCK] Error during lock sequence:', err);
             setTimeout(() => this.start(), 30000);
             return;
         }
-
-        const claimed = await claimLock(telegramLockId, instanceId);
-        if (!claimed) {
-            console.log(`[TG-LOCK] Failed to claim lock. Retrying in 30s...`);
-            setTimeout(() => this.start(), 30000);
-            return;
-        }
-
-        // Heartbeat lock refresh
-        setInterval(async () => {
-            await claimLock(telegramLockId, instanceId);
-        }, 60000);
 
         console.log(`[TG-LOCK] Telegram lock claimed by ${instanceId}`);
-        console.log(`[TG] Préparation du lancement (${this.token.substring(0, 6)}****)...`);
+        console.log(`[TG] Lancement du bot (${this.token.substring(0, 4)}****...)...`);
         
+        // Build launch options
+        const launchOptions = {
+            drop_pending_updates: true,
+            allowedUpdates: ['message', 'callback_query']
+        };
+
         const launch = async (retryCount = 0) => {
             try {
-                console.log(`[TG] [Essai ${retryCount + 1}] Reset de la connexion...`);
-                
-                // 1. Suppression du webhook avec drop_pending_updates
-                await this.bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(e => console.warn(`[TG] deleteWebhook error: ${e.message}`));
-                
-                // 2. Test getMe via Telegraf pour valider la liaison Telegraf <-> API
-                const me = await this.bot.telegram.getMe();
-                console.log(`[TG] Telegraf validé pour @${me.username}`);
-
-                // 2b. Mise à jour de la description (Que peut faire ce bot ?)
-                try {
-                    await this.bot.telegram.setMyDescription("🚀 ShopTonBot Enterprise v5.0 : Solution de commerce automatisée.\n\n✅ Catalogue dynamique & interactif\n✅ Paiements sécurisés\n✅ Suivi de livraison en temps réel\n✅ Support client intégré\n\nPropulsé par la technologie ShopTonBot.");
-                    await this.bot.telegram.setMyShortDescription("ShopTonBot Enterprise - Votre boutique automatisée 🛒");
-                    console.log(`[TG] Descriptions mises à jour pour @${me.username}`);
-                } catch (e) {
-                    console.warn(`[TG] Erreur mise à jour descriptions: ${e.message}`);
-                }
-
-                // 3. Lancement avec polling explicite et timeout court
-                console.log(`[TG] Lancement du polling (launch)...`);
-                this.bot.launch({
-                    dropPendingUpdates: true,
-                    allowedUpdates: ['message', 'callback_query', 'edited_message', 'channel_post', 'chat_join_request'],
-                    polling: {
-                        timeout: 30,
-                        limit: 100
-                    }
-                }).then(() => {
-                    console.log('✅ [TG] BOT TELEGRAM EN LIGNE (Polling actif)');
-                    this.isActive = true;
-                }).catch(err => {
-                    console.error('❌ [TG] Erreur fatale polling:', err.message);
-                    if (err.message.includes('409')) {
-                        console.warn(`⚠️ [TG] Conflit 409 détecté. Nouvelle tentative dans 10s...`);
-                        setTimeout(() => launch(retryCount + 1), 10000);
-                    }
-                });
-
-                console.log(`[TG] Séquence de lancement terminée, écoute en cours...`);
+                this.isActive = true;
+                // Launch the bot. We use Promise.race to detect early startup errors (like 409 conflict)
+                // without hanging the start() sequence indefinitely.
+                await Promise.race([
+                    this.bot.launch(launchOptions).then(() => {
+                        console.log('✅ [TG] Bot arrêté.');
+                        this.isActive = false;
+                    }),
+                    new Promise((resolve) => {
+                        setTimeout(() => {
+                            resolve();
+                        }, 5000);
+                    })
+                ]);
+                console.log('✅ [TG] Bot lancé avec succès !');
             } catch (err) {
-                console.error('❌ [TG] Erreur critique initialisation:', err.message);
-                setTimeout(() => launch(retryCount + 1), 20000);
+                this.isActive = false;
+                if (err.message && err.message.includes('409') && retryCount < 5) {
+                    console.warn(`⚠️ [TG] Conflit 409 (déjà une instance). Tentative ${retryCount + 1}/5 dans 15s...`);
+                    setTimeout(() => launch(retryCount + 1), 15000);
+                } else {
+                    console.error('❌ [TG] Erreur fatale au lancement:', err.message || err);
+                    if (this.heartbeatInterval) {
+                        clearInterval(this.heartbeatInterval);
+                        this.heartbeatInterval = null;
+                    }
+                }
             }
         };
 
         launch();
-        console.log('  Telegram channel initialization requested...');
+        // On marque isActive true temporairement pour le registry, 
+        // ou on laisse le launch s'en occuper. Ici on dit qu'il est "initialisé".
+        console.log('  Telegram channel initialized and launching in background...');
     }
 
     async stop() {
         if (this.bot) this.bot.stop('SIGTERM');
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
         this.isActive = false;
     }
 
@@ -239,8 +252,21 @@ class TelegramChannel extends Channel {
             else if (options.inline_keyboard || options.keyboard) extra.reply_markup = options;
             if (options.protect_content) extra.protect_content = true;
 
-            const result = await this.bot.telegram.sendPhoto(chatId, this._resolveMedia(url), extra);
-            return { success: true, messageId: result?.message_id, message_id: result?.message_id };
+            try {
+                const result = await this.bot.telegram.sendPhoto(chatId, this._resolveMedia(url), extra);
+                return { success: true, messageId: result?.message_id, message_id: result?.message_id };
+            } catch (err) {
+                const desc = String(err.description || '').toLowerCase();
+                if (desc.includes('wrong type of the web page content') || desc.includes('file too large')) {
+                    console.log(`[TG] URL photo failed (${desc}), retrying with buffer...`);
+                    const buf = await downloadToBuffer(url);
+                    if (buf) {
+                        const result = await this.bot.telegram.sendPhoto(chatId, { source: buf }, extra);
+                        return { success: true, messageId: result?.message_id, message_id: result?.message_id };
+                    }
+                }
+                throw err;
+            }
         } catch (error) {
             console.error(`[TG] Erreur photo à ${chatId}:`, error.message);
             return this._handleError(error);
@@ -254,8 +280,21 @@ class TelegramChannel extends Channel {
             else if (options.inline_keyboard || options.keyboard) extra.reply_markup = options;
             if (options.protect_content) extra.protect_content = true;
 
-            const result = await this.bot.telegram.sendVideo(chatId, this._resolveMedia(url), extra);
-            return { success: true, messageId: result?.message_id, message_id: result?.message_id };
+            try {
+                const result = await this.bot.telegram.sendVideo(chatId, this._resolveMedia(url), extra);
+                return { success: true, messageId: result?.message_id, message_id: result?.message_id };
+            } catch (err) {
+                const desc = String(err.description || '').toLowerCase();
+                if (desc.includes('wrong type of the web page content') || desc.includes('file too large')) {
+                    console.log(`[TG] URL video failed (${desc}), retrying with buffer...`);
+                    const buf = await downloadToBuffer(url);
+                    if (buf) {
+                        const result = await this.bot.telegram.sendVideo(chatId, { source: buf }, extra);
+                        return { success: true, messageId: result?.message_id, message_id: result?.message_id };
+                    }
+                }
+                throw err;
+            }
         } catch (error) {
             console.error(`[TG] Erreur vidéo à ${chatId}:`, error.message);
             return this._handleError(error);
@@ -263,21 +302,42 @@ class TelegramChannel extends Channel {
     }
 
     async sendMediaGroup(chatId, mediaArray, caption, options = {}) {
-        try {
-            const telegramMedia = mediaArray.map((m, index) => {
+        const buildMedia = (arr, useBufferMap = null) => {
+            return arr.map((m, index) => {
                 const item = {
-                    type: m.type,
-                    media: this._resolveMedia(m.url),
+                    type: m.type || (m.url?.match(/\.(mp4|mov|avi|wmv|webm|mkv)/i) ? 'video' : 'photo'),
+                    media: (useBufferMap && useBufferMap[index]) ? { source: useBufferMap[index] } : this._resolveMedia(m.url),
                 };
-                if (index === 0) { // On met la légende seulement sur le premier élément
+                if (index === 0) {
                     item.caption = caption;
                     item.parse_mode = 'HTML';
                 }
                 return item;
             });
-            const results = await this.bot.telegram.sendMediaGroup(chatId, telegramMedia);
-            const firstId = Array.isArray(results) ? results[0]?.message_id : results?.message_id;
-            return { success: true, messageId: firstId, message_id: firstId };
+        };
+
+        try {
+            try {
+                const results = await this.bot.telegram.sendMediaGroup(chatId, buildMedia(mediaArray));
+                const firstId = Array.isArray(results) ? results[0]?.message_id : results?.message_id;
+                return { success: true, messageId: firstId, message_id: firstId };
+            } catch (err) {
+                const desc = String(err.description || '').toLowerCase();
+                if (desc.includes('wrong type of the web page content') || desc.includes('file too large')) {
+                    console.log(`[TG] MediaGroup URL failed (${desc}), downloading to buffers...`);
+                    const bufferMap = {};
+                    for (let i = 0; i < mediaArray.length; i++) {
+                        bufferMap[i] = await downloadToBuffer(mediaArray[i].url);
+                    }
+                    // Filter out failed downloads
+                    if (Object.values(bufferMap).every(b => b !== null)) {
+                        const results = await this.bot.telegram.sendMediaGroup(chatId, buildMedia(mediaArray, bufferMap));
+                        const firstId = Array.isArray(results) ? results[0]?.message_id : results?.message_id;
+                        return { success: true, messageId: firstId, message_id: firstId };
+                    }
+                }
+                throw err;
+            }
         } catch (error) {
             console.error(`[TG] Erreur MediaGroup à ${chatId}:`, error.message);
             return this._handleError(error);
@@ -286,19 +346,17 @@ class TelegramChannel extends Channel {
 
     async sendInteractive(userId, text, buttons = [], options = {}) {
         // En Telegram, interactiveButtons = Inline Keyboard
-        // Si la structure originale du clavier a été préservée dans les options, on l'utilise pour maintenir les boutons côte à côte !
-        let reply_markup = options.reply_markup;
-        if (!reply_markup) {
-            const keyboard = buttons.map((b) => {
-                if (b.url) return [Markup.button.url(b.title, b.url)];
-                if (b.web_app) return [Markup.button.webApp(b.title, b.web_app.url || b.web_app)];
-                return [Markup.button.callback(b.title, b.id)];
-            });
-            reply_markup = { inline_keyboard: keyboard };
-        }
+        const keyboard = buttons.map((b) => {
+            // Sécurité: si c'est un lien URL
+            if (b.url) return [Markup.button.url(b.title, b.url)];
+            // Si c'est un webApp
+            if (b.web_app) return [Markup.button.webApp(b.title, b.web_app.url || b.web_app)];
+            // Sinon c'est un callback
+            return [Markup.button.callback(b.title, b.id)];
+        });
 
         const sendOpts = {
-            reply_markup,
+            reply_markup: { inline_keyboard: keyboard },
             protect_content: options.protect_content || false
         };
 
