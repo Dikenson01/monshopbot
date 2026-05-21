@@ -49,7 +49,7 @@ function setupStartHandler(bot) {
 
     bot.action(/^set_lang_(.+)$/, async (ctx) => {
         const lang = ctx.match[1];
-        const { supabase, COL_USERS, clearUserCache } = require('../services/database');
+        const { supabase, COL_USERS } = require('../services/database');
         const docId = `${ctx.platform}_${ctx.from.id}`;
         
         // 1. Mettre à jour l'état immédiatement pour que le menu s'affiche dans la nouvelle langue
@@ -58,12 +58,11 @@ function setupStartHandler(bot) {
         ctx.state.user.data.language = lang;
         ctx.state.user.language_code = lang;
 
-        // 2. Persister en base de données (attendu pour que le cache soit vidé après l'écriture)
-        const { error } = await supabase.from(COL_USERS).update({ language_code: lang, data: { ...(ctx.state.user.data), language: lang } }).eq('id', docId);
-        if (error) { await supabase.from(COL_USERS).update({ data: { ...(ctx.state.user.data), language: lang } }).eq('id', docId); }
-        
-        // 3. Vider le cache après la fin de l'écriture
-        clearUserCache(docId);
+        // 2. Persister en base de données
+        await supabase.from(COL_USERS).update({ 
+            language_code: lang, 
+            data: { ...(ctx.state.user.data), language: lang } 
+        }).eq('id', docId);
 
         let msg = '✅ Langue réglée sur Français !';
         if (lang === 'en') msg = '✅ Language set to English!';
@@ -444,20 +443,21 @@ async function showMainMenu(ctx) {
     // Anti-blocage unapproved en retour menu
     const isApproved = (user && user.is_approved !== false) || (await isAdmin(ctx));
     if (!isApproved) {
-        return ctx.reply(t(user, 'msg_access_denied', '🛑 Accès restreint.'));
+        return ctx.reply(t(user, 'msg_access_denied', '🛑 Access restricted.'));
     }
 
     if (user && user.is_livreur) {
         const { getLivreurOrders } = require('../services/database');
         const activeOrders = await getLivreurOrders(user.id);
         const hasActive = activeOrders.length > 0;
-        const city = user?.current_city || user?.data?.current_city || 'Non défini';
+        const cityRaw = user?.current_city || user?.data?.current_city;
+        const city = cityRaw ? cityRaw.toUpperCase() : t(user, 'label_not_defined', 'NOT DEFINED');
         const isAvail = user?.is_available || user?.data?.is_available;
 
-        const statusLabel = isAvail ? t(user, 'label_available', 'DISPONIBLE') : t(user, 'label_unavailable', 'INDISPONIBLE');
-        const livreurText = t(user, 'msg_livreur_welcome', `🚴 <b>Bienvenue, {first_name} !</b>`, { first_name: user.first_name }) + '\n\n' +
-            t(user, 'msg_livreur_city', `📍 Secteur : <b>{city}</b>`, { city: city.toUpperCase() }) + '\n' +
-            t(user, 'msg_livreur_status', `🔘 Statut : <b>{status}</b>`, { 
+        const statusLabel = isAvail ? t(user, 'label_available', 'AVAILABLE') : t(user, 'label_unavailable', 'UNAVAILABLE');
+        const livreurText = t(user, 'msg_livreur_welcome', `🚴 <b>Welcome, {first_name} !</b>`, { first_name: user.first_name }) + '\n\n' +
+            t(user, 'msg_livreur_city', `📍 Sector: <b>{city}</b>`, { city: city.toUpperCase() }) + '\n' +
+            t(user, 'msg_livreur_status', `🔘 Status: <b>{status}</b>`, { 
                 status: (isAvail ? (settings.ui_icon_success || '✅') : (settings.ui_icon_error || '❌')) + ' ' + statusLabel
             }) + '\n\n';
 
@@ -487,8 +487,8 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
     const catalogUrl = (settings.mini_app_url ? `${settings.mini_app_url}/catalog` : `${baseDomain}/catalog`) + `?lang=${langCode}` + `&v=${Date.now()}`;
 
     // Ligne 1 : Commander (Gros bouton principal)
-    buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '🛍'} CATALOGUE CLASSIQUE`, 'view_catalog')]);
-    buttons.push([Markup.button.webApp(`✨ CATALOGUE MINI APP ✨`, catalogUrl)]);
+    buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '🛍'} ${t(user, 'btn_catalog_classic', 'CATALOGUE CLASSIQUE')}`, 'view_catalog')]);
+    buttons.push([Markup.button.webApp(t(user, 'btn_catalog_miniapp', '✨ CATALOGUE MINI APP ✨'), catalogUrl)]);
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
@@ -521,10 +521,10 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
 
     // Ligne 5 : Espace Livreur / Fournisseur
     const spaces = [];
-    if (user?.is_livreur) spaces.push(Markup.button.callback(`${settings.ui_icon_livreur || '🚴'} Livreur`, 'livreur_menu'));
+    if (user?.is_livreur) spaces.push(Markup.button.callback(`${settings.ui_icon_livreur || '🚴'} ${t(user, 'btn_livreur_menu', 'Livreur')}`, 'livreur_menu'));
     if (settings.enable_marketplace !== false) {
         if (user?.is_supplier || user?.is_mp_admin || isFournisseur) {
-            spaces.push(Markup.button.callback('🏪 Fourn.', 'supplier_menu'));
+            spaces.push(Markup.button.callback(t(user, 'btn_supplier_menu', '🏪 Fourn.'), 'supplier_menu'));
         }
     }
     if (spaces.length > 0) buttons.push(spaces);
@@ -542,20 +542,21 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
 async function getLivreurMenuKeyboard(ctx, settings, user, hasActiveOrders = false, isAdminUser = false) {
     const isAvail = user?.is_available || user?.data?.is_available;
     const baseDomain = process.env.RENDER_EXTERNAL_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://farmstegridy-bot.onrender.com');
-    const livreurUrl = settings.mini_app_url ? `${settings.mini_app_url}/livreur` : `${baseDomain}/livreur`;
+    const langCode = user?.language_code || 'fr';
+    const livreurUrl = (settings.mini_app_url ? `${settings.mini_app_url}/livreur` : `${baseDomain}/livreur`) + `?lang=${langCode}` + `&v=${Date.now()}`;
 
     const buttons = [
-        [Markup.button.webApp('✨ ESPACE LIVREUR (MINI APP) ✨', livreurUrl)],
+        [Markup.button.webApp(t(user, 'btn_livreur_miniapp', '✨ ESPACE LIVREUR (MINI APP) ✨'), livreurUrl)],
         [Markup.button.callback(isAvail ? '🔴 ' + t(user, 'btn_avail_off', 'Indisponible') : '🟢 ' + t(user, 'btn_avail_on', 'Disponible'), isAvail ? 'set_dispo_false' : 'set_dispo_true')],
         [
-            Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${t(user, 'btn_orders_available_label', 'Commandes')}`, 'show_available_orders'), 
-            Markup.button.callback(`🗓 ${t(user, 'btn_planned_orders_label', 'Planifiées')}`, 'show_planned_orders')
+            Markup.button.callback(t(user, 'btn_orders_available_label', '📦 Commandes'), 'show_available_orders'), 
+            Markup.button.callback(t(user, 'btn_planned_orders_label', '🗓 Planifiées'), 'show_planned_orders')
         ],
         [
-            Markup.button.callback(`${settings.ui_icon_stats || '📈'} ${t(user, 'btn_history_orders_label', 'Historique')}`, 'my_deliveries'), 
-            Markup.button.callback(settings.btn_client_mode || `🛍 ${t(user, 'btn_client_mode_label', 'Client')}`, 'client_mode_force')
+            Markup.button.callback(t(user, 'btn_history_orders_label', '📈 Historique'), 'my_deliveries'), 
+            Markup.button.callback(t(user, 'btn_client_mode_label', '🛍 Client'), 'client_mode_force')
         ],
-        [Markup.button.callback(`${settings.btn_settings || '⚙️'} ${t(user, 'btn_livreur_settings', 'Réglages')}`, 'user_settings')]
+        [Markup.button.callback(t(user, 'btn_livreur_settings', '⚙️ Réglages'), 'user_settings')]
     ];
     if (hasActiveOrders) buttons.unshift([Markup.button.callback(t(user, 'btn_active_deliveries_label', '🚚 MES LIVRAISONS EN COURS 🔥'), 'active_deliveries')]);
     if (user?.is_admin || isAdminUser) buttons.push([Markup.button.callback(`🛠 ${t(user, 'btn_admin', 'Admin Panel')}`, 'admin_menu')]);
