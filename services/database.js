@@ -338,7 +338,7 @@ async function deleteUser(userId) {
 
 async function getAllUsersForBroadcast(platform = null, type = 'user') {
     // Note: 'platform_id' doesn't exist as a column - we use 'id' (format: telegram_XXXX)
-    let query = supabase.from(COL_USERS).select('id, telegram_id, username, first_name, last_name, is_blocked, is_livreur, platform');
+    let query = supabase.from(COL_USERS).select('id, username, first_name, last_name, is_blocked, is_livreur, platform');
     
     if (type === 'livreur' || type === 'livreurs') {
         query = query.eq('is_livreur', true);
