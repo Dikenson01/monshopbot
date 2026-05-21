@@ -136,7 +136,7 @@ function createServer(port = 8080) {
         res.json({
             status: 'ok',
             time: new Date().toISOString(),
-            branding: 'FARMSTEGRIDY BOT',
+            branding: 'SHOPTONBOT',
             port: process.env.PORT || 'not-set',
             env: process.env.RAILWAY_ENVIRONMENT || 'local',
             proxies: {
@@ -1464,7 +1464,7 @@ function createServer(port = 8080) {
                 points: user.points || 0,
                 referralLink: `https://t.me/${settings.bot_username}?start=${user.referral_code}`,
                 hotline: settings.admin_telegram_id || 'admin',
-                private_contact_url: settings.private_contact_url || 'https://t.me/Farmstegridy_bot',
+                private_contact_url: settings.private_contact_url || 'https://t.me/ShopTonBot',
                 mini_app_logo: settings.mini_app_logo || '/public/img/logo.png',
                 chat_history: user.data?.chat_history || []
             });
@@ -1487,7 +1487,7 @@ function createServer(port = 8080) {
                             `👤 <b>Client:</b> ${user.first_name || 'Inconnu'}\n` +
                             `💬 <b>Username:</b> ${user.username ? '@' + user.username : 'Aucun'}\n` +
                             `🆔 <b>ID:</b> <code>${userId}</code>\n\n` +
-                            `Ce client souhaite devenir livreur Farmstegridy.`;
+                            `Ce client souhaite devenir livreur ShopTonBot.`;
                 for (const adminId of admins) {
                     if (adminId) bot.telegram.sendMessage(adminId, msg, { parse_mode: 'HTML' }).catch(() => {});
                 }

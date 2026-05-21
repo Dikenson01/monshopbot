@@ -27,7 +27,7 @@ async function bootstrap() {
         const portToUse = process.env.PORT || 8080;
         
         console.log(`[System] Final PORT determined: ${portToUse}`);
-        console.log('🚀 DÉMARRAGE VERSION RAILWAY STABLE FARMSTEGRIDY BOT...');
+        console.log('🚀 DÉMARRAGE VERSION RAILWAY STABLE SHOPTONBOT...');
         
         // 1. Initialisation de la BDD
         if (database && database.init) {

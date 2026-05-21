@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="page_title">Admin Panel - Farmstegridy Bot</title>
+    <title id="page_title">Admin Panel - ShopTonBot</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥊</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -2148,13 +2148,13 @@
 
     <header class="mobile-header">
         <button onclick="toggleSidebar()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer; padding:5px;">☰</button>
-        <div class="m-brand" id="mobile_title">Farmstegridy Bot</div>
+        <div class="m-brand" id="mobile_title">ShopTonBot</div>
         <div style="width:34px;"></div> <!-- Spacer -->
     </header>
 
     <!-- Sidebar Desktop -->
     <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand" id="brand_name">Farmstegridy Bot v1.0.5</div>
+        <div class="sidebar-brand" id="brand_name">ShopTonBot v1.0.5</div>
 
         <div class="nav-group">
             <span class="nav-label">Navigation</span>
@@ -3520,7 +3520,7 @@
                         <div class="flex align-center gap-10">
                             <span style="font-size:20px;">🔸</span>
                             <div>
-                                <!-- Section WhatsApp Masquée pour Farmstegridy Bot -->
+                                <!-- Section WhatsApp Masquée pour ShopTonBot -->
                                 <div style="font-weight:600; font-size:14px; opacity: 0.3; pointer-events: none; display: none;">Bot WhatsApp</div>
                                 <div style="font-size:12px; opacity:0.6;">Activer/Désactiver le service WA</div>
                             </div>
@@ -6247,7 +6247,7 @@
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `analytics_farmstegridy_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute("download", `analytics_shoptonbot_${new Date().toISOString().split('T')[0]}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
