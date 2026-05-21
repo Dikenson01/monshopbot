@@ -1415,7 +1415,7 @@
             const count = cart.reduce((s, i) => s + i.n, 0);
             document.getElementById('cart-count').innerText = count;
             document.getElementById('cart-total').innerText = tot.toFixed(2) + '€';
-            document.getElementById('cart-dot').style.display = totalCount > 0 ? 'flex' : 'none';
+            document.getElementById('cart-dot').style.display = count > 0 ? 'flex' : 'none';
             const botDot = document.getElementById('cart-dot-bots'); if(botDot) botDot.style.display = count > 0 ? 'block' : 'none';
             const bar = document.getElementById('cart-bar');
             const isShop = document.getElementById('page-shop').style.display !== 'none';
