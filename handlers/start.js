@@ -222,7 +222,7 @@ function setupStartHandler(bot) {
                 const useWelcome = settings.welcome_message_enabled !== false;
                 
                 if (isNew && useWelcome) {
-                    welcomeText = t(ctx, 'msg_welcome', `✨ <b>Bienvenue sur {bot_name}, {first_name} !</b>`, {
+                    welcomeText = t(registeredUser, 'msg_welcome', `✨ <b>Bienvenue sur {bot_name}, {first_name} !</b>`, {
                         bot_name: settings.bot_name,
                         first_name: user.first_name
                     }) + '\n\n' +
@@ -233,7 +233,7 @@ function setupStartHandler(bot) {
                     if (!referrerId) pendingReferralInput.set(docId, true);
                 } else {
                     const defaultText = (settings.msg_welcome_back || `👋 <b>Ravi de vous revoir, {first_name} !</b>`);
-                    welcomeText = t(ctx, 'msg_welcome_back', defaultText, {
+                    welcomeText = t(registeredUser, 'msg_welcome_back', defaultText, {
                         first_name: user.first_name,
                         bot_name: settings.bot_name,
                         payment_line: paymentLine
@@ -465,7 +465,7 @@ async function showMainMenu(ctx) {
         return await safeEdit(ctx, livreurText, { photo: settings.welcome_photo || null, ...keyboard });
     }
 
-    const text = t(user, 'menu_main', `📋 <b>Menu principal</b>`);
+    const text = t(registeredUser || user, 'menu_main', `📋 <b>Menu principal</b>`);
     const supplier = await getSupplierByTelegramId(String(ctx.from.id));
     const isFournisseur = !!supplier;
     const keyboard = await getMainMenuKeyboard(ctx, settings, user, isFournisseur);

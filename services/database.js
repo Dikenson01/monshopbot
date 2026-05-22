@@ -233,7 +233,7 @@ async function registerUser(platformUser, platform = 'telegram', referrerId = nu
         if (!needsUpdate) return { user: existing, isNew: false };
         // Update in background
         supabase.from(COL_USERS).update(encryptedData).eq('id', docId).then(() => {
-            _userCacheSet(docId, decryptUser(encryptedData));
+            _userCacheSet(docId, { ...existing, ...decryptUser(encryptedData) });
         });
         return { user: { ...existing, ...encryptedData }, isNew: false };
     }
