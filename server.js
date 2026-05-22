@@ -1593,7 +1593,9 @@ function createServer(port = 8080) {
 
             const history = user?.data?.chat_history || [];
 
-            const enriched = (data || []).map(o => {
+            const { translate } = require('./services/translator');
+            const targetLang = req.query.lang || 'fr';
+            const enriched = await Promise.all((data || []).map(async o => {
                 const orderMessages = history.filter(m => String(m.orderId) === String(o.id));
                 let chatHistory = null;
                 if (orderMessages.length > 0) {
@@ -1614,11 +1616,20 @@ function createServer(port = 8080) {
                     };
                 }
                 
+                let cart = o.cart;
+                if (targetLang !== 'fr' && Array.isArray(cart)) {
+                    cart = await Promise.all(cart.map(async item => {
+                        const tName = await translate(item.name, targetLang);
+                        return { ...item, name: tName };
+                    }));
+                }
+                
                 return {
                     ...o,
+                    cart,
                     chatHistory
                 };
-            });
+            }));
             res.json(enriched);
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -1768,10 +1779,22 @@ function createServer(port = 8080) {
             const { userId } = req.query;
             const { getLivreurOrders } = require('./services/database');
             const { activeChatHistory } = require('./handlers/order_system');
+            const { translate } = require('./services/translator');
+            const targetLang = req.query.lang || 'fr';
             const orders = await getLivreurOrders(userId);
-            const enriched = orders.map(o => ({
-                ...o,
-                chatHistory: activeChatHistory ? activeChatHistory.get(o.id) : null
+            const enriched = await Promise.all(orders.map(async o => {
+                let cart = o.cart;
+                if (targetLang !== 'fr' && Array.isArray(cart)) {
+                    cart = await Promise.all(cart.map(async item => {
+                        const tName = await translate(item.name, targetLang);
+                        return { ...item, name: tName };
+                    }));
+                }
+                return {
+                    ...o,
+                    cart,
+                    chatHistory: activeChatHistory ? activeChatHistory.get(o.id) : null
+                };
             }));
             res.json(enriched);
         } catch (e) {
@@ -1792,10 +1815,23 @@ function createServer(port = 8080) {
 
     app.get('/api/livreur/available-orders', async (req, res) => {
         try {
-            const { city } = req.query;
+            const { city, lang } = req.query;
+            const targetLang = lang || 'fr';
             const { getAvailableOrders } = require('./services/database');
+            const { translate } = require('./services/translator');
             const orders = await getAvailableOrders(city);
-            res.json(orders);
+            
+            const enriched = await Promise.all(orders.map(async o => {
+                let cart = o.cart;
+                if (targetLang !== 'fr' && Array.isArray(cart)) {
+                    cart = await Promise.all(cart.map(async item => {
+                        const tName = await translate(item.name, targetLang);
+                        return { ...item, name: tName };
+                    }));
+                }
+                return { ...o, cart };
+            }));
+            res.json(enriched);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

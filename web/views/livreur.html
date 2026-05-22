@@ -304,8 +304,8 @@
             const uid = tg.initDataUnsafe.user.id;
             try {
                 const [activeRes, availRes] = await Promise.all([
-                    fetch(`/api/livreur/orders?userId=telegram_${uid}`),
-                    fetch(`/api/livreur/available-orders?city=${userInfo?.currentCity || 'all'}`)
+                    fetch(`/api/livreur/orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`),
+                    fetch(`/api/livreur/available-orders?city=${userInfo?.currentCity || 'all'}&lang=${window.currentLang || 'fr'}`)
                 ]);
 
                 const active = await activeRes.json();

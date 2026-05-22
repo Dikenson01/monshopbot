@@ -298,7 +298,7 @@
         </div>
         <div style="background:var(--accent); color:#fff; padding:12px 15px; border-radius:12px; font-weight:800; font-size:12px; display:flex; align-items:center; gap:10px; margin-bottom:20px; cursor:pointer;" onclick="openGlobalSupportModal()">
             <i class="notranslate ph-fill ph-chat-circle-dots" style="font-size:18px;"></i>
-            Besoin d'aide avec une commande ? Discutez avec nous !
+            <span data-i18n="help_order_banner">Besoin d'aide avec une commande ? Discutez avec nous !</span>
         </div>
         <div id="orders-list"></div>
     </div>
@@ -319,7 +319,7 @@
             </div>
             <div onclick="openAddressModal()" style="flex:1; background:var(--card); padding:15px; border-radius:18px; text-align:center; border:1px solid var(--border); cursor:pointer;">
                 <i class="notranslate ph-fill ph-map-pin" style="font-size:24px; color:var(--text); margin-bottom:5px;"></i>
-                <div style="font-size:12px; font-weight:800;">Adresses</div>
+                <div data-i18n="addresses" style="font-size:12px; font-weight:800;">Adresses</div>
             </div>
         </div>
 
@@ -603,7 +603,7 @@
                     fetch(`/api/products?lang=${window.currentLang || 'fr'}`),
                     uid ? fetch(`/api/user-info?userId=telegram_${uid}&t=${Date.now()}`) : Promise.resolve(null),
                     fetch('/api/news'),
-                    uid ? fetch(`/api/user-orders?userId=telegram_${uid}`) : Promise.resolve(null)
+                    uid ? fetch(`/api/user-orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`) : Promise.resolve(null)
                 ]);
                 setLoader(80);
                 allProducts = await pRes.json();
@@ -870,7 +870,7 @@
             const cont = document.getElementById('orders-list');
             const uid = tg.initDataUnsafe?.user?.id;
             try {
-                const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
+                const res = await fetch(`/api/user-orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`);
                 const orders = await res.json();
                 userOrdersCache = orders;
                 
@@ -888,19 +888,19 @@
 
                     statsHtml = `
                         <div style="background:linear-gradient(135deg, var(--card), rgba(255,170,0,0.1)); border:1px solid var(--accent); border-radius:24px; padding:20px; margin-bottom:20px;">
-                            <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:10px; letter-spacing:1px;">VOS STATISTIQUES</div>
+                            <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:10px; letter-spacing:1px;">${t('stats_title')}</div>
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <div>
-                                    <div style="font-size:11px; opacity:0.7;">Total Dépensé</div>
+                                    <div style="font-size:11px; opacity:0.7;">${t('total_spent')}</div>
                                     <div style="font-size:20px; font-weight:900; color:var(--accent);">${totalSpent.toFixed(2)}€</div>
                                 </div>
                                 <div style="text-align:right;">
-                                    <div style="font-size:11px; opacity:0.7;">Produit Préféré</div>
+                                    <div style="font-size:11px; opacity:0.7;">${t('fav_product')}</div>
                                     <div style="font-size:14px; font-weight:900;">${topProduct}</div>
                                 </div>
                             </div>
                         </div>
-                        <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:15px; letter-spacing:1px;">HISTORIQUE DES COMMANDES</div>
+                        <div style="font-size:12px; font-weight:900; opacity:0.5; margin-bottom:15px; letter-spacing:1px;">${t('order_history')}</div>
                     `;
                 }
 
@@ -923,18 +923,18 @@
                 cont.innerHTML = orders.length ? statsHtml : '<div class="empty-state">Vous n\'avez pas encore de commandes.</div>';
                 
                 orders.forEach(o => {
-                    let color = '#ffaa00', icon = '<i class="notranslate ph-fill ph-clock"></i>', text = 'EN ATTENTE';
+                    let color = '#ffaa00', icon = '<i class="notranslate ph-fill ph-clock"></i>', text = t('status_pending');
                     let progressPct = 33;
-                    if (o.status === 'delivered') { color = '#00ff88'; icon = '<i class="notranslate ph-fill ph-check-circle"></i>'; text = 'LIVRÉ'; progressPct = 100; }
-                    else if (o.status === 'taken') { color = 'var(--secondary)'; icon = '<i class="notranslate ph-fill ph-truck"></i>'; text = 'EN COURS'; progressPct = 66; }
-                    else if (o.status === 'cancelled') { color = '#ff0050'; icon = '<i class="notranslate ph-fill ph-x-circle"></i>'; text = 'ANNULÉE'; progressPct = 0; }
+                    if (o.status === 'delivered') { color = '#00ff88'; icon = '<i class="notranslate ph-fill ph-check-circle"></i>'; text = t('status_delivered'); progressPct = 100; }
+                    else if (o.status === 'taken') { color = 'var(--secondary)'; icon = '<i class="notranslate ph-fill ph-truck"></i>'; text = t('status_en_route'); progressPct = 66; }
+                    else if (o.status === 'cancelled') { color = '#ff0050'; icon = '<i class="notranslate ph-fill ph-x-circle"></i>'; text = t('status_cancelled'); progressPct = 0; }
 
                     const progressBar = o.status !== 'cancelled' ? `
                         <div style="margin:15px 0;">
                             <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:800; opacity:0.6; margin-bottom:5px;">
-                                <span style="color:${progressPct >= 33 ? 'var(--accent)' : 'inherit'}">Confirmée</span>
-                                <span style="color:${progressPct >= 66 ? 'var(--secondary)' : 'inherit'}">En route</span>
-                                <span style="color:${progressPct >= 100 ? '#00ff88' : 'inherit'}">Livrée</span>
+                                <span style="color:${progressPct >= 33 ? 'var(--accent)' : 'inherit'}">${t('status_confirmed')}</span>
+                                <span style="color:${progressPct >= 66 ? 'var(--secondary)' : 'inherit'}">${t('status_en_route_short')}</span>
+                                <span style="color:${progressPct >= 100 ? '#00ff88' : 'inherit'}">${t('status_delivered_short')}</span>
                             </div>
                             <div style="width:100%; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
                                 <div style="height:100%; width:${progressPct}%; background:${color}; transition:width 0.5s ease-in-out;"></div>
@@ -968,8 +968,8 @@
 
                     const btnContact = (!['delivered', 'cancelled', 'refused'].includes(o.status) && o.livreur_id) ? `<button class="btn-primary" style="margin-top:10px; background:rgba(0,255,255,0.1); border:1px solid var(--secondary); color:var(--secondary); height:40px;" onclick="toggleChatModule('${o.id}')"><i class="notranslate ph-fill ph-chat-circle-dots"></i> CHAT LIVREUR (${count}/6)</button>` : '';
                     const btnNoter = ['delivered'].includes(o.status) && !o.feedback_rating ? `<button class="btn-primary" style="margin-top:10px; background:var(--card); border:1px solid var(--accent); color:var(--accent); height:40px;" onclick="openRating('${o.id}')"><i class="notranslate ph-fill ph-star"></i> NOTER</button>` : '';
-                    const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="notranslate ph-fill ph-arrows-clockwise"></i> RECOMMANDER</button>`;
-                    const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="notranslate ph-bold ph-x"></i> ANNULER</button>` : '';
+                    const btnReorder = `<button class="btn-primary" style="margin-top:10px; background:none; border:1px solid var(--border); color:#fff; height:40px;" onclick="reorder('${o.id}')"><i class="notranslate ph-fill ph-arrows-clockwise"></i> ${t('btn_reorder')}</button>`;
+                    const btnCancel = (o.status === 'pending') ? `<button class="btn-primary" style="margin-top:10px; background:rgba(255,0,80,0.1); border:1px solid rgba(255,0,80,0.5); color:#ff0050; height:40px;" onclick="cancelOrder('${o.id}')"><i class="notranslate ph-bold ph-x"></i> ${t('btn_cancel')}</button>` : '';
 
                     const d = document.createElement('div'); d.className = 'order-card';
                     d.setAttribute('data-id', o.id);
@@ -989,7 +989,7 @@
                         ${btnNoter}
                         <div style="display:flex; gap:10px; margin-top:10px;">
                             ${btnReorder}
-                            <button class="btn-primary" style="flex:1; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.5); color:#ffaa00; height:40px;" onclick="contactSupportForOrder('${o.id}')"><i class="notranslate ph-fill ph-headset"></i> AIDE</button>
+                            <button class="btn-primary" style="flex:1; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.5); color:#ffaa00; height:40px;" onclick="contactSupportForOrder('${o.id}')"><i class="notranslate ph-fill ph-headset"></i> ${t('btn_help')}</button>
                         </div>
 
                         <div class="chat-module" id="chat-module-${o.id}" style="display:${prevState.isOpen ? 'block' : 'none'};">
@@ -1081,7 +1081,7 @@
                 if (!ok) return;
                 try {
                     const uid = tg.initDataUnsafe?.user?.id;
-                    const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
+                    const res = await fetch(`/api/user-orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`);
                     const orders = await res.json();
                     const order = orders.find(x => x.id === orderId);
                     if (order && (order.items || order.cart)) {
@@ -2203,7 +2203,7 @@
             renderAdminChatMessages();
             const uid = tg.initDataUnsafe?.user?.id;
             try {
-                const res = await fetch(`/api/user-orders?userId=telegram_${uid}`);
+                const res = await fetch(`/api/user-orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`);
                 const orders = await res.json();
                 
                 // Show all orders (up to 5 recent)
@@ -2219,7 +2219,7 @@
                 cont.innerHTML = '';
                 recentOrders.forEach(o => {
                     const statusColor = o.status === 'delivered' ? '#00ff88' : (o.status === 'cancelled' || o.status === 'refused' ? '#ff3b30' : '#ffa500');
-                    const statusText = o.status === 'delivered' ? 'Livrée' : (o.status === 'cancelled' || o.status === 'refused' ? 'Annulée' : 'En cours');
+                    const statusText = o.status === 'delivered' ? '${t('status_delivered_short')}' : (o.status === 'cancelled' || o.status === 'refused' ? 'Annulée' : 'En cours');
                     
                     const d = document.createElement('div');
                     d.style = 'background:var(--card); border:1px solid var(--border); border-radius:18px; padding:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;';
@@ -2431,7 +2431,7 @@
                 
                 // Poll Orders
                 if (uid) {
-                    const resOrders = await fetch(`/api/user-orders?userId=telegram_${uid}`);
+                    const resOrders = await fetch(`/api/user-orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`);
                     if (resOrders.ok) {
                         const newOrders = await resOrders.json();
                         let statusChanged = false;
@@ -2443,7 +2443,7 @@
                                     'pending': 'En attente ⏳',
                                     'accepted': 'Acceptée ✅',
                                     'livreur_assigned': 'Livreur en route 🛵',
-                                    'delivered': 'Livrée 📦',
+                                    'delivered': '${t('status_delivered_short')} 📦',
                                     'cancelled': 'Annulée ❌'
                                 };
                                 const statusText = statusMap[no.status] || no.status;
