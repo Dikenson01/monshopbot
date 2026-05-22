@@ -232,7 +232,7 @@
                 </div>
                 <div onclick="openAddressModal()" style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; font-weight:900; opacity:1; cursor:pointer; background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:12px;">
                     <i class="notranslate ph-fill ph-map-pin" style="color:var(--accent); font-size:14px;"></i>
-                    <div style="max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Livraison à : <span id="shop-default-address" style="color:var(--text); opacity:0.9;">Chargement...</span></div>
+                    <div style="max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><span data-i18n="delivery_to">Livraison à : </span><span id="shop-default-address" style="color:var(--text); opacity:0.9;" data-i18n="loading_addr">Chargement...</span></div>
                     <i class="notranslate ph-bold ph-caret-down" style="font-size:10px; opacity:0.5;"></i>
                 </div>
             </div>
@@ -770,7 +770,7 @@
             cats.forEach(c => {
                 const d = document.createElement('div');
                 d.className = `cat-chip ${c === 'TOUT' ? 'active' : ''}`;
-                d.innerText = c.toUpperCase();
+                d.innerText = (c === 'TOUT' ? t('all') : c).toUpperCase();
                 d.onclick = () => { 
                     document.querySelectorAll('#bots-categories .cat-chip').forEach(t => t.classList.remove('active')); 
                     d.classList.add('active'); 
@@ -804,7 +804,7 @@
             allCategories.forEach(c => {
                 const d = document.createElement('div');
                 d.className = `cat-chip ${c === 'TOUT' ? 'active' : ''}`;
-                d.innerText = c.toUpperCase();
+                d.innerText = (c === 'TOUT' ? t('all') : c).toUpperCase();
                 d.onclick = () => { 
                     document.querySelectorAll('#categories .cat-chip').forEach(t => t.classList.remove('active')); 
                     d.classList.add('active'); 
@@ -851,7 +851,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
                             <div class="card-price" style="margin-top:0;">${p.price}€</div>
                             <div id="stock-badge-${p.id}" style="font-size:10px; font-weight:800; background:rgba(255,255,255,0.1); padding:4px 8px; border-radius:8px; display:flex; align-items:center; gap:4px;">
-                                <span class="stock-indicator" style="background:${p.stock>0?'#2ecc71':'#e74c3c'}; width:6px; height:6px; border-radius:50%; display:inline-block;"></span>${p.stock>0 ? p.stock+' en stock' : 'Épuisé'}
+                                <span class="stock-indicator" style="background:${p.stock>0?'#2ecc71':'#e74c3c'}; width:6px; height:6px; border-radius:50%; display:inline-block;"></span>${p.stock>0 ? p.stock+' '+t('in_stock') : t('out_of_stock')}
                             </div>
                         </div>
                     </div>
@@ -2422,7 +2422,7 @@
                             allProducts[idx].stock = np.stock;
                             const qtyBadge = document.getElementById(`stock-badge-${np.id}`);
                             if (qtyBadge) {
-                                qtyBadge.innerHTML = `<span class="stock-indicator" style="background:${np.stock>0?'#2ecc71':'#e74c3c'}"></span>${np.stock>0 ? np.stock+' en stock' : 'Épuisé'}`;
+                                qtyBadge.innerHTML = `<span class="stock-indicator" style="background:${np.stock>0?'#2ecc71':'#e74c3c'}"></span>${np.stock>0 ? np.stock+' '+t('in_stock') : t('out_of_stock')}`;
                             }
                         }
                     });
