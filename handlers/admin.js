@@ -357,7 +357,8 @@ function setupAdminHandlers(bot) {
             const supportLabel = t(user, 'btn_admin_support', '💬 Support') + (supportCount > 0 ? ` (${supportCount})` : '');
 
             const baseDomain = process.env.RENDER_EXTERNAL_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://farmstegridy-bot.onrender.com');
-            const dashboardUrl = `${baseDomain}/dashboard`;
+            const langCode = user?.language_code || 'fr';
+            const dashboardUrl = `${baseDomain}/dashboard?lang=${langCode}`;
             rows.push([Markup.button.webApp('✨ ACCÉDER AU DASHBOARD (MINI APP) ✨', dashboardUrl)]);
 
             rows.push([Markup.button.callback(t(user, 'btn_admin_orders', '📦 Commandes'), 'admin_orders'), Markup.button.callback(t(user, 'btn_admin_users', '👥 Utilisateurs'), 'admin_users')]);
