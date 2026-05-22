@@ -1,5 +1,8 @@
 const translations = {
     fr: {
+        "in_stock": "en stock",
+        "out_of_stock": "Épuisé",
+        "loading_addr": "Chargement...",
         'cart': 'Panier',
         'catalog': 'Catalogue',
         'search': 'Rechercher...',
@@ -109,12 +112,12 @@ const translations = {
         'address_ex': 'Ex: 11 rue de la Paix...',
         'start_typing': 'Commencez à taper pour voir des suggestions...',
         'no_result_found': 'Aucun résultat trouvé.',
-        'search_error': 'Erreur lors de la recherche.',
-        'in_stock': 'en stock',
-        'out_of_stock': 'Épuisé',
-        'loading_addr': 'Chargement...'
-},
+        'search_error': 'Erreur lors de la recherche.'
+    },
     en: {
+        "in_stock": "in stock",
+        "out_of_stock": "Out of stock",
+        "loading_addr": "Loading...",
         'cart': 'Cart',
         'catalog': 'Catalog',
         'search': 'Search...',
@@ -224,12 +227,12 @@ const translations = {
         'address_ex': 'Ex: 11 Peace Street...',
         'start_typing': 'Start typing to see suggestions...',
         'no_result_found': 'No result found.',
-        'search_error': 'Search error.',
-        'in_stock': 'in stock',
-        'out_of_stock': 'Out of stock',
-        'loading_addr': 'Loading...'
-},
+        'search_error': 'Search error.'
+    },
     es: {
+        "in_stock": "en stock",
+        "out_of_stock": "Agotado",
+        "loading_addr": "Cargando...",
         'cart': 'Carrito',
         'catalog': 'Catálogo',
         'search': 'Buscar...',
@@ -339,12 +342,12 @@ const translations = {
         'address_ex': 'Ej: 11 Calle de la Paz...',
         'start_typing': 'Empieza a escribir para ver sugerencias...',
         'no_result_found': 'Ningún resultado.',
-        'search_error': 'Error de búsqueda.',
-        'in_stock': 'en stock',
-        'out_of_stock': 'Agotado',
-        'loading_addr': 'Cargando...'
-},
+        'search_error': 'Error de búsqueda.'
+    },
     de: {
+        "in_stock": "auf Lager",
+        "out_of_stock": "Ausverkauft",
+        "loading_addr": "Wird geladen...",
         'cart': 'Warenkorb',
         'catalog': 'Katalog',
         'search': 'Suchen...',
@@ -482,11 +485,8 @@ function initTranslations() {
             el.classList.add('notranslate');
         } else if (translations['fr'] && translations['fr'][key]) {
             el.setAttribute('placeholder', translations['fr'][key]);
-            el.classList.add('notranslate');,
-        'in_stock': 'auf Lager',
-        'out_of_stock': 'Ausverkauft',
-        'loading_addr': 'Wird geladen...'
-}
+            el.classList.add('notranslate');
+        }
     });
 
     document.querySelectorAll('[data-i18n]').forEach(el => {
