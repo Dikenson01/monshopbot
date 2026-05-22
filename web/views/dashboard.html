@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html translate="no" lang="fr">
 
 <head>
-            <meta charset="UTF-8">
+            <meta name="google" content="notranslate">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title id="page_title">Admin Panel - ShopTonBot</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥊</text></svg>">
@@ -60,29 +61,6 @@
         }
 
         
-        /* --- GOOGLE TRANSLATE PREMIUM INTEGRATION --- */
-        #google_translate_element { display: none; }
-        .goog-te-banner-frame { display: none !important; }
-        body { top: 0px !important; }
-        .goog-tooltip { display: none !important; }
-        .goog-tooltip:hover { display: none !important; }
-        .goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
-        
-        .custom-lang-selector {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            color: var(--text-main);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            cursor: pointer;
-            outline: none;
-            font-family: 'Outfit', sans-serif;
-        }
-        .custom-lang-selector:focus {
-            border-color: var(--accent);
-        }
-
         /* --- SIDEBAR (Desktop) --- */
         .sidebar {
             width: 280px;
@@ -2170,61 +2148,49 @@
     <!-- Mobile Header -->
     <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
 
-    <header class="mobile-header" style="justify-content: space-between;">
+    <header class="mobile-header">
         <button onclick="toggleSidebar()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer; padding:5px;">☰</button>
         <div class="m-brand" id="mobile_title">ShopTonBot</div>
-        <select class="custom-lang-selector" onchange="changeLanguage(this.value)" style="background: transparent; border: none; padding: 0; margin-right: 10px; color: white;">
-            <option value="fr">🇫🇷</option>
-            <option value="en">🇬🇧</option>
-            <option value="de">🇩🇪</option>
-            <option value="es">🇪🇸</option>
-        </select>
+        <div style="width:34px;"></div> <!-- Spacer -->
     </header>
 
     <!-- Sidebar Desktop -->
     <aside class="sidebar" id="sidebar">
         
         <div class="sidebar-brand" id="brand_name">ShopTonBot v1.0.5</div>
-        <select class="custom-lang-selector" onchange="changeLanguage(this.value)" style="margin-bottom: 20px; width: 100%; background: #1a1a1a; border-color: rgba(255,255,255,0.1);">
-            <option value="fr">🇫🇷 Français</option>
-            <option value="en">🇬🇧 English</option>
-            <option value="de">🇩🇪 Deutsch</option>
-            <option value="es">🇪🇸 Español</option>
-        </select>
-
 
         <div class="nav-group">
             <span class="nav-label">Navigation</span>
-            <a class="nav-item active" onclick="switchSection('overview')" id="side-nav-overview"><i>🏠</i> Tableau de Bord & Stats</a>
-            <a class="nav-item" onclick="switchSection('users')" id="side-nav-users"><i>👥</i> <span id="label_users_desktop">Utilisateurs</span></a>
-            <a class="nav-item" onclick="switchSection('products')" id="side-nav-products"><i>👟</i> Produits</a>
-            <a class="nav-item" onclick="switchSection('logistique')" id="side-nav-logistique"><i>🛵</i> Logistique</a>
+            <a class="nav-item active" onclick="switchSection('overview')" id="side-nav-overview"><i>🏠</i> <span data-i18n="dashboard">Tableau de Bord & Stats</span></a>
+            <a class="nav-item" onclick="switchSection('users')" id="side-nav-users"><i>👥</i> <span id="label_users_desktop" data-i18n="users">Utilisateurs</span></a>
+            <a class="nav-item" onclick="switchSection('products')" id="side-nav-products"><i>👟</i> <span data-i18n="products">Produits</span></a>
+            <a class="nav-item" onclick="switchSection('logistique')" id="side-nav-logistique"><i>🛵</i> <span data-i18n="logistique">Logistique</span></a>
         </div>
 
         <div class="nav-group">
             <span class="nav-label">Outils</span>
-            <a class="nav-item" onclick="switchSection('broadcast')" id="side-nav-broadcast"><i>📣</i> Diffusion</a>
-            <a class="nav-item" onclick="switchSection('insights')" id="side-nav-insights"><i>📊</i> Insights</a>
-            <a class="nav-item" onclick="switchSection('support-chat')" id="side-nav-support-chat" style="position:relative;"><i>💬</i> Chat Support<span id="chat-unread-dot" style="display:none; width:8px; height:8px; background:#ff0050; border-radius:50%; position:absolute; right:15px; top:50%; transform:translateY(-50%);"></span></a>
-            <a class="nav-item" onclick="switchSection('features')" id="side-nav-features"><i>📖</i> Guide</a>
+            <a class="nav-item" onclick="switchSection('broadcast')" id="side-nav-broadcast"><i>📣</i> <span data-i18n="broadcast">Diffusion</span></a>
+            <a class="nav-item" onclick="switchSection('insights')" id="side-nav-insights"><i>📊</i> <span data-i18n="insights">Insights</span></a>
+            <a class="nav-item" onclick="switchSection('support-chat')" id="side-nav-support-chat" style="position:relative;"><i>💬</i> <span data-i18n="support-chat">Chat Support</span><span id="chat-unread-dot" style="display:none; width:8px; height:8px; background:#ff0050; border-radius:50%; position:absolute; right:15px; top:50%; transform:translateY(-50%);"></span></a>
+            <a class="nav-item" onclick="switchSection('features')" id="side-nav-features"><i>📖</i> <span data-i18n="guide">Guide</span></a>
         </div>
 
         <div class="nav-group">
             <span class="nav-label">Système</span>
-            <a class="nav-item" onclick="switchSection('settings')" id="side-nav-settings"><i>⚙️</i> Paramètres</a>
+            <a class="nav-item" onclick="switchSection('settings')" id="side-nav-settings"><i>⚙️</i> <span data-i18n="settings">Paramètres</span></a>
         </div>
 
-        <a class="nav-item logout-btn" onclick="logout()"><i>🚪</i> Déconnexion</a>
+        <a class="nav-item logout-btn" onclick="logout()"><i>🚪</i> <span data-i18n="logout">Déconnexion</span></a>
     </aside>
 
     <!-- Bottom Nav Mobile -->
     <nav class="mobile-nav">
-        <a class="m-nav-item active" onclick="switchSection('overview')" id="m-nav-overview"><i>🏠</i><span>Accueil</span></a>
-        <a class="m-nav-item" onclick="switchSection('logistique')" id="m-nav-logistique"><i>🛵</i><span data-i18n="orders"> data-i18n="orders">>Commandes</span></a>
-        <a class="m-nav-item" onclick="switchSection('products')" id="m-nav-products"><i>👟</i><span>Produits</span></a>
-        <a class="m-nav-item" onclick="switchSection('support-chat')" id="m-nav-support-chat"><i>💬</i><span>Chat</span></a>
-        <a class="m-nav-item" onclick="switchSection('settings')" id="m-nav-settings"><i>⚙️</i><span>Réglages</span></a>
-        <a class="m-nav-item" onclick="toggleSidebar()"><i>☰</i><span>Menu</span></a>
+        <a class="m-nav-item active" onclick="switchSection('overview')" id="m-nav-overview"><i>🏠</i><span data-i18n="nav_home">Accueil</span></a>
+        <a class="m-nav-item" onclick="switchSection('logistique')" id="m-nav-logistique"><i>🛵</i><span data-i18n="nav_orders">Commandes</span></a>
+        <a class="m-nav-item" onclick="switchSection('products')" id="m-nav-products"><i>👟</i><span data-i18n="nav_products">Produits</span></a>
+        <a class="m-nav-item" onclick="switchSection('support-chat')" id="m-nav-support-chat"><i>💬</i><span data-i18n="nav_chat">Chat</span></a>
+        <a class="m-nav-item" onclick="switchSection('settings')" id="m-nav-settings"><i>⚙️</i><span data-i18n="nav_settings">Réglages</span></a>
+        <a class="m-nav-item" onclick="toggleSidebar()"><i>☰</i><span data-i18n="nav_menu">Menu</span></a>
     </nav>
 
     <main class="main">
@@ -8604,29 +8570,6 @@
         }
 
     </script>
-
-    <!-- Google Translate Script -->
-    <div id="google_translate_element"></div>
-    <script type="text/javascript">
-        function googleTranslateElementInit() {
-            new google.translate.TranslateElement({
-                pageLanguage: 'fr', 
-                includedLanguages: 'fr,en,de,es', 
-                autoDisplay: false
-            }, 'google_translate_element');
-        }
-        
-        function changeLanguage(langCode) {
-            var selectField = document.querySelector("#google_translate_element select");
-            if (!selectField) {
-                console.error("Google Translate not loaded yet");
-                return;
-            }
-            selectField.value = langCode;
-            selectField.dispatchEvent(new Event('change'));
-        }
-    </script>
-    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
 </body>
 
