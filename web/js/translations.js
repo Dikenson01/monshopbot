@@ -475,6 +475,8 @@ function initTranslations() {
     if (!translations[currentLang]) {
         currentLang = 'fr';
     }
+    
+    window.currentLang = currentLang;
 
     // Apply translations to DOM
     
