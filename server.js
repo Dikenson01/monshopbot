@@ -515,8 +515,19 @@ function createServer(port = 8080) {
     });
 
     app.get('/api/products', async (req, res) => {
-        try { res.json(await getProducts()); }
-        catch (e) { res.status(500).json({ error: 'Erreur serveur' }); }
+        try { 
+            let products = await getProducts();
+            const lang = req.query.lang || 'fr';
+            if (lang !== 'fr') {
+                const { translateProducts } = require('./services/translator');
+                products = await translateProducts(products, lang);
+            }
+            res.json(products); 
+        }
+        catch (e) { 
+            console.error('[API Products] Error:', e);
+            res.status(500).json({ error: 'Erreur serveur' }); 
+        }
     });
 
     app.get('/api/inventory/ledger', authMiddleware, async (req, res) => {

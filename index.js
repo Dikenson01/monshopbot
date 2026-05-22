@@ -98,13 +98,37 @@ async function bootstrap() {
                     if (settings.bot_description) telegramChannel.bot.telegram.setMyDescription(settings.bot_description).catch(() => { });
                     if (settings.bot_short_description) telegramChannel.bot.telegram.setMyShortDescription(settings.bot_short_description).catch(() => { });
                     
-                    // Set default commands
+                    // Set default commands (French)
                     telegramChannel.bot.telegram.setMyCommands([
                         { command: 'start', description: '🏠 Lancer le bot / Accueil' },
                         { command: 'menu', description: '🛒 Voir le catalogue' },
                         { command: 'orders', description: '📦 Mes commandes' },
                         { command: 'help', description: '❓ Aide et support' }
                     ]).catch(() => { });
+
+                    // English
+                    telegramChannel.bot.telegram.setMyCommands([
+                        { command: 'start', description: '🏠 Start the bot / Home' },
+                        { command: 'menu', description: '🛒 View catalog' },
+                        { command: 'orders', description: '📦 My orders' },
+                        { command: 'help', description: '❓ Help and support' }
+                    ], { language_code: 'en' }).catch(() => { });
+
+                    // German
+                    telegramChannel.bot.telegram.setMyCommands([
+                        { command: 'start', description: '🏠 Bot starten / Startseite' },
+                        { command: 'menu', description: '🛒 Katalog ansehen' },
+                        { command: 'orders', description: '📦 Meine Bestellungen' },
+                        { command: 'help', description: '❓ Hilfe und Support' }
+                    ], { language_code: 'de' }).catch(() => { });
+
+                    // Spanish
+                    telegramChannel.bot.telegram.setMyCommands([
+                        { command: 'start', description: '🏠 Iniciar el bot / Inicio' },
+                        { command: 'menu', description: '🛒 Ver catálogo' },
+                        { command: 'orders', description: '📦 Mis pedidos' },
+                        { command: 'help', description: '❓ Ayuda y soporte' }
+                    ], { language_code: 'es' }).catch(() => { });
                 }).catch(() => { });
             }).catch(err => {
                 console.error('❌ Error launching Telegram:', err.message);

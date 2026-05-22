@@ -600,7 +600,7 @@
             try {
                 const uid = tg.initDataUnsafe?.user?.id;
                 const [pRes, uRes, newsRes, ordersRes] = await Promise.all([
-                    fetch('/api/products'),
+                    fetch(`/api/products?lang=${window.userLang || 'fr'}`),
                     uid ? fetch(`/api/user-info?userId=telegram_${uid}&t=${Date.now()}`) : Promise.resolve(null),
                     fetch('/api/news'),
                     uid ? fetch(`/api/user-orders?userId=telegram_${uid}`) : Promise.resolve(null)
@@ -2414,7 +2414,7 @@
                 }
                 
                 // Poll Stocks
-                const resStock = await fetch('/api/products');
+                const resStock = await fetch(`/api/products?lang=${window.userLang || 'fr'}`);
                 if (resStock.ok) {
                     const newProds = await resStock.json();
                     newProds.forEach(np => {
