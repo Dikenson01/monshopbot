@@ -697,33 +697,9 @@
         #google_translate_element { display: none !important; }
     </style>
     
-    <script type="text/javascript">
-        , 'google_translate_element');
-        }
-    </script>
     
-    <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            let lang = urlParams.get('lang') || 'fr';
-            
-            // Map Telegram language codes to Google Translate codes
-            const langMap = { 'en': 'en', 'es': 'es', 'de': 'de', 'it': 'it', 'pt': 'pt', 'ru': 'ru', 'ar': 'ar' };
-            lang = langMap[lang] || lang;
-
-            if (lang !== 'fr') {
-                const interval = setInterval(() => {
-                    const select = document.querySelector('.goog-te-combo');
-                    if (select && select.options.length > 0) {
-                        select.value = lang;
-                        select.dispatchEvent(new Event('change'));
-                        clearInterval(interval);
-                    }
-                }, 300);
-                setTimeout(() => clearInterval(interval), 5000);
-            }
-        });
-    </script>
+    
+    
     <!-- End Google Translate -->
 
 </body>
