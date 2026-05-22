@@ -104,6 +104,12 @@ function createServer(port = 8080) {
         tempFileDir: '/tmp/'
     }));
     app.use('/public', express.static(path.join(__dirname, 'web', 'public')));
+    app.use('/js', express.static(path.join(__dirname, 'web', 'js')));
+    app.post('/api/log-error', (req, res) => {
+        console.error('[CLIENT ERROR]', req.body);
+        res.json({ok: true});
+    });
+
 
 
     // ========== Authentication ==========
