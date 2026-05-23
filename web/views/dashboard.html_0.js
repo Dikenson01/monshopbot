@@ -1,0 +1,1 @@
+if(localStorage.getItem('hideProductGuide')==='1'){document.getElementById('product-onboarding').style.display='none';}
