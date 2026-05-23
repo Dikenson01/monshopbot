@@ -1,0 +1,30 @@
+238: const res = await fetch(`/api/user-info?userId=telegram_${uid}&t=${Date.now()}`);
+297: body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, available: userInfo.isAvailable })
+307: fetch(`/api/livreur/orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`),
+308: fetch(`/api/livreur/available-orders?city=${userInfo?.currentCity || 'all'}&lang=${window.currentLang || 'fr'}`)
+343: const mod = document.getElementById(`chat-module-${oid}`);
+344: const inp = document.getElementById(`chat-input-${oid}`);
+365: chatSection = `
+372: chatSection = `
+378: chatSection = `
+383: d.innerHTML = `
+427: const inp = document.getElementById(`chat-input-${o.id}`);
+438: const mod = document.getElementById(`chat-module-${id}`);
+443: setTimeout(() => document.getElementById(`chat-input-${id}`)?.focus(), 50);
+450: const input = document.getElementById(`chat-input-${id}`);
+460: userId: `telegram_${tg.initDataUnsafe?.user?.id}`,
+500: chatHistoryHtml = `
+507: chatHistoryHtml = `
+513: chatHistoryHtml = `
+520: d.innerHTML = `
+539: const input = document.getElementById(`tab-chat-input-${orderId}`);
+547: body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, orderId, text })
+569: d.innerHTML = `
+587: const res = await fetch(`/api/livreur/history?userId=telegram_${uid}`);
+594: d.innerHTML = `
+608: sum.innerHTML = `<div style="font-size:11px; font-weight:900; opacity:0.5; color:#00ff88; letter-spacing:1px; margin-bottom:5px;">TOTAL ENCAISSÉ</div><div style="font-size:24px; font-weight:900; color:#00ff88;">${total.toFixed(2)}€</div>`;
+623: body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, orderId: id })
+650: userId: `telegram_${tg.initDataUnsafe.user.id}`
+667: tg.showConfirm(`Informer le client : ${timeLabels[timeCode]} ?`, async (ok) => {
+673: body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, orderId: id, timeCode })
+682: const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;

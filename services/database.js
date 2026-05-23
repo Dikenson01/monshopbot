@@ -153,7 +153,7 @@ async function claimLock(resourceName, ownerId, ttlMs = 60000) {
 
         if (error) {
             if (error.message.includes('column') && (process.env.RAILWAY_REPLICA_COUNT || 1) <= 1) {
-                console.warn('[TG-LOCK] ⚠️ Columns missing in bot_stats but only 1 replica detected. Bypassing lock for stability.');
+                // Suppress console.warn to avoid log spam on single replicas
                 return true; 
             }
             console.error('[TG-LOCK] claimLock Error:', error.message);

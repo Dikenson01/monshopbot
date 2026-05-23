@@ -240,7 +240,7 @@ async function runRecommendationEngine() {
                     
                     const message = generateDynamicText(firstName, topProduct, candidateType);
                     const keyboard = {
-                        inline_keyboard: [[{ text: '🛍️ Ouvrir la Mini App', web_app: { url: process.env.WEBAPP_URL || '' } }]]
+                        inline_keyboard: [[{ text: '🛍️ Ouvrir la Mini App', web_app: { url: (process.env.RENDER_EXTERNAL_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/catalog` : 'https://monshopbot-production.up.railway.app/catalog')) } }]]
                     };
 
                     const tgId = userId.replace('telegram_', '');
@@ -249,7 +249,7 @@ async function runRecommendationEngine() {
                     
                     await sendMessageToUser(tgId, message, { parse_mode: 'HTML', reply_markup: keyboard }).catch(() => {});
                     
-                    fatigueTracker[userId] = now.getTime();
+                    fatigueTracker[userId] = now;
                     notificationsSent++;
                 }
             }

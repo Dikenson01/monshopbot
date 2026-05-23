@@ -1,0 +1,194 @@
+4270: headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
+4306: document.getElementById('modalBody').innerHTML = `<p id="modalMessage">${message}</p>`;
+4329: html += `
+4480: const livreurOptions = (window._cachedLivreurs || []).map(l => `<option value="${l.id || l.doc_id}">${l.first_name || 'Livreur'}</option>`).join('');
+4511: return `
+4535: ${!o.livreur_name ? `
+4561: <td data-label="Créé le"><small>🕐 ${createdTime}</small>${o.scheduled_at ? `<br><span style="padding:2px 6px; background:rgba(255,165,0,0.2); border:1px solid orange; color:orange; font-size:10px; border-radius:4px; font-weight:bold; margin-top:4px; display:inline-block;">📅 ${o.scheduled_at}</span>` : ''}</td>
+4562: <td data-label="Livrable"><small>${o.status === 'delivered' ? '✅ ' + deliveredTime : (o.livreur_name ? '⏳ En cours' : '—')}</small>${o.livreur_name ? `<br><small style="color:var(--accent); font-weight:700;">🚴 ${o.livreur_name}</small>` : ''}</td>
+4578: return `
+4617: ${o.livreur_name ? `
+4621: </div>` : ''}
+4622: ${o.status === 'delivered' ? `
+4626: </div>` : ''}
+4645: ${!o.livreur_name ? `
+4655: </div>`;
+4679: if (isVid) return `<video src="${fp}" style="width:60px; height:60px; object-fit:cover; border-radius:10px; border:1px solid var(--border);" muted onclick="window.open('${fp}')"></video>`;
+4680: return `<img src="${fp}" style="width:60px; height:60px; cursor:pointer; object-fit:cover; border-radius:10px; border:1px solid var(--border);" onclick="window.open('${fp}')">`;
+4693: return `<tr>
+4711: return `
+4726: ${getPhotoHtml(r) !== '—' ? `<div style="margin-bottom:10px;">${getPhotoHtml(r)}</div>` : ''}
+4730: </div>`;
+4934: products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+4955: mediaHtml = `<video src="${firstUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;" muted></video>`;
+4957: mediaHtml = `<img src="${firstUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">`;
+4969: return `
+5013: mediaHtml = `<video src="${firstUrl}" style="width:100%;height:100%;object-fit:cover;" muted></video>`;
+5015: mediaHtml = `<img src="${firstUrl}" style="width:100%;height:100%;object-fit:cover;">`;
+5022: return `
+5026: ${mediaHtml}${mediaCount > 1 ? `<span style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.6); color:white; font-size:9px; padding:2px 6px; border-radius:4px; font-weight:700; z-index:2;">+${mediaCount - 1}</span>` : ''}
+5120: pollHtml = `<div style="background:rgba(255,165,0,0.05); padding:8px; border-radius:6px; margin-top:8px; border:1px solid rgba(255,165,0,0.1);">
+5121: <div style="font-weight:bold; color:#ffa500; font-size:11px; margin-bottom:5px;">📊 RÉSULTATS DU SONDAGE</div>`;
+5129: pollHtml += `<div style="font-size:11px; margin-bottom:4px;">
+5137: ${voters.length > 0 ? `<div style="font-size:9px; color:rgba(255,255,255,0.5); margin-top:2px;">👥 ${voters.join(', ')}</div>` : ''}
+5138: </div>`;
+5143: pollHtml += `<div style="margin-top:8px; border-top:1px solid rgba(255,165,0,0.1); padding-top:5px;">
+5144: <div style="font-weight:bold; color:#ffa500; font-size:11px;">🖊 RÉPONSES LIBRES (${freeResp.length})</div>`;
+5146: pollHtml += `<div style="font-size:10px; margin-top:4px; font-style:italic;">
+5148: </div>`;
+5150: pollHtml += `</div>`;
+5152: pollHtml += `</div>`;
+5163: return `
+5167: ${h.badge ? `<br><span class="badge" style="background:var(--accent); color:white; padding:2px 6px; border-radius:4px; font-size:10px;">${h.badge.toUpperCase()}</span>` : ''}
+5169: <td data-label="Média">${h.media_urls && h.media_urls.length > 0 ? `<div style="color:var(--accent); font-size:12px; font-weight:bold;">📁 ${h.media_urls.length} média(s)</div>` : '—'}</td>
+5173: ${endDateStr ? `<br><small style="opacity:0.6">⏳ Jusqu'au ${endDateStr}</small>` : ''}
+5266: const districtsHtml = topDistricts.map(([name, val]) => `
+5277: `).join('');
+5294: document.getElementById('list-top-products').innerHTML = topProds.map(e => `
+5299: `).join('') || '<div style="padding:10px;opacity:0.5;">—</div>';
+5302: document.getElementById('list-top-drivers').innerHTML = topDrivers.map(e => `
+5307: `).join('') || '<div style="padding:10px;opacity:0.5;">—</div>';
+5310: document.getElementById('list-top-users').innerHTML = topUsers.map(e => `
+5315: `).join('') || '<div style="padding:10px;opacity:0.5;">—</div>';
+5327: const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+5329: `<span style="font-size:10px;padding:2px 5px;margin-right:3px;border-radius:4px;background:rgba(255,0,80,0.12);color:var(--accent);">${p.name} (×${p.qty})</span>`
+5332: const rowId = `dist-${i}`;
+5333: const districtRows = hasDistricts ? row.districts.map(d => `
+5341: </tr>`).join('') : '';
+5342: return `<tr onclick="toggleDistricts('${rowId}')" style="cursor:${hasDistricts?'pointer':'default'}">
+5349: </tr>${districtRows}`;
+5360: if (peakHourEl) peakHourEl.textContent = priority.avgHour !== 'N/A' ? `⏰ Pic : ${priority.avgHour}` : '';
+5369: : ppEntries.map(([prod, count]) => `
+5379: `).join('');
+5405: tooltip: { callbacks: { label: ctx => `${ctx.raw} commande(s) prioritaire${ctx.raw>1?'s':''}` } } }
+5417: : pcEntries.map(([city, count]) => `
+5427: `).join('');
+5434: funnelEl.innerHTML = `
+5460: </div>`;
+5470: : raw.map(r => `<tr>
+5474: <td style="color:var(--text-muted); font-size:11px;">${r.city || '?'}${r.district && r.district !== r.city ? `<br><span style="opacity:0.5;font-size:10px;">↳ ${r.district}</span>` : ''}</td>
+5480: <td>${r.chat_count > 0 ? `<button class="btn btn-sm btn-outline" style="font-size:10px; padding:2px 5px; height:auto; min-height:0;" onclick="contactUser(null, null, null, null, '${r.user_id}')">💬 (${r.chat_count})</button>` : ''}</td>
+5481: </tr>`).join('');
+5521: progressHtml: `
+5752: let html = bcUrls.map((m, i) => `
+5755: ? `<video src="${m.url}" style="width:100%;height:100%;object-fit:cover;" muted></video>`
+5756: : `<img src="${m.url}" style="width:100%;height:100%;object-fit:cover;">`}
+5760: `).join('');
+5765: return `<div style="position:relative; aspect-ratio:1; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
+5767: ? `<video src="${url}" style="width:100%;height:100%;object-fit:cover;" muted></video>`
+5768: : `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`}
+5770: </div>`;
+5811: row.innerHTML = `
+5858: row.innerHTML = `
+5887: const ok = await showModal('Diffusion', `Envoyer cette diffusion ?\n${bcFiles.length > 0 ? bcFiles.length + ' média(s) joints' : 'Texte uniquement'}`);
+5910: headers: { 'Authorization': `Bearer ${TOKEN}` },
+5937: window.open(`/api/debug/logs?token=${TOKEN}`, '_blank');
+5977: headers: { 'Authorization': `Bearer ${TOKEN}` },
+5988: htmlOut += `<img src="${res.url}" style="max-height:80px; max-width:80px; margin:5px; border-radius:8px; border:1px solid var(--border)">`;
+5990: htmlOut += `<video src="${res.url}" controls muted controlsList="nodownload noplaybackrate" disablePictureInPicture oncontextmenu="return false;" style="max-height:80px; max-width:80px; margin:5px; border-radius:8px; border:1px solid var(--border)"></video>`;
+6055: item.innerHTML = `
+6060: item.innerHTML = `
+6105: tbody.innerHTML = rows.map(r => `
+6114: `).join('') || '<tr><td colspan="6" style="text-align:center; padding:20px; opacity:0.5;">Aucun produit.</td></tr>';
+6169: document.getElementById('chart-title').innerText = `📈 ${label}`;
+6214: document.getElementById('chart-title').innerText = `📈 ${label}`;
+6228: .map(([name, val]) => `
+6233: `).join('');
+6240: .map(([name, val]) => `
+6245: `).join('');
+6252: .map(([name, val]) => `
+6257: `).join('');
+6262: const rows = document.querySelectorAll(`tr.district-row#${rowId}`);
+6286: + rows.map(r => r.map(v => typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : v).join(",")).join("\n");
+6494: content.innerHTML = `🎁 <b>DÉTECTÉ : OFFRE CADEAU</b><br>Si le client achète <b>${data.config.trigger}</b>, il reçoit <b>${data.config.offered}</b> offert.`;
+6497: const tiersTxt = data.tiers.map(t => `${t.qty}g:${t.price}€`).join(' | ');
+6498: content.innerHTML = `📉 <b>DÉTECTÉ : PRIX DÉGRESSIFS</b><br>Base: <b>${data.base.qty}g / ${data.base.price}€</b><br>Paliers : ${tiersTxt}`;
+6501: content.innerHTML = `⚠️ <b>AUCUNE STRUCTURE DÉTECTÉE</b><br>Format : '1:10€, 3:25€' ou '2 achetés = 1 offert'`;
+6591: const unitOptions = `
+6600: div.innerHTML = `
+6719: if (!confirm(`Confirmer cette action ?`)) return;
+6727: if (!confirm(`Confirmer le changement de rôle (${role}) ?`)) return;
+6758: if (pgTitle) pgTitle.innerText = `${s.bot_name} - Admin`;
+6763: if (!confirm(`Souhaitez-vous accorder l'accès à ${firstName} ?`)) return;
+6862: const ok = await showModal('Sync Statuts', `Voulez-vous vérifier le statut Telegram de tous les utilisateurs affichés (${window._cachedUsers.length}) ?`);
+6899: userTableEl.innerHTML = users.map(u => `
+6912: ${u.phone ? `<br><small style="color:var(--success)">📞 ${u.phone}</small>` : ''}
+6927: ${u.is_blocked ? `<button class="btn btn-accent btn-sm" onclick="toggleBlock('${u.doc_id}', false)">Débloquer</button>` : `<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="toggleBlock('${u.doc_id}', true)">Bloquer</button>`}
+6931: ${u.is_livreur ? `<button class="btn btn-outline btn-sm" onclick="toggleLivreur('${u.platform_id}', '${u.platform}', false)">Retirer Livreur</button>` : `<button class="btn btn-accent btn-sm" onclick="toggleLivreur('${u.platform_id}', '${u.platform}', true)">🚴 Livreur</button>`}
+6932: ${u.is_admin ? `<button class="btn btn-outline btn-sm" style="border-color:#ff3b30; color:#ff3b30" onclick="toggleRole('${u.doc_id}', 'admin', false)">Retirer Admin</button>` : `<button class="btn btn-sm" style="background:#ff3b30; color:#fff" onclick="toggleRole('${u.doc_id}', 'admin', true)">👑 Promouvoir Admin</button>`}
+6933: ${u.is_moderator ? `<button class="btn btn-outline btn-sm" style="border-color:#5856d6; color:#5856d6" onclick="toggleRole('${u.doc_id}', 'moderator', false)">Retirer Modo</button>` : `<button class="btn btn-sm" style="background:#5856d6; color:#fff" onclick="toggleRole('${u.doc_id}', 'moderator', true)">🛂 Promouvoir Modo</button>`}
+6934: ${!u.is_approved ? `<button class="btn btn-accent btn-sm" onclick="approveUserJS('${u.doc_id}')">✅ APPROUVER</button>` : ''}
+6938: `).join('');
+6950: return `
+6989: `<button class="m-btn m-btn-accent" onclick="toggleBlock('${u.doc_id}', false)">🔓 Débloquer</button>` :
+6990: `<button class="m-btn m-btn-danger" onclick="toggleBlock('${u.doc_id}', true)">🚫 Bloquer</button>`
+6993: `<button class="m-btn" onclick="toggleLivreur('${u.platform_id}', '${u.platform}', false)" style="color:#ff9500; border-color:rgba(255,149,0,0.3);">❌ Retirer Livreur</button>` :
+6994: `<button class="m-btn m-btn-accent" onclick="toggleLivreur('${u.platform_id}', '${u.platform}', true)">🚴 Livreur</button>`
+6997: `<button class="m-btn" style="color:#ff3b30; border-color:rgba(255,59,48,0.3);" onclick="toggleRole('${u.doc_id}', 'admin', false)">❌ Retirer Admin</button>` :
+6998: `<button class="m-btn" style="background:#ff3b30; color:#fff;" onclick="toggleRole('${u.doc_id}', 'admin', true)">👑 Promouvoir Admin</button>`
+7001: `<button class="m-btn" style="color:#5856d6; border-color:rgba(88,86,214,0.3);" onclick="toggleRole('${u.doc_id}', 'moderator', false)">❌ Retirer Modo</button>` :
+7002: `<button class="m-btn" style="background:#5856d6; color:#fff;" onclick="toggleRole('${u.doc_id}', 'moderator', true)">🛂 Promouvoir Modo</button>`
+7005: `<button class="m-btn m-btn-approve" onclick="approveUserJS('${u.doc_id}')">✅ APPROUVER</button>` : ''
+7009: </div>`;
+7037: const ok = await showConfirmModal("Confirmation", `Confirmer le ${label} de cet utilisateur ?`);
+7082: tbody.innerHTML = livreurs.map(l => `
+7105: `).join('');
+7111: mf.innerHTML = livreurs.map(l => `
+7131: `).join('');
+7162: select.innerHTML += `<option value="${s.id}">${s.name}${s.phone ? ' ('+s.phone+')' : ''}</option>`;
+7242: body.innerHTML = `<tr><td colspan="5" style="text-align:center; opacity:0.5; padding: 20px;">Aucun mouvement de stock enregistré.</td></tr>`;
+7249: const prodName = prod ? prod.name : `Produit #${l.product_id}`;
+7253: const changeStr = changeVal > 0 ? `+${changeVal}` : `${changeVal}`;
+7271: const refStr = l.reference_id ? `<code>${l.reference_id}</code>` : '—';
+7273: return `
+7285: body.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--error); padding: 20px;">Erreur lors du chargement des logs.</td></tr>`;
+7322: title.innerText = `Historique de ${name}`;
+7328: body.innerHTML = `
+7346: return `
+7396: div.innerHTML = `
+7413: headers: { 'Authorization': `Bearer ${TOKEN}` },
+7616: div.innerHTML = `
+7629: div.innerHTML = `
+7681: html += `<div class="palier-chip" onclick="togglePalier(${i})"
+7684: </div>`;
+7738: return showModal(`📍 Adresses - ${user.first_name}`, "Aucune adresse enregistrée pour ce client.");
+7741: const html = `
+7745: ${addresses.map(addr => `
+7754: `).join('')}
+7764: title.innerText = `📍 Adresses - ${user.first_name}`;
+7792: window.open(`https://t.me/${cleanUsername}`, '_blank');
+7795: window.open(`tg://user?id=${cleanId}`, '_blank');
+7822: const container = document.getElementById(`${type}-date-carousel`);
+7824: container.innerHTML = days.map(d => `
+7830: `).join('');
+7834: const container = document.getElementById(`${type}-time-carousel`);
+7836: container.innerHTML = hours.map(h => `
+7838: `).join('');
+7850: const p = document.getElementById(`popover-${type}`);
+7881: document.getElementById(`btn-${type}`).classList.add('active');
+7888: document.getElementById(`btn-${type}`).classList.remove('active');
+7891: const p = document.getElementById(`popover-${type}`);
+7912: el.innerHTML = suppliersData.map(s => `
+7925: `).join('');
+8015: if (!confirm(`Promouvoir "${name}" en fournisseur ?`)) return;
+8073: let url = (filterSupplier && filterSupplier !== 'all') ? `/marketplace/products?supplier_id=${filterSupplier}` : '/marketplace/products';
+8111: if (grid) grid.innerHTML = `<div class="card" style="text-align:center; padding:20px; color:var(--accent);">⚠️ ERREUR : ${e.message}</div>`;
+8134: `<span style="background:rgba(39,174,96,0.1); color:#27ae60; padding:2px 6px; border-radius:4px; font-size:9px;">VALIDÉ ✅</span>` :
+8135: `<span style="background:rgba(230,126,34,0.1); color:#e67e22; padding:2px 6px; border-radius:4px; font-size:9px;">EN ATTENTE 🛑</span>`;
+8137: return `
+8167: </div>`;
+8225: el.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+8252: }).join('')}</tbody></table></div>`;
+8313: return `
+8315: ${it.image_url ? `<img src="${it.image_url}" style="width:40px; height:40px; object-fit:cover; border-radius:8px;">` : `<div style="width:40px; height:40px; background:var(--border); border-radius:8px; display:flex; align-items:center; justify-content:center;">📦</div>`}
+8325: </div>`;
+8354: if (!confirm(`Passer ${Object.keys(orders).length} commande(s) aux fournisseurs ?`)) return;
+8475: const searchStr = `${c.username || ''} ${c.first_name || ''} ${c.platform_id || ''}`.toLowerCase();
+8479: document.getElementById('chat-count-label').innerText = `${filtered.length} conversation(s)`;
+8483: list.innerHTML = `<div style="text-align:center; opacity:0.4; padding:40px;">Aucune conversation trouvée.</div>`;
+8489: return `
+8497: ${c.unreadCount > 0 ? `<div style="background:var(--accent); color:#fff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:10px;">${c.unreadCount} NEW</div>` : ''}
+8535: document.getElementById('chat-reply-header').innerText = `Chat - ${chat.first_name}`;
+8549: return `
+8560: return `
+8571: return `
