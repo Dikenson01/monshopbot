@@ -200,7 +200,7 @@
         <div style="margin-bottom:15px; text-align:center;">
             <img id="main-logo-1" class="app-dynamic-logo" src="/public/img/logo.png" style="width:100px; height:100px; object-fit:contain; border-radius:50%; margin-bottom:10px;" onerror="this.onerror=null; document.getElementById('loading-text-logo').style.display='block';">
             <div id="loading-text-logo" style="display:none; font-size:32px; font-weight:900; letter-spacing:-1px; margin-bottom:15px;">
-                <span style="color:#fff;">Farm</span><span style="color:var(--accent);">stegridy</span>
+                <span style="color:#fff;" data-i18n="Farm">Farm</span><span style="color:var(--accent);" data-i18n="stegridy">stegridy</span>
             </div>
         </div>
         <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
@@ -229,7 +229,7 @@
             <div>
                 <div class="logo" style="display:flex; align-items:center; gap:10px;">
                     <img id="main-logo-2" class="app-dynamic-logo" src="/public/img/logo.png" style="height:32px; width:32px; object-fit:cover; border-radius:50%;" onerror="this.onerror=null; this.style.display='none';">
-                    <div id="header-text-logo" style="font-size:18px; font-weight:900; letter-spacing:-0.5px; display:block;"><span style="color:#fff;">ShopTon</span><span style="color:var(--accent);">Bot</span></div>
+                    <div id="header-text-logo" style="font-size:18px; font-weight:900; letter-spacing:-0.5px; display:block;"><span style="color:#fff;" data-i18n="ShopTon">ShopTon</span><span style="color:var(--accent);" data-i18n="Bot">Bot</span></div>
                 </div>
                 <div onclick="openAddressModal()" style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; font-weight:900; opacity:1; cursor:pointer; background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:12px;">
                     <i class="notranslate ph-fill ph-map-pin" style="color:var(--accent); font-size:14px;"></i>
@@ -267,9 +267,9 @@
     <div id="page-bots" class="page" style="display:none;">
         <div class="app-header">
             <div>
-                <div class="logo">Offres<span>BaaS</span></div>
+                <div class="logo">Offres<span data-i18n="BaaS">BaaS</span></div>
                 <div style="font-size:10px; font-weight:800; opacity:0.5; margin-top:2px;">
-                    <span>✨ SOLUTIONS CLÉS EN MAIN & SUR MESURE</span>
+                    <span data-i18n="✨ SOLUTIONS CLÉS EN MAIN & SUR MESURE">✨ SOLUTIONS CLÉS EN MAIN & SUR MESURE</span>
                 </div>
             </div>
             <div class="header-actions">
@@ -307,8 +307,8 @@
         <div style="display:flex; align-items:center; gap:15px; margin-bottom:30px;">
             <div style="width:60px; height:60px; background:var(--accent); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; font-weight:900;" id="profile-initial">👤</div>
             <div style="flex:1;">
-                <h1 style="font-size:24px; font-weight:900; margin:0; line-height:1;" id="profile-name">Client</h1>
-                <div style="font-size:13px; opacity:0.6; margin-top:5px;" id="profile-phone">Membre ShopTonBot</div>
+                <h1 style="font-size:24px; font-weight:900; margin:0; line-height:1;" id="profile-name" data-i18n="Client">Client</h1>
+                <div style="font-size:13px; opacity:0.6; margin-top:5px;" id="profile-phone" data-i18n="Membre ShopTonBot">Membre ShopTonBot</div>
             </div>
         </div>
 
@@ -411,7 +411,7 @@
                 <div id="p-name" style="font-size:28px; font-weight:900; margin-bottom:10px;"><span data-i18n="product">Produit</span></div>
                 <div id="p-price" style="font-size:24px; font-weight:900; color:var(--accent); margin-bottom:15px;">0.00€</div>
                 <div id="p-promo-encart" style="display:none; background:linear-gradient(135deg, rgba(255,170,0,0.15), rgba(255,0,80,0.15)); border:1px solid #ffaa00; color:#ffaa00; font-size:12px; font-weight:900; padding:8px 12px; border-radius:10px; margin-bottom:15px;"></div>
-                <div id="p-desc" style="font-size:14px; opacity:0.6; line-height:1.6; margin-bottom:30px;">Description...</div>
+                <div id="p-desc" style="font-size:14px; opacity:0.6; line-height:1.6; margin-bottom:30px;" data-i18n="Description...">Description...</div>
                 
                 <div id="p-options-title" style="font-size:11px; font-weight:900; opacity:0.3; letter-spacing:1px; margin-bottom:15px;"><span data-i18n="available_formats">FORMATS DISPONIBLES 📦</span></div>
                 <div id="p-options" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:40px;"></div>
@@ -447,7 +447,7 @@
     <div class="modal" id="order-support-modal">
         <div class="modal-header">
             <div style="font-size:24px" onclick="closeOrderSupportModal()"><i class="notranslate ph-bold ph-x"></i></div>
-            <div style="font-weight:900; font-size:18px; color:var(--accent)" id="order-support-title">Commande</div>
+            <div style="font-weight:900; font-size:18px; color:var(--accent)" id="order-support-title" data-i18n="Commande">Commande</div>
             <div></div>
         </div>
         <div style="flex:1; overflow-y:auto; padding:20px;" id="order-support-content">
@@ -478,7 +478,7 @@
 
     <div class="modal" id="custom-modal-overlay" style="z-index: 10010;">
         <div class="modal-header">
-            <h2 style="font-weight:900; font-size:24px;" id="cmodal-title">TITRE</h2>
+            <h2 style="font-weight:900; font-size:24px;" id="cmodal-title" data-i18n="TITRE">TITRE</h2>
             <div style="font-size:28px" onclick="closeCustomModal()"><i class="notranslate ph-bold ph-x"></i></div>
         </div>
         <div style="padding:20px;" id="cmodal-content"></div>
