@@ -602,7 +602,7 @@
                 const [pRes, uRes, newsRes, ordersRes] = await Promise.all([
                     fetch(`/api/products?lang=${window.currentLang || 'fr'}`),
                     uid ? fetch(`/api/user-info?userId=telegram_${uid}&t=${Date.now()}`) : Promise.resolve(null),
-                    fetch('/api/news'),
+                    fetch(`/api/news?lang=${window.currentLang || 'fr'}`),
                     uid ? fetch(`/api/user-orders?userId=telegram_${uid}&lang=${window.currentLang || 'fr'}`) : Promise.resolve(null)
                 ]);
                 setLoader(80);
@@ -1617,10 +1617,10 @@
                 // --- ENCART CODE PROMO / PARRAINAGE ---
                 const promoSection = `
                     <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px;">
-                        <div style="font-weight:900; font-size:11px; opacity:0.6; margin-bottom:10px; letter-spacing:1px; color:var(--accent);">🏷️ CODE PROMO OU PARRAINAGE</div>
+                        <div style="font-weight:900; font-size:11px; opacity:0.6; margin-bottom:10px; letter-spacing:1px; color:var(--accent);">🏷️ <span data-i18n="promo_title">CODE PROMO OU PARRAINAGE</span></div>
                         <div style="display:flex; gap:8px;">
-                            <input type="text" id="checkout-promo-input" placeholder="Saisir le code..." value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
-                            <button class="btn-primary" onclick="applyPromoCode()" style="width:auto; padding:0 15px; background:var(--accent); color:#fff; height:40px; font-size:12px; border-radius:12px; font-weight:800;">APPLIQUER</button>
+                            <input type="text" id="checkout-promo-input" data-i18n-placeholder="promo_placeholder" placeholder="Saisir le code..." value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
+                            <button class="btn-primary" onclick="applyPromoCode()" style="width:auto; padding:0 15px; background:var(--accent); color:#fff; height:40px; font-size:12px; border-radius:12px; font-weight:800;" data-i18n="apply">APPLIQUER</button>
                         </div>
                         ${appliedPromoDiscount > 0 ? `<div style="color:#00ff88; font-size:11px; font-weight:800; margin-top:8px;">✅ Code actif : -${appliedPromoDiscount}€ appliqués sur ce panier</div>` : ''}
                     </div>
@@ -1666,7 +1666,7 @@
                 let addresses = parseAddresses(userInfo?.address);
                 let addrHtml = '';
                 if(addresses.length > 0) {
-                    addrHtml = `<div style="font-size:11px; font-weight:800; opacity:0.6; margin-bottom:8px;">MES ADRESSES ENREGISTRÉES</div>`;
+                    addrHtml = `<div style="font-size:11px; font-weight:800; opacity:0.6; margin-bottom:8px;">${t('my_saved_addresses', 'MES ADRESSES ENREGISTRÉES')}</div>`;
                     addrHtml += addresses.map((a, i) => `
                         <label style="display:flex; align-items:flex-start; gap:10px; background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-bottom:10px; cursor:pointer;">
                             <input type="radio" name="checkout_addr" value="${a.id}" ${i === 0 ? 'checked' : ''} style="margin-top:2px; accent-color:var(--accent);" onchange="const sec=document.getElementById('new-addr-section'); if(sec) sec.style.opacity='0.4';">
@@ -1702,7 +1702,7 @@
                     <div style="margin-bottom:20px;">
                         <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">ADRESSE DE LIVRAISON</label>
                         ${addrHtml}
-                        ${addresses.length > 0 ? `<div style="text-align:right; margin-top:10px;"><span onclick="closeCheckout(); switchPage('profile', document.querySelectorAll('.nav-item')[2]); openAddressModal();" style="font-size:11px; color:var(--accent); font-weight:800; text-decoration:underline;">+ Gérer mes adresses</span></div>` : ''}
+                        ${addresses.length > 0 ? `<div style="text-align:right; margin-top:10px;"><span onclick="closeCheckout(); switchPage('profile', document.querySelectorAll('.nav-item')[2]); openAddressModal();" style="font-size:11px; color:var(--accent); font-weight:800; text-decoration:underline;">+ ${t('manage_addresses', 'Gérer mes adresses')}</span></div>` : ''}
                     </div>
                     <div style="margin-bottom:20px;">
                         <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">CONSIGNES DE LIVRAISON</label>
@@ -1843,7 +1843,7 @@
                 if (savedAddresses.length > 0) {
                     defaultLabel.innerText = savedAddresses[0].address || savedAddresses[0].text || 'Inconnue';
                 } else {
-                    defaultLabel.innerText = 'Sélectionnez une adresse';
+                    defaultLabel.innerText = t('select_address', 'Sélectionnez une adresse');
                 }
             }
         }
@@ -1888,7 +1888,7 @@
                 </div>
                 <button class="btn-primary" style="background:none; border:1px solid var(--border); color:#fff; margin-bottom:10px;" onclick="showAddAddressForm()"><i class="notranslate ph-bold ph-plus"></i> AJOUTER UNE ADRESSE</button>
             `;
-            openCustomModal('MES ADRESSES', html);
+            openCustomModal(t('my_addresses_title', 'MES ADRESSES'), html);
         }
 
         function showAddressActions(id) {
@@ -2492,7 +2492,7 @@
                 }
                 
                 // Poll News
-                const resNews = await fetch('/api/news');
+                const resNews = await fetch(`/api/news?lang=${window.currentLang || 'fr'}`);
                 if (resNews.ok) {
                     const data = await resNews.json();
                     if (data.length > 0) {

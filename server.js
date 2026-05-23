@@ -1583,7 +1583,17 @@ function createServer(port = 8080) {
         try {
             const { getBroadcastHistory } = require('./services/database');
             const news = await getBroadcastHistory(10);
-            res.json(news.filter(b => b.status === 'completed'));
+            let filteredNews = news.filter(b => b.status === 'completed');
+            
+            const lang = req.query.lang || 'fr';
+            if (lang !== 'fr') {
+                const { translate } = require('./services/translator');
+                filteredNews = await Promise.all(filteredNews.map(async b => {
+                    const translatedMsg = await translate(b.message || '', lang);
+                    return { ...b, message: translatedMsg };
+                }));
+            }
+            res.json(filteredNews);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
