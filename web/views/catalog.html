@@ -1619,7 +1619,7 @@
                     <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px;">
                         <div style="font-weight:900; font-size:11px; opacity:0.6; margin-bottom:10px; letter-spacing:1px; color:var(--accent);">🏷️ ${t("promo_title", "CODE PROMO OU PARRAINAGE")}</div>
                         <div style="display:flex; gap:8px;">
-                            <input type="text" id="checkout-promo-input" placeholder="${t(\'promo_placeholder\', \'Saisir le code...\')}" value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
+                            <input type="text" id="checkout-promo-input" placeholder="${t('promo_placeholder', 'Saisir le code...')}" value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
                             <button class="btn-primary" onclick="applyPromoCode()" style="width:auto; padding:0 15px; background:var(--accent); color:#fff; height:40px; font-size:12px; border-radius:12px; font-weight:800;" >${t("apply", "APPLIQUER")}</button>
                         </div>
                         ${appliedPromoDiscount > 0 ? `<div style="color:#00ff88; font-size:11px; font-weight:800; margin-top:8px;">${t("promo_active", "✅ Code actif : -{discount}€ appliqués sur ce panier", {discount: appliedPromoDiscount})}</div>` : ''}
@@ -1707,7 +1707,7 @@
                     <div style="margin-bottom:20px;">
                         <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">${t("delivery_instructions_caps", "CONSIGNES DE LIVRAISON")}</label>
                         <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; scrollbar-width:none; margin-bottom:10px;">
-                            <div class="del-tag ${selectedDeliveryTags.includes('Message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'Message en arrivant')">${t('del_tag_msg', \"💬 M'envoyer un message en arrivant\")}</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'Message en arrivant')">${t('del_tag_msg', '💬 M\'envoyer un message en arrivant')}</div>
                             <div class="del-tag ${selectedDeliveryTags.includes('Je descendrai au véhicule') ? 'active' : ''}" onclick="selectTag(this, 'Je descendrai au véhicule')">${t("del_tag_car", "🚗 Je descendrai au véhicule")}</div>
                             <div class="del-tag ${selectedDeliveryTags.includes('Attente dans le hall') ? 'active' : ''}" onclick="selectTag(this, 'Attente dans le hall')">${t("del_tag_hall", "🏢 Je vous attendrai dans le hall")}</div>
                             <div class="del-tag ${selectedDeliveryTags.includes('Ne pas sonner') ? 'active' : ''}" onclick="selectTag(this, 'Ne pas sonner')">${t("del_tag_discrete", "🤫 Ne pas sonner (Discret)")}</div>
@@ -1720,7 +1720,7 @@
                             <input type="datetime-local" id="order-schedule-date" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; color-scheme:dark;">
                             <div style="position:absolute; top:15px; right:15px; pointer-events:none; opacity:0.5;"><i class="notranslate ph-bold ph-calendar"></i></div>
                         </div>
-                        <div style="font-size:11px; opacity:0.5; margin-top:8px;">${t("leave_empty_asap", "Laissez vide pour une livraison \\"Dès que possible\\"")}</div>
+                        <div style="font-size:11px; opacity:0.5; margin-top:8px;">${t("leave_empty_asap", "Laissez vide pour une livraison \"Dès que possible\"")}</div>
                     </div>
                 `;
                 cont.innerHTML = html;
