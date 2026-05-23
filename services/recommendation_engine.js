@@ -1,13 +1,14 @@
-const { supabase } = require('./database');
+const { supabase, decryptOrder } = require('./database');
 const { sendMessageToUser } = require('./notifications');
 
-// Dynamic Text Generator (Anti-Fatigue)
+// --- Dynamic Text Generator (Anti-Fatigue & Personalized) ---
 const INTROS = [
     "Psst {first_name}... 👀",
     "Hello {first_name} ! 🌿",
     "Hey {first_name}, devinez quoi ? 🔥",
     "Salut {first_name} ! Prêt pour une petite douceur ? 😋",
-    "Juste pour vous, {first_name}... 🤫"
+    "Juste pour vous, {first_name}... 🤫",
+    "On pensait justement à vous, {first_name} ! ✨"
 ];
 
 const BODY_NEW_CLIENT = [
@@ -16,10 +17,15 @@ const BODY_NEW_CLIENT = [
     "Si vous cherchez la crème de la crème, ne cherchez pas plus loin que <b>{product}</b>."
 ];
 
-const BODY_VIP = [
+const BODY_RETENTION = [
     "On sait que vous adorez <b>{product}</b>. Bonne nouvelle : il est en stock et n'attend que vous ! 🛒",
     "C'est bientôt l'heure de votre session habituelle... <b>{product}</b> est prêt à partir en livraison express ! 💨",
     "Votre variété favorite, <b>{product}</b>, vient tout juste d'être réapprovisionnée. Premier arrivé, premier servi ! 🏆"
+];
+
+const BODY_AGGRESSIVE = [
+    "Ça fait un petit moment qu'on ne vous a pas vu ! Votre <b>{product}</b> préféré vous attend, on vous prépare ça ? 🎁",
+    "Ne ratez pas notre stock de <b>{product}</b>, les autres clients se l'arrachent en ce moment ! ⏳"
 ];
 
 const OUTROS = [
@@ -28,20 +34,55 @@ const OUTROS = [
     "\n\n👇 Commandez discrètement ici :"
 ];
 
-function generateDynamicText(firstName, productName, isVip) {
+function generateDynamicText(firstName, productName, type) {
     const randomInt = (arr) => arr[Math.floor(Math.random() * arr.length)];
     const intro = randomInt(INTROS).replace('{first_name}', firstName || 'l\'ami');
-    const bodyArr = isVip ? BODY_VIP : BODY_NEW_CLIENT;
+    
+    let bodyArr = BODY_NEW_CLIENT;
+    if (type === 'retention') bodyArr = BODY_RETENTION;
+    else if (type === 'retention_aggressive') bodyArr = BODY_AGGRESSIVE;
+    
     const body = randomInt(bodyArr).replace('{product}', productName);
     const outro = randomInt(OUTROS);
     return `${intro}\n\n${body}${outro}`;
+}
+
+// --- The "Graph" & Feature Engineering ---
+
+function computeFavoriteHour(orders) {
+    if (!orders || orders.length === 0) return 18;
+    const hourCounts = {};
+    orders.forEach(o => {
+        const h = new Date(o.created_at).getHours();
+        hourCounts[h] = (hourCounts[h] || 0) + 1;
+    });
+    // Find mode (most frequent hour)
+    let bestHour = 18;
+    let maxCount = -1;
+    for (const h in hourCounts) {
+        if (hourCounts[h] > maxCount) {
+            maxCount = hourCounts[h];
+            bestHour = parseInt(h);
+        }
+    }
+    return bestHour;
+}
+
+function computeOrderFrequencyMs(orders) {
+    if (!orders || orders.length < 2) return 7 * 24 * 60 * 60 * 1000; // Default 7 days
+    const sorted = [...orders].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    let totalDiff = 0;
+    for (let i = 1; i < sorted.length; i++) {
+        totalDiff += (new Date(sorted[i].created_at) - new Date(sorted[i - 1].created_at));
+    }
+    return totalDiff / (sorted.length - 1);
 }
 
 // Heavy Ranker: Scores products based on history and views
 function rankProducts(orders, views) {
     const scores = {};
 
-    // In-Network (Achats passés) - Weight: +5 par commande
+    // In-Network (Achats passés) - Weight: +10 par commande
     if (orders) {
         orders.forEach(o => {
             try {
@@ -51,83 +92,72 @@ function rankProducts(orders, views) {
                 if (Array.isArray(itemsList)) {
                     itemsList.forEach(it => {
                         const name = it.productName || it.name;
-                        if (name) scores[name] = (scores[name] || 0) + 5;
+                        if (name) scores[name] = (scores[name] || 0) + 10;
                     });
                 } else if (o.product_name) {
                     const parts = o.product_name.split(',');
                     parts.forEach(p => {
                         const cleanName = p.split(' (x')[0].split('\n')[0].trim();
-                        if (cleanName) scores[cleanName] = (scores[cleanName] || 0) + 5;
+                        if (cleanName) scores[cleanName] = (scores[cleanName] || 0) + 10;
                     });
                 }
             } catch(e) {}
         });
     }
 
-    // Intention (Vues récentes) - Weight: +2 par vue
+    // Intention (Vues récentes) - Weight: +3 par vue
     if (views) {
         views.forEach(v => {
             if (v.productName) {
-                // Récence: Vues des dernières 24h = +3, plus ancien = +1
+                // Récence: Vues des dernières 24h = +5, plus ancien = +3
                 const age = Date.now() - v.viewed_at;
-                const weight = age < 24 * 60 * 60 * 1000 ? 3 : 1;
+                const weight = age < 24 * 60 * 60 * 1000 ? 5 : 3;
                 scores[v.productName] = (scores[v.productName] || 0) + weight;
             }
         });
     }
 
-    // Sort descending
     const sorted = Object.keys(scores).map(k => ({ product: k, score: scores[k] })).sort((a, b) => b.score - a.score);
     return sorted;
 }
 
-// Get average order hour and preferred days (0-6)
-function getTemporalAffinity(orders) {
-    if (!orders || orders.length === 0) return null;
-    
-    const hours = [];
-    const days = {};
-    
-    orders.forEach(o => {
-        const d = new Date(o.created_at);
-        hours.push(d.getHours());
-        const day = d.getDay();
-        days[day] = (days[day] || 0) + 1;
-    });
+// --- Candidate Generation & Delivery ---
 
-    const avgHour = Math.round(hours.reduce((a, b) => a + b, 0) / hours.length);
-    const preferredDay = Object.keys(days).sort((a, b) => days[b] - days[a])[0];
-
-    return { avgHour, preferredDay: parseInt(preferredDay) };
-}
-
-// Main Engine Entry Point
 async function runRecommendationEngine() {
     console.log('[RECOMMENDATION] Démarrage du Heavy Ranker Twitter-Style...');
     try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const sixtyDaysAgo = new Date();
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
         
-        // 1. Fetch Orders
-        const { data: orders } = await supabase
+        // 1. Fetch Orders (Up to 60 days to better calculate frequency)
+        const { data: rawOrders } = await supabase
             .from('bot_orders')
             .select('*')
-            .gte('created_at', thirtyDaysAgo.toISOString());
+            .gte('created_at', sixtyDaysAgo.toISOString());
+        const orders = (rawOrders || []).map(decryptOrder);
 
         // 2. Fetch Views
-        const { data: viewsData } = await supabase.from('bot_settings').select('data').eq('key', 'user_views').maybeSingle();
-        const allViews = viewsData ? (viewsData.data || {}) : {};
+        const { data: viewsState } = await supabase.from('bot_state').select('user_key, value').eq('namespace', 'user_views');
+        const allViews = {};
+        if (viewsState) {
+            viewsState.forEach(row => {
+                allViews[row.user_key] = row.value || [];
+            });
+        }
 
         // 3. Fetch Tracking State (Anti-Fatigue)
-        const { data: fatigueData } = await supabase.from('bot_settings').select('data').eq('key', 'fatigue_tracker').maybeSingle();
-        const fatigueTracker = fatigueData ? (fatigueData.data || {}) : {};
+        const { data: fatigueState } = await supabase.from('bot_state').select('user_key, value').eq('namespace', 'fatigue_tracker');
+        const fatigueTracker = {};
+        if (fatigueState) {
+            fatigueState.forEach(row => {
+                fatigueTracker[row.user_key] = row.value;
+            });
+        }
 
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentDay = now.getDay();
-        const todayStr = now.toISOString().split('T')[0];
+        const now = Date.now();
+        const currentHour = new Date().getHours();
 
-        // Regrouper les commandes par user_id
+        // Group orders by user_id
         const userOrders = {};
         if (orders) {
             orders.forEach(o => {
@@ -136,61 +166,87 @@ async function runRecommendationEngine() {
             });
         }
 
-        // Combiner tous les users (ceux qui ont commandé + ceux qui ont juste regardé)
+        let settings = {};
+        try {
+            const { data: settingsRow } = await supabase.from('bot_settings').select('*').limit(1).single();
+            settings = settingsRow || {};
+        } catch(e) {}
+        
         const allUserIds = new Set([...Object.keys(userOrders), ...Object.keys(allViews)]);
-
         let notificationsSent = 0;
 
         for (const userId of allUserIds) {
             const uOrders = userOrders[userId] || [];
             const uViews = allViews[userId] || [];
             
-            // Fatigue Check: Ne pas envoyer plus d'un message par 48h
+            // Cooldown Filter: Don't spam! Minimum 24h between notifications (max 1 par jour par utilisateur)
             const lastSent = fatigueTracker[userId];
-            if (lastSent && (now.getTime() - lastSent) < 48 * 60 * 60 * 1000) {
-                continue; // Skip, trop récent
+            if (lastSent && (now - lastSent) < 24 * 60 * 60 * 1000) {
+                continue; // Skip, too recent
             }
 
-            const affinity = getTemporalAffinity(uOrders);
-            let shouldSend = false;
-            let isVip = uOrders.length > 0;
+            let candidateType = null;
 
-            if (affinity) {
-                // Predictive Timing: 1 heure AVANT leur heure habituelle
-                let targetHour = (affinity.avgHour - 1);
-                if (targetHour < 0) targetHour = 23;
-                
-                // Si c'est l'heure cible (ou l'heure exacte s'ils commandent souvent à cette heure)
-                if (currentHour === targetHour || currentHour === affinity.avgHour) {
-                    shouldSend = true;
-                }
-                
-                // Si le client ne commande que le vendredi (Day 5), commencer à le chauffer le jeudi (Day 4)
-                if (affinity.preferredDay !== currentDay && affinity.preferredDay !== (currentDay + 1) % 7) {
-                    // Si ce n'est pas son jour ni la veille, on réduit la probabilité d'envoi (seuil plus strict)
-                    shouldSend = false;
+            if (uOrders.length === 0) {
+                // NOUVEAU CLIENT: S'il a des vues, on le relance après 2h, idéalement vers 18h ou 19h
+                if (uViews.length > 0) {
+                    const lastView = uViews[uViews.length - 1];
+                    if (now - lastView.viewed_at > 2 * 60 * 60 * 1000) { // Wait at least 2h after view
+                        if (currentHour >= 17 && currentHour <= 20) {
+                            candidateType = 'acquisition';
+                        }
+                    }
                 }
             } else {
-                // Nouveau client (jamais commandé, mais a des vues)
-                // Envoyer à des heures de pointe (ex: 18h)
-                if (currentHour === 18 && uViews.length > 0) {
-                    shouldSend = true;
+                // CLIENT EXISTANT
+                const favHour = computeFavoriteHour(uOrders);
+                const freqMs = computeOrderFrequencyMs(uOrders);
+                const lastOrderTime = Math.max(...uOrders.map(o => new Date(o.created_at).getTime()));
+                const timeSinceLastOrder = now - lastOrderTime;
+                
+                // Predictive Timing: 1 hour before their usual ordering time
+                let targetNotifHour = favHour - 1;
+                if (targetNotifHour < 0) targetNotifHour = 23;
+                
+                // Frequency Matching
+                if (timeSinceLastOrder >= (freqMs * 0.85)) {
+                    // They are approaching their usual order day
+                    if (currentHour === targetNotifHour || currentHour === favHour) {
+                        candidateType = 'retention';
+                    }
+                }
+                
+                // Progressive Nudge: They missed their usual window significantly (e.g. 1.5x frequency)
+                if (!candidateType && timeSinceLastOrder >= (freqMs * 1.5)) {
+                    if (currentHour >= 18 && currentHour <= 20) { // Safe evening window
+                        candidateType = 'retention_aggressive';
+                    }
                 }
             }
 
-            if (shouldSend) {
+            // Delivery Phase
+            if (candidateType) {
                 const rankedProducts = rankProducts(uOrders, uViews);
                 if (rankedProducts.length > 0) {
                     const topProduct = rankedProducts[0].product;
-                    // Trouver le firstName (approximatif si on n'a pas accès à la DB users, on extrait via les orders si dispo)
-                    const firstName = uOrders.length > 0 ? (uOrders[0].first_name || 'l\'ami') : 'l\'ami';
+                    let firstName = "l'ami";
+                    if (uOrders.length > 0) {
+                        // Sort orders to ensure we look at the newest first
+                        const sortedOrders = [...uOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                        // Find the first valid name that isn't a raw encrypted string (which contains colons and is very long)
+                        const validOrder = sortedOrders.find(o => o.first_name && (!o.first_name.includes(':') || o.first_name.length < 100));
+                        if (validOrder) firstName = validOrder.first_name;
+                    }
                     
-                    const message = generateDynamicText(firstName, topProduct, isVip);
+                    const message = generateDynamicText(firstName, topProduct, candidateType);
                     const keyboard = {
                         inline_keyboard: [[{ text: '🛍️ Ouvrir la Mini App', web_app: { url: process.env.WEBAPP_URL || '' } }]]
                     };
 
                     const tgId = userId.replace('telegram_', '');
+                    
+                    console.log(`[RECOMMENDATION] Sending ${candidateType} notif to ${tgId} for product ${topProduct}`);
+                    
                     await sendMessageToUser(tgId, message, { parse_mode: 'HTML', reply_markup: keyboard }).catch(() => {});
                     
                     fatigueTracker[userId] = now.getTime();
@@ -201,10 +257,12 @@ async function runRecommendationEngine() {
 
         // Sauvegarder la fatigue
         if (notificationsSent > 0) {
-            if (fatigueData) {
+            if (settingsRow && settingsRow.key === 'fatigue_tracker') {
                 await supabase.from('bot_settings').update({ data: fatigueTracker }).eq('key', 'fatigue_tracker');
             } else {
-                await supabase.from('bot_settings').insert([{ key: 'fatigue_tracker', data: fatigueTracker }]);
+                // If it doesn't exist, we should ideally check if any row exists or just upsert.
+                // In shoptonbot, bot_settings usually uses upsert or check.
+                await supabase.from('bot_settings').upsert({ key: 'fatigue_tracker', data: fatigueTracker }, { onConflict: 'key' });
             }
         }
         

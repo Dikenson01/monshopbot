@@ -664,7 +664,7 @@ const translations = {
         'btn_admin_settings': '⚙️ Ajustes',
         'btn_admin_features': '✨ Guía del Bot',
         'btn_quit_console': '◀️ Quitar consola',
-        'msg_support_sent': '💬 <b>¿Necesitas un admin?</b>\n\nTu solicitud ha sido enviada.',
+        'msg_support_sent': '💬 <b>¿Necesitas un admin?</b>\n\nTu solicitud ha sido enviada.'
         'msg_erreur_r_seau': 'Erreur réseau',
         'msg_erreur_r_seau_lors_d': 'Erreur réseau lors de l\'envoi.',
         'msg_commande_annul_e': 'Commande annulée !',
@@ -975,7 +975,7 @@ const translations = {
         'btn_admin_settings': '⚙️ Einstellungen',
         'btn_admin_features': '✨ Bot-Anleitung',
         'btn_quit_console': '◀️ Konsole verlassen',
-        'msg_support_sent': '💬 <b>Brauchen Sie einen Admin?</b>\n\nIhre Anfrage wurde weitergeleitet.',
+        'msg_support_sent': '💬 <b>Brauchen Sie einen Admin?</b>\n\nIhre Anfrage wurde weitergeleitet.'
         'msg_erreur_r_seau': 'Erreur réseau',
         'msg_erreur_r_seau_lors_d': 'Erreur réseau lors de l\'envoi.',
         'msg_commande_annul_e': 'Commande annulée !',

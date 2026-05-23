@@ -474,7 +474,7 @@
                 }
             } catch (e) {
                 input.disabled = false;
-                tg.showAlert("Erreur réseau lors de l'envoi.");
+                tg.showAlert((t('msg_erreur_r_seau_lors_d', "Erreur réseau lors de l'envoi."));
             }
         }
 
@@ -557,7 +557,7 @@
                 }
             } catch(e) {
                 input.disabled = false;
-                tg.showAlert("Erreur réseau");
+                tg.showAlert((t('msg_erreur_r_seau', "Erreur réseau"));
             }
         }
 
@@ -614,7 +614,7 @@
         }
 
         async function takeOrder(id) {
-            tg.showConfirm("Voulez-vous prendre cette livraison ?", async (ok) => {
+            tg.showConfirm((t('msg_voulez_vous_prendre', "Voulez-vous prendre cette livraison ?"), async (ok) => {
                 if (!ok) return;
                 try {
                     const res = await fetch('/api/livreur/take-order', {
@@ -626,7 +626,7 @@
                         try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
                         refreshOrders();
                     } else {
-                        tg.showAlert("Cette commande n'est plus disponible.");
+                        tg.showAlert((t('msg_cette_commande_n_est', "Cette commande n'est plus disponible."));
                     }
                 } catch (e) {}
             });
@@ -673,7 +673,7 @@
                         body: JSON.stringify({ userId: `telegram_${tg.initDataUnsafe.user.id}`, orderId: id, timeCode })
                     });
                     try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){}
-                    tg.showAlert("Notification d'approche envoyée au client avec succès !");
+                    tg.showAlert((t('msg_notification_d_appro', "Notification d'approche envoyée au client avec succès !"));
                 } catch(e){}
             });
         }

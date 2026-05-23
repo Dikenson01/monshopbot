@@ -541,7 +541,7 @@ function setupOrderSystem(bot) {
     });
 
     bot.action('clear_cart', async (ctx) => {
-        await ctx.answerCbQuery('Panier vidé 🗑️');
+        await ctx.answerCbQuery(t(ctx, 'msg_panier_vid', "Panier vidé 🗑️"));
         const settings = (ctx.state?.settings || await getAppSettings());
         const userId = `${ctx.platform}_${ctx.from.id}`;
         userCarts.delete(userId);
@@ -638,12 +638,12 @@ function setupOrderSystem(bot) {
         const reversed = [...savedAddresses].reverse().slice(0, 3);
         const addr = reversed[idx];
 
-        if (!addr) return ctx.answerCbQuery('⚠️ Adresse introuvable.');
+        if (!addr) return ctx.answerCbQuery(t(ctx, 'msg_adresse_introuvable', "⚠️ Adresse introuvable."));
 
-        await ctx.answerCbQuery('Adresse sélectionnée !');
+        await ctx.answerCbQuery(t(ctx, 'msg_adresse_s_lectionn_e', "Adresse sélectionnée !"));
         const addrState = awaitingAddressDetails.get(userId);
         
-        if (!addrState) return ctx.reply("Session expirée.");
+        if (!addrState) return ctx.reply(t(ctx, 'msg_session_expir_e', "Session expirée."));
 
         const cpMatch = addr.match(/\b\d{5}\b/);
         const postalCode = cpMatch ? cpMatch[0] : '';
@@ -976,7 +976,7 @@ function setupOrderSystem(bot) {
         await ctx.answerCbQuery();
         const userId = `${ctx.platform}_${ctx.from.id}`;
         const pending = pendingOrders.get(userId);
-        if (!pending) return ctx.reply("Session expirée.");
+        if (!pending) return ctx.reply(t(ctx, 'msg_session_expir_e', "Session expirée."));
         pending.scheduled_at = null;
         pending.is_priority = false;
         pending.priority_fee = 0;
@@ -991,7 +991,7 @@ function setupOrderSystem(bot) {
         const settings = ctx.state?.settings || await getAppSettings();
         const userId = `${ctx.platform}_${ctx.from.id}`;
         const pending = pendingOrders.get(userId);
-        if (!pending) return ctx.reply("Session expirée.");
+        if (!pending) return ctx.reply(t(ctx, 'msg_session_expir_e', "Session expirée."));
         pending.scheduled_at = null;
         pending.is_priority = true;
         pending.priority_fee = parseFloat(settings.priority_delivery_price) || 15;
@@ -1475,9 +1475,9 @@ function setupOrderSystem(bot) {
     bot.action(/^confirm_payment_(.+)$/, async (ctx) => {
         const orderId = ctx.match[1];
         const order = await getOrder(orderId);
-        if (!order) return ctx.answerCbQuery('❌ Commande introuvable.');
+        if (!order) return ctx.answerCbQuery(t(ctx, 'msg_commande_introuvabl', "❌ Commande introuvable."));
         await updateOrderStatus(orderId, 'pending');
-        await ctx.answerCbQuery('✅ Paiement validé !');
+        await ctx.answerCbQuery(t(ctx, 'msg_paiement_valid', "✅ Paiement validé !"));
         await sendTelegramMessage(order.user_id, `✅ <b>Paiement Validé !</b>\n\nVotre commande <code>#${orderId.slice(-5)}</code> est confirmée.`, { parse_mode: 'HTML' });
         await ctx.editMessageCaption(`✅ <b>PAIEMENT VALIDÉ</b>`, Markup.inlineKeyboard([])).catch(() => {});
     });
@@ -1485,9 +1485,9 @@ function setupOrderSystem(bot) {
     bot.action(/^reject_payment_(.+)$/, async (ctx) => {
         const orderId = ctx.match[1];
         const order = await getOrder(orderId);
-        if (!order) return ctx.answerCbQuery('❌ Commande introuvable.');
+        if (!order) return ctx.answerCbQuery(t(ctx, 'msg_commande_introuvabl', "❌ Commande introuvable."));
         await updateOrderStatus(orderId, 'cancelled');
-        await ctx.answerCbQuery('❌ Paiement rejeté.');
+        await ctx.answerCbQuery(t(ctx, 'msg_paiement_rejet', "❌ Paiement rejeté."));
         await sendTelegramMessage(order.user_id, `❌ <b>Paiement Refusé</b>\n\nLa preuve pour la commande <code>#${orderId.slice(-5)}</code> a été refusée.`, { parse_mode: 'HTML' });
         await ctx.editMessageCaption(`❌ <b>PAIEMENT REJETÉ</b>`, Markup.inlineKeyboard([])).catch(() => {});
     });
@@ -1588,7 +1588,7 @@ function setupOrderSystem(bot) {
     });
 
     bot.action('quit_livreur_final', async (ctx) => {
-        await ctx.answerCbQuery('Profil désactivé');
+        await ctx.answerCbQuery(t(ctx, 'msg_profil_d_sactiv', "Profil désactivé"));
         const userId = `${ctx.platform}_${ctx.from.id}`;
         await supabase.from(COL_USERS).update({ is_livreur: false, is_available: false, updated_at: ts() }).eq('id', userId);
         
@@ -1736,7 +1736,7 @@ function setupOrderSystem(bot) {
         const order = await getOrder(orderId);
         const settings = ctx.state?.settings || await getAppSettings();
         
-        if (!order) return ctx.answerCbQuery('❌ Commande introuvable.');
+        if (!order) return ctx.answerCbQuery(t(ctx, 'msg_commande_introuvabl', "❌ Commande introuvable."));
 
         // Si c'est un livreur qui regarde une commande disponible, on lui montre le menu d'acceptation
         const isLivreurRole = user?.is_livreur === true;
@@ -1849,7 +1849,7 @@ function setupOrderSystem(bot) {
     });
 
     bot.action(/^notify_(.+)_(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery('Notification envoyée ✅');
+        await ctx.answerCbQuery(t(ctx, 'msg_notification_envoy_e', "Notification envoyée ✅"));
         const orderId = ctx.match[1];
         const timeCode = ctx.match[2];
         const order = await getOrder(orderId);
@@ -1910,7 +1910,7 @@ function setupOrderSystem(bot) {
 
         // Validation stricte du schéma : 1. Client -> 2. Livreur -> 3. Client ... -> 6
         if (count >= 6) {
-            return ctx.reply("⚠️ <b>Limite d'échanges atteinte.</b>\n\nLe chat est clôturé (6/6).", { parse_mode: 'HTML' });
+            return ctx.reply(t(ctx, 'msg_b_limite_d_changes', "⚠️ <b>Limite d'échanges atteinte.</b>\n\nLe chat est clôturé (6/6)."), { parse_mode: 'HTML' });
         }
 
         // Tour de jeu : client envoie msg 1, livreur répond msg 2, client msg 3...
@@ -1999,11 +1999,11 @@ function setupOrderSystem(bot) {
         const settings = ctx.state?.settings || await getAppSettings();
         const order = await getOrder(orderId);
         if (!order || order.status === 'delivered' || order.status === 'cancelled') {
-            return ctx.answerCbQuery('Action impossible ou déjà effectuée.', true);
+            return ctx.answerCbQuery(t(ctx, 'msg_action_impossible_ou', "Action impossible ou déjà effectuée."), true);
         }
 
         await updateOrderStatus(orderId, 'cancelled');
-        await ctx.answerCbQuery('Votre commande a été annulée. ❌', true);
+        await ctx.answerCbQuery(t(ctx, 'msg_votre_commande_a_t_a', "Votre commande a été annulée. ❌"), true);
 
         const shortId = orderId.slice(-5);
         await safeEdit(ctx, `❌ <b>Commande #${shortId} annulée</b>\n\nVotre demande d'annulation a bien été prise en compte.`, Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_quick_menu || '◀️ Retour Menu', 'main_menu')]]));
@@ -2030,11 +2030,11 @@ function setupOrderSystem(bot) {
         const settings = ctx.state?.settings || await getAppSettings();
         const order = await getOrder(orderId);
         if (!order || order.status === 'delivered' || order.status === 'cancelled') {
-            return ctx.answerCbQuery('Action impossible ou déjà effectuée.', true);
+            return ctx.answerCbQuery(t(ctx, 'msg_action_impossible_ou', "Action impossible ou déjà effectuée."), true);
         }
 
         await updateOrderStatus(orderId, 'cancelled');
-        await ctx.answerCbQuery('La commande a été annulée. ❌', true);
+        await ctx.answerCbQuery(t(ctx, 'msg_la_commande_a_t_annu', "La commande a été annulée. ❌"), true);
 
         const shortId = orderId.slice(-5);
         await safeEdit(ctx, `🚩 <b>COMMANDE #${shortId} ANNULÉE</b>\n\nL'annulation a bien été effectuée.`, Markup.inlineKeyboard([[Markup.button.callback(settings.btn_back_to_livreur_menu || '◀️ Menu Livreur', 'livreur_menu')]]));
@@ -2196,7 +2196,7 @@ function setupOrderSystem(bot) {
 
     // Hint button — just tells user to send a photo/video directly
     bot.action('review_add_media_hint', async (ctx) => {
-        await ctx.answerCbQuery('📸 Envoyez une photo ou vidéo directement dans le chat !', { show_alert: true });
+        await ctx.answerCbQuery(t(ctx, 'msg_envoyez_une_photo_o', "📸 Envoyez une photo ou vidéo directement dans le chat !"), { show_alert: true });
     });
 
     // Finaliser l'avis après avoir ajouté les médias
@@ -2549,7 +2549,7 @@ function setupOrderSystem(bot) {
                 if (order) {
                     const count = (parseInt(order.chat_count) || 0);
                     if (count >= 6) {
-                        await ctx.reply("❌ Impossible d'envoyer : Limite de 6 échanges déjà atteinte.");
+                        await ctx.reply(t(ctx, 'msg_impossible_d_envoye', "❌ Impossible d'envoyer : Limite de 6 échanges déjà atteinte."));
                     } else {
                         const reason = String(ctx.message.text || '');
                         // On ne compte plus le signalement de retard comme un message de chat (notification système)
@@ -2574,7 +2574,7 @@ function setupOrderSystem(bot) {
                         const alertMsg = `⚠️ <b>SIGNALEMENT RETARD</b>\n\n🆔 Commande : <code>#${shortId}</code>\n👤 Livreur : ${safeHtml(ctx.from.first_name)}\n📝 Motif : "<i>${safeHtml(reason)}</i>"`;
                         await notifyAdmins(bot, alertMsg);
 
-                        await ctx.reply(`✅ Notification de retard envoyée au client.`).catch(() => { });
+                        await ctx.reply(t(ctx, 'msg_notification_de_ret', "✅ Notification de retard envoyée au client.")).catch(() => { });
                     }
                 }
                 return;
@@ -2595,7 +2595,7 @@ function setupOrderSystem(bot) {
                 if (order) {
                     // SÉCURITÉ : Vérifier si la commande est toujours en cours
                     if (order.status !== 'taken') {
-                        return await ctx.reply("❌ Cette commande est terminée ou annulée. La discussion est fermée.").catch(() => { });
+                        return await ctx.reply(t(ctx, 'msg_cette_commande_est', "❌ Cette commande est terminée ou annulée. La discussion est fermée.")).catch(() => { });
                     }
 
                     const reply = String(ctx.message.text || ctx.message.caption || '');
@@ -2611,7 +2611,7 @@ function setupOrderSystem(bot) {
                     const targetIdRaw = isLivreur ? order.user_id : order.livreur_id;
 
                     if (!targetIdRaw) {
-                        return await ctx.reply("❌ Impossible de trouver le destinataire (Livreur ou Client non assigné).").catch(() => { });
+                        return await ctx.reply(t(ctx, 'msg_impossible_de_trouv', "❌ Impossible de trouver le destinataire (Livreur ou Client non assigné).")).catch(() => { });
                     }
 
                     const targetId = String(targetIdRaw);
@@ -2653,7 +2653,7 @@ function setupOrderSystem(bot) {
                     const successIcon = settings ? (settings.ui_icon_success || '✅') : '✅';
                     await ctx.reply(`${successIcon} Message ${newCount}/6 transmis au ${targetRoleLabel}.`).catch(() => { });
                 } else {
-                    await ctx.reply("❌ Commande introuvable pour ce chat.").catch(() => { });
+                    await ctx.reply(t(ctx, 'msg_commande_introuvabl', "❌ Commande introuvable pour ce chat.")).catch(() => { });
                 }
                 return;
             }
@@ -2861,7 +2861,7 @@ function setupOrderSystem(bot) {
             );
         } catch (error) {
             console.error('❌ Erreur client_menu:', error);
-            await ctx.answerCbQuery('Erreur, réessayez', { show_alert: true }).catch(() => {});
+            await ctx.answerCbQuery(t(ctx, 'msg_erreur_r_essayez', "Erreur, réessayez"), { show_alert: true }).catch(() => {});
         }
     });
 
@@ -2937,7 +2937,7 @@ function setupOrderSystem(bot) {
     });
  
     bot.action('set_dispo_true', async (ctx) => {
-        await ctx.answerCbQuery("✅ Vous êtes maintenant DISPONIBLE !");
+        await ctx.answerCbQuery(t(ctx, 'msg_vous_tes_maintenant', "✅ Vous êtes maintenant DISPONIBLE !"));
         const docId = `${ctx.platform}_${ctx.from.id}`;
         const { setLivreurAvailability, getUser, getAppSettings, getLivreurOrders } = require('../services/database');
         await setLivreurAvailability(docId, true);
@@ -2951,7 +2951,7 @@ function setupOrderSystem(bot) {
     });
 
     bot.action('set_dispo_false', async (ctx) => {
-        await ctx.answerCbQuery("❌ Vous êtes maintenant INDISPONIBLE.");
+        await ctx.answerCbQuery(t(ctx, 'msg_vous_tes_maintenant', "❌ Vous êtes maintenant INDISPONIBLE."));
         const docId = `${ctx.platform}_${ctx.from.id}`;
         const { setLivreurAvailability, getUser, getAppSettings, getLivreurOrders } = require('../services/database');
         await setLivreurAvailability(docId, false);
@@ -3038,7 +3038,7 @@ function setupOrderSystem(bot) {
     });
 
     bot.action(/^supplier_ready_(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery('✅ Marqué comme prêt !');
+        await ctx.answerCbQuery(t(ctx, 'msg_marqu_comme_pr_t', "✅ Marqué comme prêt !"));
         const orderId = ctx.match[1];
         await markOrderSupplierReady(orderId);
 

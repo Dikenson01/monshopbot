@@ -1,3 +1,4 @@
+const { t } = require('../services/i18n');
 const { Markup } = require('telegraf');
 const { safeEdit, cleanupUserChat } = require('../services/utils');
 
@@ -305,8 +306,8 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
     bot.action('config_clear', async (ctx) => {
         userSelections.delete(ctx.from.id);
-        await ctx.answerCbQuery('Panier vidé');
-        return ctx.editMessageText('🗑 Votre panier a été vidé.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'config_start')]]));
+        await ctx.answerCbQuery(t(ctx, 'msg_panier_vid', "Panier vidé"));
+        return ctx.editMessageText(t(ctx, 'msg_votre_panier_a_t_vi', "🗑 Votre panier a été vidé."), Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'config_start')]]));
     });
 
     bot.action('config_confirm', async (ctx) => {
@@ -514,7 +515,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
                 
                 await ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Annuler', 'show_pricing')]]) });
             } else {
-                await ctx.reply(`❌ <b>Code invalide.</b>\n\nVeuillez réessayer ou continuer sans code.`, {
+                await ctx.reply(t(ctx, 'msg_b_code_invalide_b_n', "❌ <b>Code invalide.</b>\n\nVeuillez réessayer ou continuer sans code."), {
                     parse_mode: 'HTML',
                     ...Markup.inlineKeyboard([
                         [Markup.button.callback('🎟️ Réessayer', `enter_coupon_${planKey}`)],
@@ -703,7 +704,7 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
 
     bot.action(/^sub_request_(.+)$/, async (ctx) => {
         const plan = ctx.match[1];
-        await ctx.answerCbQuery('Demande envoyée !');
+        await ctx.answerCbQuery(t(ctx, 'msg_demande_envoy_e', "Demande envoyée !"));
         
         const { notifyAdmins } = require('../services/notifications');
         const adminMsg = `💳 <b>NOUVELLE DEMANDE D'ABONNEMENT</b>\n\n` +
@@ -722,12 +723,12 @@ const BASE_FEATURES = ['catalogue_pro', 'stock_mgmt', 'dashboard_pro', 'hotline_
             const adminIds = [1183134641, 7628179403]; // Les IDs Admin
             if (!adminIds.includes(ctx.from.id)) return;
 
-            await ctx.reply('🚀 Démarrage de la diffusion (Broadcast) en cours...');
+            await ctx.reply(t(ctx, 'msg_d_marrage_de_la_dif', "🚀 Démarrage de la diffusion (Broadcast) en cours..."));
             
             const { supabase } = require('../services/database');
             const { data: users } = await supabase.from('bot_users').select('id');
             
-            if (!users) return ctx.reply('❌ Erreur: Aucun utilisateur trouvé.');
+            if (!users) return ctx.reply(t(ctx, 'msg_erreur_aucun_utilis', "❌ Erreur: Aucun utilisateur trouvé."));
 
             const message = `🚀 <b>NOUVELLES FONCTIONNALITÉS DISPONIBLES !</b>\n\n` +
                 `Améliorez votre bot avec nos derniers ajouts exclusifs pour augmenter vos ventes et fidéliser vos clients :\n\n` +

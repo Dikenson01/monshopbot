@@ -143,13 +143,13 @@ async function broadcastMessage(platform, message, options = {}) {
     });
 
 
-    const { translate } = require('./translator');
+    const { translateText } = require('./translator');
     const langs = ['en', 'es', 'de'];
     const translatedMessages = { fr: finalMessage };
     if (!_isBroadcastPrivileged({ is_livreur: platform === 'livreurs' })) {
         for (const l of langs) {
             try {
-                translatedMessages[l] = await translate(finalMessage, l);
+                translatedMessages[l] = await translateText(finalMessage, l);
             } catch(e) {
                 translatedMessages[l] = finalMessage;
             }

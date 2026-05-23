@@ -514,6 +514,37 @@ function createServer(port = 8080) {
         }
     });
 
+    // X-Engine: Track product views
+    app.post('/api/tracking/view', async (req, res) => {
+        try {
+            const { telegramId, productId, category } = req.body;
+            if (!telegramId) return res.json({ success: false });
+            
+            const { supabase } = require('./services/supabase');
+            const { COL_USERS } = require('./services/database');
+            
+            const { data: user } = await supabase.from(COL_USERS).select('data').eq('telegram_id', String(telegramId)).maybeSingle();
+            if (user) {
+                const history = user.data.view_history || [];
+                history.push({
+                    productId,
+                    category,
+                    timestamp: new Date().toISOString(),
+                    weight: 1
+                });
+                
+                // Keep only last 50
+                if (history.length > 50) history.shift();
+                
+                const newData = { ...user.data, view_history: history };
+                await supabase.from(COL_USERS).update({ data: newData }).eq('telegram_id', String(telegramId));
+            }
+            res.json({ success: true });
+        } catch (e) {
+            res.json({ success: false });
+        }
+    });
+
     app.get('/api/products', async (req, res) => {
         try { 
             let products = await getProducts();

@@ -159,12 +159,12 @@ function setupAdminHandlers(bot) {
         const userKey = `telegram_${userId}`;
         if (awaitingUserSupportReply.has(userKey)) {
             awaitingUserSupportReply.delete(userKey);
-            return ctx.reply('🏁 <b>Discussion terminée.</b>\nLe bot reprend son fonctionnement normal.', { parse_mode: 'HTML' });
+            return ctx.reply(t(ctx, 'msg_b_discussion_termin', "🏁 <b>Discussion terminée.</b>\nLe bot reprend son fonctionnement normal."), { parse_mode: 'HTML' });
         }
         if (awaitingAdminChat.has(userId)) {
             awaitingAdminChat.delete(userId);
             activeAdminSessions.delete(userId);
-            return ctx.reply('🏁 <b>Conversation terminée par admin.</b>', { parse_mode: 'HTML' });
+            return ctx.reply(t(ctx, 'msg_b_conversation_term', "🏁 <b>Conversation terminée par admin.</b>"), { parse_mode: 'HTML' });
         }
         return next();
     });
@@ -198,7 +198,7 @@ function setupAdminHandlers(bot) {
                 const res = await sendTelegramMessage(targetId, `👮 <b>MESSAGE DE L'ADMINISTRATION</b>\n\n${text ? `"${text}"` : (options.photo ? '📸 Photo reçue' : '🎥 Vidéo reçue')}`, options);
                 if (res) {
                     console.log(`[Relay-Admin] ✅ Envoyé avec succès à ${targetId}`);
-                    return ctx.reply(`✅ <b>Message transmis au client !</b>`, { parse_mode: 'HTML' });
+                    return ctx.reply(t(ctx, 'msg_b_message_transmis', "✅ <b>Message transmis au client !</b>"), { parse_mode: 'HTML' });
                 }
             } catch (e) {
                 console.error(`[AdminRelay] Error:`, e.message);
@@ -212,7 +212,7 @@ function setupAdminHandlers(bot) {
             console.log(`[Relay-User] Relaying from client ${userKey} to admins...`);
             const settings = ctx.state.settings || await getAppSettings();
             const targetAdmins = String(settings.admin_telegram_id || '').split(/[\s,]+/).map(id => id.trim().replace('telegram_', '')).filter(Boolean);
-            if (targetAdmins.length === 0) return ctx.reply("💬 Message reçu, mais aucun admin n'est configuré.");
+            if (targetAdmins.length === 0) return ctx.reply(t(ctx, 'msg_message_re_u_mais_a', "💬 Message reçu, mais aucun admin n'est configuré."));
 
             const text = ctx.message.text || ctx.message.caption || '';
             const options = {
@@ -230,7 +230,7 @@ function setupAdminHandlers(bot) {
             for (const adminId of targetAdmins) {
                 await sendTelegramMessage(adminId, `👤 <b>SUPPORT CLIENT (${ctx.from.first_name})</b>\n\n${text ? `"${text}"` : ''}`, options).catch(() => {});
             }
-            return ctx.reply('✅ <b>Message transmis à l\'administration !</b>', { parse_mode: 'HTML' });
+            return ctx.reply(t(ctx, 'msg_b_message_transmis', "✅ <b>Message transmis à l\'administration !</b>"), { parse_mode: 'HTML' });
         }
 
         // C. ADMIN LOGIN & AUTH
@@ -244,12 +244,12 @@ function setupAdminHandlers(bot) {
 
         if (pendingPasswordReset.has(userId) && isAdm) {
             const newPass = ctx.message.text?.trim();
-            if (!newPass || newPass.length < 4) return ctx.reply('❌ Le mot de passe doit faire au moins 4 caractères.');
+            if (!newPass || newPass.length < 4) return ctx.reply(t(ctx, 'msg_le_mot_de_passe_doi', "❌ Le mot de passe doit faire au moins 4 caractères."));
             try {
                 await updateAppSettings({ admin_password: newPass });
                 pendingPasswordReset.delete(userId);
                 return ctx.reply(`✅ <b>MOT DE PASSE MIS À JOUR</b>\n\nNouveau pass : <code>${newPass}</code>`, { parse_mode: 'HTML' });
-            } catch (e) { return ctx.reply('❌ Erreur de mise à jour.'); }
+            } catch (e) { return ctx.reply(t(ctx, 'msg_erreur_de_mise_jour', "❌ Erreur de mise à jour.")); }
         }
 
         // D. ADMIN SEARCH
@@ -258,7 +258,7 @@ function setupAdminHandlers(bot) {
             const query = ctx.message.text?.trim();
             if (!query) return next();
             const users = await searchUsers(query);
-            if (users.length === 0) return ctx.reply('❌ Aucun utilisateur trouvé.');
+            if (users.length === 0) return ctx.reply(t(ctx, 'msg_aucun_utilisateur_t', "❌ Aucun utilisateur trouvé."));
             const buttons = users.map(u => [Markup.button.callback(`👤 ${u.first_name} (@${u.username || '?'})`, `admin_user_view_${u.id}`)]);
             await ctx.reply(`🔍 <b>Résultats pour "${query}" :</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
             return;
@@ -294,8 +294,8 @@ function setupAdminHandlers(bot) {
                 }
             }
             
-            if (!message && options.mediaUrls.length === 0) return ctx.reply('❌ Message vide.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_broadcast')]]));
-            await ctx.reply('🚀 Diffusion en cours...');
+            if (!message && options.mediaUrls.length === 0) return ctx.reply(t(ctx, 'msg_message_vide', "❌ Message vide."), Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_broadcast')]]));
+            await ctx.reply(t(ctx, 'msg_diffusion_en_cours', "🚀 Diffusion en cours..."));
             const res = await broadcastMessage('users', message, options);
             return ctx.reply(`✅ Diffusion terminée !\n\n📊 Cibles : ${res.total}\n✅ Succès : ${res.success}`, Markup.inlineKeyboard([[Markup.button.callback('◀️ Menu Admin', 'admin_menu')]]));
         }
@@ -305,7 +305,7 @@ function setupAdminHandlers(bot) {
             const { field, uid } = pendingUserEdit.get(userId);
             pendingUserEdit.delete(userId);
             const val = parseFloat(ctx.message.text?.trim());
-            if (isNaN(val)) return ctx.reply("❌ Valeur invalide.");
+            if (isNaN(val)) return ctx.reply(t(ctx, 'msg_valeur_invalide', "❌ Valeur invalide."));
             try {
                 const { supabase, COL_USERS, _userCacheDelete } = require('../services/database');
                 await supabase.from(COL_USERS).update({ [field === 'balance' ? 'wallet_balance' : 'points']: val }).eq('id', uid);
@@ -319,7 +319,7 @@ function setupAdminHandlers(bot) {
         if (pendingAdminAdd.has(userId) && isAdm) {
             pendingAdminAdd.delete(userId);
             const newId = ctx.message.text?.trim();
-            if (!newId?.match(/^\d+$/)) return ctx.reply("❌ ID invalide.");
+            if (!newId?.match(/^\d+$/)) return ctx.reply(t(ctx, 'msg_id_invalide', "❌ ID invalide."));
             const s = await getAppSettings();
             let admins = Array.isArray(s.list_admins) ? s.list_admins : [];
             if (!admins.includes(newId)) admins.push(newId);
@@ -394,7 +394,7 @@ function setupAdminHandlers(bot) {
     bot.command('adduser', async (ctx) => {
         if (!(await isAdmin(ctx))) return;
         const args = ctx.message.text.split(' ');
-        if (args.length < 2) return ctx.reply('❌ Usage: /adduser <TELEGRAM_ID>');
+        if (args.length < 2) return ctx.reply(t(ctx, 'msg_usage_adduser_teleg', "❌ Usage: /adduser <TELEGRAM_ID>"));
 
         const targetId = args[1];
         const { registerUser } = require('../services/database');
@@ -408,13 +408,13 @@ function setupAdminHandlers(bot) {
     });
 
     bot.action(/^approve_(.+)$/, async (ctx) => {
-        if (!(await hasAccess(ctx))) return ctx.answerCbQuery('❌ Accès réservé.');
+        if (!(await hasAccess(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv', "❌ Accès réservé."));
         const userId = ctx.match[1];
         const { approveUser } = require('../services/database');
         
         try {
             await approveUser(userId);
-            await ctx.answerCbQuery('✅ Utilisateur approuvé avec succès !', true);
+            await ctx.answerCbQuery(t(ctx, 'msg_utilisateur_approuv', "✅ Utilisateur approuvé avec succès !"), true);
             await safeEdit(ctx, ctx.callbackQuery.message.text + `\n\n✅ <b>APPROUVÉ PAR ${ctx.from.first_name}</b>`);
             
             const settings = ctx.state?.settings || await require('../services/database').getAppSettings();
@@ -424,12 +424,12 @@ function setupAdminHandlers(bot) {
             }
         } catch (e) {
             console.error('[Admin-Approve] Error:', e.message);
-            await ctx.answerCbQuery('❌ Erreur lors de l\'approbation.', true);
+            await ctx.answerCbQuery(t(ctx, 'msg_erreur_lors_de_l_ap', "❌ Erreur lors de l\'approbation."), true);
         }
     });
 
     bot.action('admin_menu', async (ctx) => {
-        if (!(await hasAccess(ctx))) return ctx.answerCbQuery('❌ Accès refusé.');
+        if (!(await hasAccess(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_refus', "❌ Accès refusé."));
         const adminKey = String(ctx.from.id).match(/\d+/g)?.[0] || String(ctx.from.id);
         if (await isAdmin(ctx) || await isModerator(ctx)) {
             await ctx.answerCbQuery();
@@ -437,11 +437,11 @@ function setupAdminHandlers(bot) {
         }
         pendingAdminLogins.add(adminKey);
         await ctx.answerCbQuery();
-        return ctx.reply('🔐 Veuillez entrer le mot de passe administrateur :');
+        return ctx.reply(t(ctx, 'msg_veuillez_entrer_le', "🔐 Veuillez entrer le mot de passe administrateur :"));
     });
 
     bot.action('admin_broadcast', async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé.');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv', "❌ Accès réservé."));
         const userId = String(ctx.from.id);
         pendingBroadcasts.add(userId);
         await ctx.answerCbQuery();
@@ -449,14 +449,14 @@ function setupAdminHandlers(bot) {
     });
 
     bot.action('admin_trigger_password_reset', async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé.');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv', "❌ Accès réservé."));
         pendingPasswordReset.add(String(ctx.from.id).match(/\d+/g)?.[0] || String(ctx.from.id));
         await ctx.answerCbQuery();
-        return ctx.reply('🆕 <b>RÉINITIALISATION MOT DE PASSE</b>\n\nVeuillez envoyer le nouveau mot de passe d\'administration souhaité :', { parse_mode: 'HTML' });
+        return ctx.reply(t(ctx, 'msg_b_r_initialisation', "🆕 <b>RÉINITIALISATION MOT DE PASSE</b>\n\nVeuillez envoyer le nouveau mot de passe d\'administration souhaité :"), { parse_mode: 'HTML' });
     });
 
     bot.action(/^admin_user_edit_(balance|points)_(.+)$/, async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé aux Admins');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv_aux_ad', "❌ Accès réservé aux Admins"));
         await ctx.answerCbQuery();
         const stats = await getStatsOverview();
         const msg = `📊 <b>Statistiques Globales</b>\n\n` +
@@ -470,7 +470,7 @@ function setupAdminHandlers(bot) {
     });
 
     bot.action('admin_users', async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé aux Admins');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv_aux_ad', "❌ Accès réservé aux Admins"));
         await ctx.answerCbQuery();
         const users = await getRecentUsers(15);
         if (users.length === 0) return safeEdit(ctx, '👥 Aucun utilisateur.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_menu')]]));
@@ -486,7 +486,7 @@ function setupAdminHandlers(bot) {
     });
 
     bot.action('admin_orders', async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé aux Admins');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv_aux_ad', "❌ Accès réservé aux Admins"));
         await ctx.answerCbQuery();
         const orders = await getAllOrders(15);
         if (orders.length === 0) return safeEdit(ctx, '📭 Aucune commande.', Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'admin_menu')]]));
@@ -504,7 +504,7 @@ function setupAdminHandlers(bot) {
     bot.action(/^ao_v_(.+)$/, async (ctx) => {
         const orderId = ctx.match[1];
         const order = await getOrder(orderId);
-        if (!order) return ctx.answerCbQuery('❌ Introuvable');
+        if (!order) return ctx.answerCbQuery(t(ctx, 'msg_introuvable', "❌ Introuvable"));
         await ctx.answerCbQuery();
 
         const msg = `📑 <b>Commande #${orderId.slice(-8)}</b>\n\n` +
@@ -543,7 +543,7 @@ function setupAdminHandlers(bot) {
     bot.action(/^ao_da_(.+?)::(.+)$/, async (ctx) => {
         const [, orderId, lid] = ctx.match;
         const livreur = await getUser(lid);
-        if (!livreur) return ctx.answerCbQuery('❌ Erreur');
+        if (!livreur) return ctx.answerCbQuery(t(ctx, 'msg_erreur', "❌ Erreur"));
 
         const { assignOrderLivreur } = require('../services/database');
         await assignOrderLivreur(orderId, lid, livreur.first_name);
@@ -563,7 +563,7 @@ function setupAdminHandlers(bot) {
 
     bot.action('admin_pending_users', async (ctx) => {
         const fullAdmin = await isAdmin(ctx);
-        if (!(await hasAccess(ctx))) return ctx.answerCbQuery('❌ Accès refusé');
+        if (!(await hasAccess(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_refus', "❌ Accès refusé"));
         
         await ctx.answerCbQuery();
         const { getPendingUsers } = require('../services/database');
@@ -584,7 +584,7 @@ function setupAdminHandlers(bot) {
 
     // Support Queue Interface
     bot.action('admin_support_queue', async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Accès réservé.');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_acc_s_r_serv', "❌ Accès réservé."));
         await ctx.answerCbQuery();
         
         if (pendingSupportRequests.size === 0) {
@@ -621,7 +621,7 @@ function setupAdminHandlers(bot) {
 
     async function renderUserView(ctx, uid) {
         const u = await getUser(uid);
-        if (!u) return ctx.answerCbQuery('❌ Utilisateur introuvable');
+        if (!u) return ctx.answerCbQuery(t(ctx, 'msg_utilisateur_introuv', "❌ Utilisateur introuvable"));
         
         const fullAdmin = await isAdmin(ctx);
         const isLivreur = u.is_livreur === true;
@@ -689,7 +689,7 @@ function setupAdminHandlers(bot) {
         const targetIdString = ctx.match[1];
         awaitingAdminChat.delete(adminId);
         activeAdminSessions.delete(adminId);
-        await ctx.answerCbQuery('Conversation terminée.');
+        await ctx.answerCbQuery(t(ctx, 'msg_conversation_termin', "Conversation terminée."));
         
         await sendTelegramMessage(targetIdString, `🏁 <b>L'administrateur a mis fin à la discussion.</b>\n\nLe bot reprend son fonctionnement normal. Tapez /start pour voir le menu.`);
         
@@ -712,9 +712,9 @@ function setupAdminHandlers(bot) {
         const userKey = `telegram_${userId}`;
         activeUserSessions.delete(userKey);
         awaitingUserSupportReply.delete(userKey);
-        await ctx.answerCbQuery('Discussion terminée.');
+        await ctx.answerCbQuery(t(ctx, 'msg_discussion_termin_e', "Discussion terminée."));
         await cleanupUserChat(ctx);
-        return ctx.reply('🏁 <b>Discussion terminée.</b>\n\nLe bot reprend son fonctionnement normal.', { parse_mode: 'HTML' });
+        return ctx.reply(t(ctx, 'msg_b_discussion_termin', "🏁 <b>Discussion terminée.</b>\n\nLe bot reprend son fonctionnement normal."), { parse_mode: 'HTML' });
     });
 
     bot.action('help_chat_admin', async (ctx) => {
@@ -740,7 +740,7 @@ function setupAdminHandlers(bot) {
     bot.command('chat', async (ctx) => {
         if (!(await hasAccess(ctx))) return;
         const args = ctx.message.text.split(' ');
-        if (args.length < 2) return ctx.reply('❌ Usage: /chat <ID_UTILISATEUR>');
+        if (args.length < 2) return ctx.reply(t(ctx, 'msg_usage_chat_id_utili', "❌ Usage: /chat <ID_UTILISATEUR>"));
         
         const targetIdString = args[1];
         const adminId = String(ctx.from.id);
@@ -825,7 +825,7 @@ function setupAdminHandlers(bot) {
     bot.action(/^al_v_(.+)$/, async (ctx) => {
         const lid = ctx.match[1];
         const l = await getUser(lid);
-        if (!l) return ctx.answerCbQuery('❌ Introuvable');
+        if (!l) return ctx.answerCbQuery(t(ctx, 'msg_introuvable', "❌ Introuvable"));
         await ctx.answerCbQuery();
 
         const msg = `🚴 <b>${l.first_name}</b> (@${l.username || '?'})\n\n` +
@@ -845,7 +845,7 @@ function setupAdminHandlers(bot) {
     bot.action(/^al_t_(.+)$/, async (ctx) => {
         const lid = ctx.match[1];
         const l = await getUser(lid);
-        if (!l) return ctx.answerCbQuery('❌ Erreur');
+        if (!l) return ctx.answerCbQuery(t(ctx, 'msg_erreur', "❌ Erreur"));
         await setLivreurAvailability(lid, !l.is_available);
         await ctx.answerCbQuery(`✅ ${l.first_name} est maintenant ${!l.is_available ? 'disponible' : 'indisponible'}`);
         return bot.handleUpdate({ callback_query: { data: `al_v_${lid}`, from: ctx.from } });
@@ -886,16 +886,16 @@ function setupAdminHandlers(bot) {
     bot.action(/^admin_user_block_(.+)$/, async (ctx) => {
         const uid = ctx.match[1];
         const u = await getUser(uid);
-        if (!u) return ctx.answerCbQuery('❌ Utilisateur introuvable');
+        if (!u) return ctx.answerCbQuery(t(ctx, 'msg_utilisateur_introuv', "❌ Utilisateur introuvable"));
 
         const { markUserBlocked, markUserUnblocked } = require('../services/database');
 
         if (u.is_blocked) {
             await markUserUnblocked(uid);
-            await ctx.answerCbQuery('✅ Utilisateur débloqué');
+            await ctx.answerCbQuery(t(ctx, 'msg_utilisateur_d_bloqu', "✅ Utilisateur débloqué"));
         } else {
             await markUserBlocked(uid, true);
-            await ctx.answerCbQuery('🚫 Utilisateur bloqué');
+            await ctx.answerCbQuery(t(ctx, 'msg_utilisateur_bloqu', "🚫 Utilisateur bloqué"));
         }
 
         return renderUserView(ctx, uid).catch(() => {});
@@ -904,7 +904,7 @@ function setupAdminHandlers(bot) {
     bot.action(/^admin_user_toggle_(admin|moderator)_(.+)$/, async (ctx) => {
         const [role, uid] = ctx.match.slice(1);
         const u = await getUser(uid);
-        if (!u) return ctx.answerCbQuery('❌ Utilisateur introuvable');
+        if (!u) return ctx.answerCbQuery(t(ctx, 'msg_utilisateur_introuv', "❌ Utilisateur introuvable"));
 
         const { setAdminStatus, setModeratorStatus, getAppSettings, updateAppSettings } = require('../services/database');
         
@@ -955,7 +955,7 @@ function setupAdminHandlers(bot) {
     });
 
     bot.action('admin_settings', async (ctx) => {
-        if (!(await isAdmin(ctx))) return ctx.answerCbQuery('❌ Réservé aux Admins');
+        if (!(await isAdmin(ctx))) return ctx.answerCbQuery(t(ctx, 'msg_r_serv_aux_admins', "❌ Réservé aux Admins"));
         await ctx.answerCbQuery();
         const settings = await getAppSettings();
         const msg = `⚙️ <b>Paramétrage du Bot</b>\n\n` +
@@ -1033,7 +1033,7 @@ function setupAdminHandlers(bot) {
         let admins = Array.isArray(s.list_admins) ? s.list_admins : [];
         admins = admins.filter(id => id !== targetId);
         await updateAppSettings({ list_admins: admins });
-        await ctx.answerCbQuery('✅ Admin supprimé');
+        await ctx.answerCbQuery(t(ctx, 'msg_admin_supprim', "✅ Admin supprimé"));
         await notifyAdmins(bot, `👤 <b>ADMIN SUPPRIMÉ</b>\n\nID : <code>${targetId}</code>\nPar : ${ctx.from.first_name}`);
         return bot.handleUpdate({ callback_query: { data: 'admin_manage_list', from: ctx.from } });
     });
@@ -1262,7 +1262,7 @@ function setupAdminHandlers(bot) {
             return bot.handleUpdate({ callback_query: { data: 'admin_modules_menu', from: ctx.from } });
         } catch (e) {
             console.error('[Module-Toggle] Error:', e.message);
-            await ctx.answerCbQuery('❌ Erreur lors de la modification.', true);
+            await ctx.answerCbQuery(t(ctx, 'msg_erreur_lors_de_la_m', "❌ Erreur lors de la modification."), true);
         }
     });
 }

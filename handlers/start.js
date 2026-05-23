@@ -270,9 +270,9 @@ function setupStartHandler(bot) {
         if (ctx.platform === 'telegram' && settings.force_subscribe) {
             const isSubscribed = await checkSubscription(bot, ctx, settings);
             if (!isSubscribed) {
-                return ctx.reply('❌ Vous n\'êtes pas encore abonné au canal. Veuillez cliquer sur "Rejoindre le Canal" puis réessayer.', { parse_mode: 'HTML' });
+                return ctx.reply(t(ctx, 'msg_vous_n_tes_pas_enco', "❌ Vous n\'êtes pas encore abonné au canal. Veuillez cliquer sur "Rejoindre le Canal" puis réessayer."), { parse_mode: 'HTML' });
             } else {
-                ctx.reply('✅ Abonnement vérifié avec succès !', { parse_mode: 'HTML' });
+                ctx.reply(t(ctx, 'msg_abonnement_v_rifi_a', "✅ Abonnement vérifié avec succès !"), { parse_mode: 'HTML' });
                 // Simuler une commande /start pour réévaluer la logique utilisateur
                 return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
             }
@@ -313,7 +313,7 @@ function setupStartHandler(bot) {
         await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
         const user = ctx.state?.user;
-        if (!user) return ctx.reply('⚠️ Utilisateur introuvable.');
+        if (!user) return ctx.reply(t(ctx, 'msg_utilisateur_introuv', "⚠️ Utilisateur introuvable."));
 
         const text = `🎁 <b>PARRAINAGE</b>\n\n` +
             `Invitez vos amis et gagnez des récompenses !\n\n` +
@@ -388,7 +388,7 @@ function setupStartHandler(bot) {
         try {
             const { saveUserLocation } = require('../services/database');
             await saveUserLocation(userId, loc.latitude, loc.longitude);
-            await ctx.reply('✅ Position enregistrée.');
+            await ctx.reply(t(ctx, 'msg_position_enregistr', "✅ Position enregistrée."));
         } catch (e) { console.error('Location error:', e); }
     });
 
@@ -402,7 +402,7 @@ function setupStartHandler(bot) {
             try {
                 const { registerUser } = require('../services/database');
                 await registerUser(ctx.from, ctx.platform, ref);
-                return ctx.reply('🎉 Code parrainage validé !');
+                return ctx.reply(t(ctx, 'msg_code_parrainage_val', "🎉 Code parrainage validé !"));
             } catch (e) { }
         }
         return next();
@@ -413,10 +413,10 @@ function setupStartHandler(bot) {
         const isSubscribed = await checkSubscription(bot, ctx, settings);
         
         if (!isSubscribed) {
-            return await ctx.answerCbQuery('❌ Vous n\'êtes pas encore abonné au canal !', { show_alert: true });
+            return await ctx.answerCbQuery(t(ctx, 'msg_vous_n_tes_pas_enco', "❌ Vous n\'êtes pas encore abonné au canal !"), { show_alert: true });
         }
         
-        await ctx.answerCbQuery('✅ Merci pour votre abonnement !');
+        await ctx.answerCbQuery(t(ctx, 'msg_merci_pour_votre_ab', "✅ Merci pour votre abonnement !"));
         // Relancer le start
         return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
     });

@@ -652,7 +652,7 @@
                 updateProfileUI();
                 setLoader(100);
                 setTimeout(() => { document.getElementById('loading-screen').style.opacity = '0'; setTimeout(() => document.getElementById('loading-screen').style.display='none', 500); }, 300);
-            } catch (e) { tg.showAlert("Erreur réseau"); }
+            } catch (e) { tg.showAlert((t('msg_erreur_r_seau', "Erreur réseau")); }
         }
 
         function renderNews(news) {
@@ -834,8 +834,8 @@
                     badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:var(--accent); color:#fff; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(255,0,80,0.5); animation: pulse 2s infinite;">NOUVEAU 🔥</div>`;
                 } else if (Math.random() > 0.8) {
                     badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:#00ff88; color:#000; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(0,255,136,0.3);">BESTSELLER ⭐</div>`;
-                } else if (p.stock > 0 && p.stock < 10) {
-                    badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:#ffaa00; color:#000; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(255,170,0,0.5); animation: pulse 2s infinite;">VITE! PLUS QUE ${p.stock}</div>`;
+                } else if (getAvailableQuantity(p) > 0 && getAvailableQuantity(p) < 10) {
+                    badgeHtml = `<div style="position:absolute; top:10px; left:10px; background:#ffaa00; color:#000; font-size:10px; font-weight:900; padding:4px 8px; border-radius:8px; box-shadow:0 4px 10px rgba(255,170,0,0.5); animation: pulse 2s infinite;">VITE! PLUS QUE ${getAvailableQuantity(p)}</div>`;
                 }
 
                 d.innerHTML = `
@@ -852,7 +852,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
                             <div class="card-price" style="margin-top:0;">${p.price}€</div>
                             <div id="stock-badge-${p.id}" style="font-size:10px; font-weight:800; background:rgba(255,255,255,0.1); padding:4px 8px; border-radius:8px; display:flex; align-items:center; gap:4px;">
-                                <span class="stock-indicator" style="background:${p.stock>0?'#2ecc71':'#e74c3c'}; width:6px; height:6px; border-radius:50%; display:inline-block;"></span>${p.stock>0 ? p.stock+' '+t('in_stock') : t('out_of_stock')}
+                                <span class="stock-indicator" style="background:${getAvailableQuantity(p)>0?'#2ecc71':'#e74c3c'}; width:6px; height:6px; border-radius:50%; display:inline-block;"></span>${getAvailableQuantity(p)>0 ? getAvailableQuantity(p)+' '+t('in_stock') : t('out_of_stock')}
                             </div>
                         </div>
                     </div>
@@ -1057,12 +1057,12 @@
                 }
             } catch (e) {
                 input.disabled = false;
-                tg.showAlert("Erreur réseau lors de l'envoi.");
+                tg.showAlert((t('msg_erreur_r_seau_lors_d', "Erreur réseau lors de l'envoi."));
             }
         }
 
         async function cancelOrder(orderId) {
-            tg.showConfirm("Voulez-vous vraiment annuler cette commande ?", async (ok) => {
+            tg.showConfirm((t('msg_voulez_vous_vraiment', "Voulez-vous vraiment annuler cette commande ?"), async (ok) => {
                 if (!ok) return;
                 try {
                     await fetch('/api/livreur/update-status', {
@@ -1070,14 +1070,14 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ orderId, status: 'cancelled' })
                     });
-                    tg.showAlert("Commande annulée !");
+                    tg.showAlert((t('msg_commande_annul_e', "Commande annulée !"));
                     loadOrders();
                 } catch(e) {}
             });
         }
 
         async function reorder(orderId) {
-            tg.showConfirm("Voulez-vous ajouter tous les articles de cette commande à votre panier ?", async (ok) => {
+            tg.showConfirm((t('msg_voulez_vous_ajouter', "Voulez-vous ajouter tous les articles de cette commande à votre panier ?"), async (ok) => {
                 if (!ok) return;
                 try {
                     const uid = tg.initDataUnsafe?.user?.id;
@@ -1100,7 +1100,7 @@
                         switchPage('shop', document.querySelectorAll('.nav-item')[0]);
                         tg.showAlert(t("added_to_cart_notif"));
                     }
-                } catch(e) { tg.showAlert("Impossible de réclamer cette commande."); }
+                } catch(e) { tg.showAlert((t('msg_impossible_de_r_clam', "Impossible de réclamer cette commande.")); }
             });
         }
 
@@ -1108,6 +1108,16 @@
             if (e) e.stopPropagation();
             activeProduct = allProducts.find(x => x.id === pid);
             if (!activeProduct) return;
+
+            // X-Engine Tracking Ping
+            const uid = tg.initDataUnsafe?.user?.id;
+            if (uid) {
+                fetch('/api/tracking/view', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegramId: uid, productId: activeProduct.id, category: activeProduct.category })
+                }).catch(()=>{});
+            }
 
             renderMediaGallery(activeProduct, 'p-media');
             document.getElementById('p-name').innerText = activeProduct.name;
@@ -1242,12 +1252,12 @@
                     body: JSON.stringify({ userId: `telegram_${uid}`, productId: pid, rating: window.currentReviewRating, text: text, media: media })
                 });
                 closeCustomModal();
-                tg.showAlert("Merci pour votre avis !");
+                tg.showAlert((t('msg_merci_pour_votre_avi', "Merci pour votre avis !"));
                 loadProductReviews(pid);
             } catch(e) {
                 btn.disabled = false;
                 btn.innerText = "ENVOYER L'AVIS";
-                tg.showAlert("Une erreur est survenue.");
+                tg.showAlert((t('msg_une_erreur_est_surve', "Une erreur est survenue."));
             }
         }
 
@@ -1330,12 +1340,12 @@
                 if (data.success) {
                     const rev = document.getElementById(`user-review-${rid}`);
                     if (rev) rev.remove();
-                    tg.showAlert("Avis supprimé.");
+                    tg.showAlert((t('msg_avis_supprim', "Avis supprimé."));
                 } else {
-                    tg.showAlert("Erreur lors de la suppression.");
+                    tg.showAlert((t('msg_erreur_lors_de_la_su', "Erreur lors de la suppression."));
                 }
             } catch(e) {
-                tg.showAlert("Une erreur est survenue.");
+                tg.showAlert((t('msg_une_erreur_est_surve', "Une erreur est survenue."));
             }
         }
 
@@ -1380,7 +1390,7 @@
                     body: JSON.stringify({ orderId, status: 'delivered', rating })
                 });
                 closeCustomModal();
-                tg.showAlert("Merci pour votre évaluation !");
+                tg.showAlert((t('msg_merci_pour_votre_val', "Merci pour votre évaluation !"));
                 loadOrders();
             } catch(e) {}
         }
@@ -1411,6 +1421,22 @@
             syncCart();
         }
 
+        function getAvailableQuantity(p) {
+            if (!p) return 0;
+            const inCart = cart.filter(i => i.id === p.id).reduce((s, i) => s + i.n, 0);
+            return Math.max(0, p.stock - inCart);
+        }
+
+        function updateStockBadges() {
+            allProducts.forEach(p => {
+                const avail = getAvailableQuantity(p);
+                const qtyBadge = document.getElementById('stock-badge-' + p.id);
+                if (qtyBadge) {
+                    qtyBadge.innerHTML = '<span class="stock-indicator" style="background:' + (avail>0?'#2ecc71':'#e74c3c') + '; width:6px; height:6px; border-radius:50%; display:inline-block;"></span>' + (avail>0 ? avail + ' ' + t('in_stock', 'en stock') : t('out_of_stock', 'Épuisé'));
+                }
+            });
+        }
+
         function updateCartUI() {
             const tot = cart.reduce((s, i) => s + (i.pr * i.n), 0);
             const count = cart.reduce((s, i) => s + i.n, 0);
@@ -1422,6 +1448,8 @@
             const isShop = document.getElementById('page-shop').style.display !== 'none';
             if (count > 0 && isShop) bar.classList.add('visible');
             else bar.classList.remove('visible');
+            
+            updateStockBadges();
         }
 
         async function syncCart() {
@@ -1436,7 +1464,7 @@
 
         function openCheckout() {
             stopAllVideos();
-            if (cart.length === 0) return tg.showAlert("Votre panier est vide");
+            if (cart.length === 0) return tg.showAlert((t('msg_votre_panier_est_vid', "Votre panier est vide"));
             checkoutStep = 1;
             document.getElementById('checkout-overlay').classList.add('open');
             renderCheckout();
@@ -1462,7 +1490,7 @@
             const input = document.getElementById('checkout-promo-input');
             if (!input) return;
             const code = input.value.trim().toUpperCase();
-            if (!code) return tg.showAlert("Veuillez saisir un code promo ou de parrainage");
+            if (!code) return tg.showAlert((t('msg_veuillez_saisir_un_c', "Veuillez saisir un code promo ou de parrainage"));
 
             let discountVal = 10;
             if (code.includes('20')) discountVal = 20;
@@ -1728,7 +1756,7 @@
                 }
             }
 
-            if (!finalAddress) return tg.showAlert("Veuillez choisir ou saisir une adresse");
+            if (!finalAddress) return tg.showAlert((t('msg_veuillez_choisir_ou', "Veuillez choisir ou saisir une adresse"));
 
             const schedule = document.getElementById('order-schedule-date')?.value;
             if (schedule) {
@@ -1779,7 +1807,7 @@
                 });
 
                 if (res.ok) {
-                    tg.showConfirm("Commande envoyée avec succès ! Souhaitez-vous retourner au shop ?", (ok) => {
+                    tg.showConfirm((t('msg_commande_envoy_e_ave', "Commande envoyée avec succès ! Souhaitez-vous retourner au shop ?"), (ok) => {
                         cart = [];
                         appliedPromoCode = '';
                         appliedPromoDiscount = 0;
@@ -1789,10 +1817,10 @@
                         if (ok) switchPage('shop', document.querySelectorAll('.nav-item')[0]);
                     });
                 } else {
-                    tg.showAlert("Erreur lors de l'envoi de la commande.");
+                    tg.showAlert((t('msg_erreur_lors_de_l_env', "Erreur lors de l'envoi de la commande."));
                 }
             } catch(e) {
-                tg.showAlert("Erreur réseau.");
+                tg.showAlert((t('msg_erreur_r_seau', "Erreur réseau."));
             } finally {
                 btn.disabled = false;
                 btn.innerText = "CONFIRMER & PAYER";
@@ -1820,7 +1848,7 @@
             }
         }
 
-        function copyReferral() { if (userInfo?.referralLink) { navigator.clipboard.writeText(userInfo.referralLink); tg.showAlert("Lien copié !"); } }
+        function copyReferral() { if (userInfo?.referralLink) { navigator.clipboard.writeText(userInfo.referralLink); tg.showAlert((t('msg_lien_copi', "Lien copié !")); } }
 
         let savedAddresses = [];
         function parseAddresses(addrString) {
@@ -1908,7 +1936,7 @@
             const address = document.getElementById('edit-addr-val').value.trim();
             const digicode = document.getElementById('edit-addr-digicode').value.trim();
             
-            if(!name || !address) return tg.showAlert("Nom et Adresse sont requis.");
+            if(!name || !address) return tg.showAlert((t('msg_nom_et_adresse_sont', "Nom et Adresse sont requis."));
             
             const idx = savedAddresses.findIndex(a => a.id === id);
             if (idx !== -1) {
@@ -2018,7 +2046,7 @@
             const address = document.getElementById('new-addr-val').value.trim();
             const digicode = document.getElementById('new-addr-digicode').value.trim();
             
-            if(!name || !address) return tg.showAlert("Nom et Adresse sont requis.");
+            if(!name || !address) return tg.showAlert((t('msg_nom_et_adresse_sont', "Nom et Adresse sont requis."));
             
             savedAddresses.push({ id: Date.now().toString(), name, address, digicode });
             await syncAddressesToServer();
@@ -2041,11 +2069,11 @@
                     body: JSON.stringify({ userId: `telegram_${uid}`, address: addrStr })
                 });
                 if(res.ok && userInfo) userInfo.address = addrStr;
-            } catch(e) { tg.showAlert("Erreur réseau"); }
+            } catch(e) { tg.showAlert((t('msg_erreur_r_seau', "Erreur réseau")); }
         }
 
         async function confirmDeleteAccount() {
-            tg.showConfirm("⚠️ ATTENTION : Cette action est irréversible. Voulez-vous vraiment supprimer définitivement votre compte et perdre tous vos points ?", async (ok) => {
+            tg.showConfirm((t('msg_attention_cette_act', "⚠️ ATTENTION : Cette action est irréversible. Voulez-vous vraiment supprimer définitivement votre compte et perdre tous vos points ?"), async (ok) => {
                 if (!ok) return;
                 const uid = tg.initDataUnsafe?.user?.id;
                 try {
@@ -2055,10 +2083,10 @@
                         body: JSON.stringify({ userId: `telegram_${uid}` })
                     });
                     if (res.ok) {
-                        tg.showAlert("Votre compte a été supprimé. L'application va se fermer.");
+                        tg.showAlert((t('msg_votre_compte_a_t_sup', "Votre compte a été supprimé. L'application va se fermer."));
                         setTimeout(() => tg.close(), 2000);
                     }
-                } catch(e) { tg.showAlert("Erreur lors de la suppression."); }
+                } catch(e) { tg.showAlert((t('msg_erreur_lors_de_la_su', "Erreur lors de la suppression.")); }
             });
         }
 
@@ -2313,7 +2341,7 @@
                 input.disabled = false;
                 if (data.error) { tg.showAlert(data.error); }
                 else { input.value = ''; try { tg.HapticFeedback.notificationOccurred('success'); } catch(e){} loadSupportChat(); }
-            } catch(e) { input.disabled = false; tg.showAlert("Erreur réseau."); }
+            } catch(e) { input.disabled = false; tg.showAlert((t('msg_erreur_r_seau', "Erreur réseau.")); }
         }
 
         function renderAdminChatMessages() {
@@ -2474,7 +2502,7 @@
                         if (currentLatest && latestId !== currentLatest) {
                             allNews = data;
                             renderNews(allNews);
-                            tg.showAlert("Nouvelle diffusion / actualité disponible !");
+                            tg.showAlert((t('msg_nouvelle_diffusion_a', "Nouvelle diffusion / actualité disponible !"));
                         }
                     }
                 }
@@ -2497,8 +2525,29 @@
         #google_translate_element { display: none !important; }
     </style>
     
-    
-    
+    <script>
+        async function requestRestockAlert(pid) {
+            const uid = tg.initDataUnsafe?.user?.id;
+            if (!uid) return;
+            try {
+                tg.HapticFeedback.notificationOccurred('success');
+                tg.showPopup({
+                    title: t('restock_alert_title', "Alerte de Réapprovisionnement"),
+                    message: t('restock_alert_msg', "Vous recevrez une notification Telegram dès que ce produit sera de nouveau en stock !"),
+                    buttons: [{ type: "ok" }]
+                });
+                
+                await fetch(`/api/products/${pid}/alert`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegramId: uid })
+                });
+                closeProductModal();
+            } catch (e) {
+                console.error('Error requesting alert:', e);
+            }
+        }
+    </script>
     
     <!-- End Google Translate -->
 
