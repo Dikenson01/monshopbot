@@ -981,7 +981,7 @@
                         <div style="font-size:11px; opacity:0.5; margin-bottom:15px;">Le ${new Date(o.created_at).toLocaleDateString()}</div>
                         <div style="font-size:14px; font-weight:600; line-height:1.6; margin-bottom:15px;">${o.product_name || o.product}</div>
                         <div style="display:flex; justify-content:space-between; font-weight:900; font-size:16px;">
-                            <div>TOTAL</div><div>${o.total_price || o.total}€</div>
+                            <div>${t("total_caps", "TOTAL")}</div><div>${o.total_price || o.total}€</div>
                         </div>
                         ${progressBar}
                         ${btnCancel}
@@ -1546,8 +1546,8 @@
             cont.innerHTML = '';
 
             if (checkoutStep === 1) {
-                document.querySelector('#checkout-overlay h2').innerText = t("summary", "RECAPITULATIF");
-                btn.innerText = t("validate_order", "VALIDER LA COMMANDE");
+                document.querySelector('#checkout-overlay h2').innerText = t("summary", t("summary", "RECAPITULATIF"));
+                btn.innerText = t("validate_order", t("validate_order", "VALIDER LA COMMANDE"));
                 back.style.display = 'none';
                 totalRow.style.display = 'flex';
                 
@@ -1617,12 +1617,12 @@
                 // --- ENCART CODE PROMO / PARRAINAGE ---
                 const promoSection = `
                     <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px;">
-                        <div style="font-weight:900; font-size:11px; opacity:0.6; margin-bottom:10px; letter-spacing:1px; color:var(--accent);">🏷️ <span data-i18n="promo_title">CODE PROMO OU PARRAINAGE</span></div>
+                        <div style="font-weight:900; font-size:11px; opacity:0.6; margin-bottom:10px; letter-spacing:1px; color:var(--accent);">🏷️ ${t("promo_title", "CODE PROMO OU PARRAINAGE")}</div>
                         <div style="display:flex; gap:8px;">
-                            <input type="text" id="checkout-promo-input" data-i18n-placeholder="promo_placeholder" placeholder="Saisir le code..." value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
-                            <button class="btn-primary" onclick="applyPromoCode()" style="width:auto; padding:0 15px; background:var(--accent); color:#fff; height:40px; font-size:12px; border-radius:12px; font-weight:800;" data-i18n="apply">APPLIQUER</button>
+                            <input type="text" id="checkout-promo-input" placeholder="${t(\'promo_placeholder\', \'Saisir le code...\')}" value="${appliedPromoCode}" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:12px; color:#fff; padding:10px 15px; font-size:13px; outline:none; text-transform:uppercase;">
+                            <button class="btn-primary" onclick="applyPromoCode()" style="width:auto; padding:0 15px; background:var(--accent); color:#fff; height:40px; font-size:12px; border-radius:12px; font-weight:800;" >${t("apply", "APPLIQUER")}</button>
                         </div>
-                        ${appliedPromoDiscount > 0 ? `<div style="color:#00ff88; font-size:11px; font-weight:800; margin-top:8px;">✅ Code actif : -${appliedPromoDiscount}€ appliqués sur ce panier</div>` : ''}
+                        ${appliedPromoDiscount > 0 ? `<div style="color:#00ff88; font-size:11px; font-weight:800; margin-top:8px;">${t("promo_active", "✅ Code actif : -{discount}€ appliqués sur ce panier", {discount: appliedPromoDiscount})}</div>` : ''}
                     </div>
                 `;
                 cont.innerHTML += promoSection;
@@ -1636,8 +1636,8 @@
                     const walletSection = `
                         <div style="background:var(--card); border:1px solid var(--border); padding:15px; border-radius:15px; margin-top:20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleWallet()">
                             <div>
-                                <div style="font-weight:900; font-size:14px; margin-bottom:2px;">💰 Utiliser mon solde</div>
-                                <div style="font-size:12px; opacity:0.7;">Disponible : ${parseFloat(userInfo.balance).toFixed(2)}€</div>
+                                <div style="font-weight:900; font-size:14px; margin-bottom:2px;">${t("use_my_balance", "💰 Utiliser mon solde")}</div>
+                                <div style="font-size:12px; opacity:0.7;">${t("available_balance", "Disponible : {amount}€", {amount: parseFloat(userInfo.balance).toFixed(2)})}</div>
                             </div>
                             <div style="width:50px; height:28px; border-radius:14px; background:${useWallet ? 'var(--accent)' : 'var(--border)'}; position:relative; transition:background 0.3s;">
                                 <div style="width:24px; height:24px; background:#fff; border-radius:50%; position:absolute; top:2px; left:${useWallet ? '24px' : '2px'}; transition:left 0.3s;"></div>
@@ -1652,14 +1652,14 @@
                 if (appliedPromoDiscount > 0 || (useWallet && discount > 0)) {
                     breakdownHtml += `<div style="font-size:12px; opacity:0.5; text-decoration:line-through;">${tot.toFixed(2)}€</div>`;
                 }
-                breakdownHtml += `<div><span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:5px;">TOTAL</span><span id="final-total">${finalPayable.toFixed(2)}€</span></div>`;
+                breakdownHtml += `<div><span style="font-size:14px; opacity:0.5; font-weight:800; margin-right:5px;">${t("total_caps", "TOTAL")}</span><span id="final-total">${finalPayable.toFixed(2)}€</span></div>`;
                 breakdownHtml += `</div>`;
                 
                 totalRow.innerHTML = breakdownHtml;
 
             } else if (checkoutStep === 2) {
-                document.querySelector('#checkout-overlay h2').innerText = "LIVRAISON";
-                btn.innerText = "CONFIRMER & PAYER";
+                document.querySelector('#checkout-overlay h2').innerText = t("delivery_title", "LIVRAISON");
+                btn.innerText = t("confirm_and_pay", "CONFIRMER & PAYER");
                 back.style.display = 'block';
                 totalRow.style.display = 'none';
 
@@ -1681,46 +1681,46 @@
                     addrHtml += `
                         <label style="display:flex; align-items:center; gap:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:12px 15px; border-radius:15px; margin-top:15px; margin-bottom:10px; cursor:pointer;">
                             <input type="radio" name="checkout_addr" value="new" style="accent-color:var(--accent);" onchange="const sec=document.getElementById('new-addr-section'); if(sec) sec.style.opacity='1';">
-                            <span style="font-size:13px; font-weight:800; color:var(--accent);">➕ Saisir une autre adresse</span>
+                            <span style="font-size:13px; font-weight:800; color:var(--accent);">${t("enter_another_address", "➕ Saisir une autre adresse")}</span>
                         </label>
                         <div id="new-addr-section" style="opacity:0.4; transition:0.3s; padding-left:5px;">
-                            <textarea id="order-address" placeholder="Saisir la rue, ville... (Autocomplétion)" oninput="handleAddressAutocomplete(this.value, 'order-address')" autocomplete="shipping street-address" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:70px; outline:none; margin-bottom:5px; box-sizing:border-box;"></textarea>
+                            <textarea id="order-address" placeholder="${t("address_placeholder_auto", "Saisir la rue, ville... (Autocomplétion)")}" oninput="handleAddressAutocomplete(this.value, 'order-address')" autocomplete="shipping street-address" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:70px; outline:none; margin-bottom:5px; box-sizing:border-box;"></textarea>
                             <div id="address-suggestions-order-address" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
-                            <input id="order-note" type="text" placeholder="Interphone, digicode..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; box-sizing:border-box;">
+                            <input id="order-note" type="text" placeholder="${t("digicode_placeholder", "Interphone, digicode...")}" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; box-sizing:border-box;">
                         </div>
                     `;
                 } else {
                     addrHtml = `
-                        <textarea id="order-address" placeholder="Saisir la rue, ville... (Autocomplétion en temps réel)" oninput="handleAddressAutocomplete(this.value, 'order-address')" autocomplete="shipping street-address" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:80px; outline:none; margin-bottom:5px; box-sizing:border-box;"></textarea>
+                        <textarea id="order-address" placeholder="${t("address_placeholder_rt", "Saisir la rue, ville... (Autocomplétion en temps réel)")}" oninput="handleAddressAutocomplete(this.value, 'order-address')" autocomplete="shipping street-address" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:80px; outline:none; margin-bottom:5px; box-sizing:border-box;"></textarea>
                         <div id="address-suggestions-order-address" style="display:none; background:var(--card); border:1px solid var(--accent); border-radius:12px; margin-bottom:10px; max-height:150px; overflow-y:auto; box-shadow:0 5px 15px rgba(0,0,0,0.5); text-align:left;"></div>
-                        <input id="order-note" type="text" placeholder="Interphone, digicode..." style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; box-sizing:border-box;">
+                        <input id="order-note" type="text" placeholder="${t("digicode_placeholder", "Interphone, digicode...")}" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; box-sizing:border-box;">
                         <input type="radio" name="checkout_addr" value="new" checked style="display:none;">
                     `;
                 }
 
                 const html = `
                     <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">ADRESSE DE LIVRAISON</label>
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">${t("delivery_address_caps", "ADRESSE DE LIVRAISON")}</label>
                         ${addrHtml}
                         ${addresses.length > 0 ? `<div style="text-align:right; margin-top:10px;"><span onclick="closeCheckout(); switchPage('profile', document.querySelectorAll('.nav-item')[2]); openAddressModal();" style="font-size:11px; color:var(--accent); font-weight:800; text-decoration:underline;">+ ${t('manage_addresses', 'Gérer mes adresses')}</span></div>` : ''}
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">CONSIGNES DE LIVRAISON</label>
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">${t("delivery_instructions_caps", "CONSIGNES DE LIVRAISON")}</label>
                         <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:10px; scrollbar-width:none; margin-bottom:10px;">
-                            <div class="del-tag ${selectedDeliveryTags.includes('Message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'Message en arrivant')">💬 M'envoyer un message en arrivant</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('Je descendrai au véhicule') ? 'active' : ''}" onclick="selectTag(this, 'Je descendrai au véhicule')">🚗 Je descendrai au véhicule</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('Attente dans le hall') ? 'active' : ''}" onclick="selectTag(this, 'Attente dans le hall')">🏢 Je vous attendrai dans le hall</div>
-                            <div class="del-tag ${selectedDeliveryTags.includes('Ne pas sonner') ? 'active' : ''}" onclick="selectTag(this, 'Ne pas sonner')">🤫 Ne pas sonner (Discret)</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Message en arrivant') ? 'active' : ''}" onclick="selectTag(this, 'Message en arrivant')">${t('del_tag_msg', \"💬 M'envoyer un message en arrivant\")}</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Je descendrai au véhicule') ? 'active' : ''}" onclick="selectTag(this, 'Je descendrai au véhicule')">${t("del_tag_car", "🚗 Je descendrai au véhicule")}</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Attente dans le hall') ? 'active' : ''}" onclick="selectTag(this, 'Attente dans le hall')">${t("del_tag_hall", "🏢 Je vous attendrai dans le hall")}</div>
+                            <div class="del-tag ${selectedDeliveryTags.includes('Ne pas sonner') ? 'active' : ''}" onclick="selectTag(this, 'Ne pas sonner')">${t("del_tag_discrete", "🤫 Ne pas sonner (Discret)")}</div>
                         </div>
-                        <textarea id="order-note-extra" placeholder="Instructions supplémentaires pour le livreur (facultatif)" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:60px; outline:none; resize:none;"></textarea>
+                        <textarea id="order-note-extra" placeholder="${t("extra_instructions_placeholder", "Instructions supplémentaires pour le livreur (facultatif)")}" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; min-height:60px; outline:none; resize:none;"></textarea>
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">PROGRAMMER LA LIVRAISON</label>
+                        <label style="display:block; font-size:11px; font-weight:900; opacity:0.5; margin-bottom:8px; letter-spacing:1px;">${t("schedule_delivery_caps", "PROGRAMMER LA LIVRAISON")}</label>
                         <div style="position:relative;">
                             <input type="datetime-local" id="order-schedule-date" style="width:100%; background:var(--card); border:1px solid var(--border); border-radius:15px; color:#fff; padding:15px; font-family:inherit; font-size:14px; outline:none; color-scheme:dark;">
                             <div style="position:absolute; top:15px; right:15px; pointer-events:none; opacity:0.5;"><i class="notranslate ph-bold ph-calendar"></i></div>
                         </div>
-                        <div style="font-size:11px; opacity:0.5; margin-top:8px;">Laissez vide pour une livraison "Dès que possible"</div>
+                        <div style="font-size:11px; opacity:0.5; margin-top:8px;">${t("leave_empty_asap", "Laissez vide pour une livraison \\"Dès que possible\\"")}</div>
                     </div>
                 `;
                 cont.innerHTML = html;
@@ -1823,7 +1823,7 @@
                 tg.showAlert(t('msg_erreur_r_seau', "Erreur réseau."));
             } finally {
                 btn.disabled = false;
-                btn.innerText = "CONFIRMER & PAYER";
+                btn.innerText = t("confirm_and_pay", "CONFIRMER & PAYER");
             }
         }
 

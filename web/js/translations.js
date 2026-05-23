@@ -3446,6 +3446,40 @@ function initTranslations() {
     
     window.currentLang = currentLang;
 
+    // Add MutationObserver to catch dynamically added elements
+    if (!window.i18nObserver && typeof document !== 'undefined') {
+        window.i18nObserver = new MutationObserver((mutations) => {
+            let shouldTranslate = false;
+            for (const m of mutations) {
+                if (m.addedNodes.length > 0) {
+                    shouldTranslate = true;
+                    break;
+                }
+            }
+            if (shouldTranslate) {
+                // translate only new elements or just re-run querySelectorAll
+                document.querySelectorAll('[data-i18n]').forEach(el => {
+                    const key = el.getAttribute('data-i18n');
+                    if (translations[currentLang] && translations[currentLang][key]) {
+                        if (el.innerHTML !== translations[currentLang][key]) {
+                            el.innerHTML = translations[currentLang][key];
+                        }
+                    }
+                });
+                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                    const key = el.getAttribute('data-i18n-placeholder');
+                    if (translations[currentLang] && translations[currentLang][key]) {
+                        if (el.placeholder !== translations[currentLang][key]) {
+                            el.placeholder = translations[currentLang][key];
+                        }
+                    }
+                });
+            }
+        });
+        window.i18nObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+
     // Apply translations to DOM
     
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
