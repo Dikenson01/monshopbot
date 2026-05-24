@@ -646,7 +646,7 @@ function setupMarketplaceHandlers(bot) {
         
         const order = await getOrder(orderId);
         if (order) {
-            await updateOrderStatus(orderId, 'cancelled', { notes: 'Refusée par le fournisseur' });
+            await updateOrderStatus(orderId, 'cancelled', {});
             await sendMessageToUser(order.user_id, `❌ <b>Commande annulée</b>\n\nNous sommes désolés, notre partenaire n'a pas pu valider votre commande <b>#${orderId.slice(-5)}</b>.`);
         }
 

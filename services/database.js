@@ -1111,9 +1111,9 @@ async function updateOrderStatus(orderId, status, extraData = {}) {
 
 async function adjustOrderStock(orderId, action) {
     const { data: order } = await supabase.from(COL_ORDERS).select('*').eq('id', orderId).maybeSingle();
-    if (!order || !order.notes) return;
+    if (!order || !order.cart) return;
     try {
-        const cart = JSON.parse(order.notes);
+        const cart = typeof order.cart === 'string' ? JSON.parse(order.cart) : order.cart;
         if (!Array.isArray(cart)) return;
         const { logStockMovement } = require('./inventory_manager');
         

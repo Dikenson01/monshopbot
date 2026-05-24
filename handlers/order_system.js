@@ -557,7 +557,8 @@ function setupOrderSystem(bot) {
     });
 
     bot.action('clear_cart', async (ctx) => {
-        await ctx.answerCbQuery(t(ctx, 'msg_panier_vid', "Panier vidé 🗑️"));
+        const user = ctx.state?.user || await getUser(`${ctx.platform}_${ctx.from.id}`);
+        await ctx.answerCbQuery(t(user, 'msg_panier_vid', "Panier vidé 🗑️"));
         const settings = (ctx.state?.settings || await getAppSettings());
         const userId = `${ctx.platform}_${ctx.from.id}`;
         userCarts.delete(userId);
@@ -1337,7 +1338,7 @@ function setupOrderSystem(bot) {
             status: orderSupplierId ? 'supplier_pending' : 'pending',
             discount_applied: discount,
             scheduled_at: pending.scheduled_at || null,
-            notes: JSON.stringify(pending.cart || []) // Sauvegarde du panier pour gestion du stock après confirmation
+            cart: JSON.stringify(pending.cart || []) // Sauvegarde du panier pour gestion du stock après confirmation
         };
 
         const settings = ctx.state?.settings || await getAppSettings();

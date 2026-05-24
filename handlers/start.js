@@ -122,7 +122,7 @@ function setupStartHandler(bot) {
                         [Markup.button.callback(settings.btn_verify_sub || '✅ Vérifier / Nouveau Lien', 'check_sub')]
                     ]);
 
-                    return await safeEdit(ctx, subText, {
+                    return await safeEdit(user, subText, {
                         photo: settings.welcome_photo || null,
                         ...subKeyboard
                     });
@@ -178,7 +178,7 @@ function setupStartHandler(bot) {
                 
                 const restrictedKeyboard = Markup.inlineKeyboard(b);
 
-                return await safeEdit(ctx, restrictedText, {
+                return await safeEdit(user, restrictedText, {
                     photo: settings.welcome_photo || null,
                     ...restrictedKeyboard
                 });
@@ -252,7 +252,7 @@ function setupStartHandler(bot) {
             const isLivreur = registeredUser.is_livreur;
 
             const keyboard = isLivreur ? await getLivreurMenuKeyboard(ctx, settings, registeredUser, hasActive, isAdminUser) : await getMainMenuKeyboard(ctx, settings, registeredUser, isFournisseur, isAdminUser);
-            await safeEdit(ctx, welcomeText, {
+            await safeEdit(user, welcomeText, {
                 photo: settings.welcome_photo || null,
                 ...keyboard
             });
@@ -300,14 +300,15 @@ function setupStartHandler(bot) {
     });
 
     bot.action('check_sub', async (ctx) => {
+        const user = ctx.state?.user || await getUser(`${ctx.platform}_${ctx.from.id}`);
         await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
         if (ctx.platform === 'telegram' && settings.force_subscribe) {
             const isSubscribed = await checkSubscription(bot, ctx, settings);
             if (!isSubscribed) {
-                return ctx.reply(t(ctx, 'msg_vous_n_tes_pas_enco', "❌ Vous n\\'êtes pas encore abonné au canal. Veuillez cliquer sur \"Rejoindre le Canal\" puis réessayer."), { parse_mode: 'HTML' });
+                return ctx.reply(t(user, 'msg_vous_n_tes_pas_enco', "❌ Vous n\\'êtes pas encore abonné au canal. Veuillez cliquer sur \"Rejoindre le Canal\" puis réessayer."), { parse_mode: 'HTML' });
             } else {
-                ctx.reply(t(ctx, 'msg_abonnement_v_rifi_a', "✅ Abonnement vérifié avec succès !"), { parse_mode: 'HTML' });
+                ctx.reply(t(user, 'msg_abonnement_v_rifi_a', "✅ Abonnement vérifié avec succès !"), { parse_mode: 'HTML' });
                 // Simuler une commande /start pour réévaluer la logique utilisateur
                 return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
             }
@@ -323,12 +324,13 @@ function setupStartHandler(bot) {
     bot.action('user_settings', async (ctx) => {
         await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
+        const user = ctx.state.user || await getUser(ctx.platform + '_' + ctx.from.id);
         const text = `⚙️ <b>RÉGLAGES</b>\n\nQue souhaitez-vous modifier ?`;
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback('🌐 Langue / Language', 'set_language_menu')],
             [Markup.button.callback(t(user, 'btn_back_menu', '◀️ Menu'), 'main_menu')]
         ]);
-        return safeEdit(ctx, text, keyboard);
+        return safeEdit(user, text, keyboard);
     });
 
     bot.action('set_language_menu', async (ctx) => {
@@ -342,14 +344,14 @@ function setupStartHandler(bot) {
             [Markup.button.callback('🇩🇪 Deutsch', 'set_lang_de')],
             [Markup.button.callback('◀️ Retour aux réglages', 'user_settings')]
         ]);
-        return safeEdit(ctx, text, keyboard);
+        return safeEdit(user, text, keyboard);
     });
 
     bot.action('my_referrals', async (ctx) => {
         await ctx.answerCbQuery();
         const settings = ctx.state?.settings || await getAppSettings();
-        const user = ctx.state?.user;
-        if (!user) return ctx.reply(t(ctx, 'msg_utilisateur_introuv', "⚠️ Utilisateur introuvable."));
+        const user = ctx.state?.user || await getUser(`${ctx.platform}_${ctx.from.id}`);
+        if (!user) return ctx.reply(t(user, 'msg_utilisateur_introuv', "⚠️ Utilisateur introuvable."));
 
         const text = `🎁 <b>PARRAINAGE</b>\n\n` +
             `Invitez vos amis et gagnez des récompenses !\n\n` +
@@ -362,7 +364,7 @@ function setupStartHandler(bot) {
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback(t(user, 'btn_back_menu', '◀️ Menu'), 'main_menu')]
         ]);
-        return safeEdit(ctx, text, keyboard);
+        return safeEdit(user, text, keyboard);
     });
 
     bot.action('client_mode_force', async (ctx) => {
@@ -425,7 +427,7 @@ function setupStartHandler(bot) {
         try {
             const { saveUserLocation } = require('../services/database');
             await saveUserLocation(userId, loc.latitude, loc.longitude);
-            await ctx.reply(t(ctx, 'msg_position_enregistr', "✅ Position enregistrée."));
+            await ctx.reply(t(user, 'msg_position_enregistr', "✅ Position enregistrée."));
         } catch (e) { console.error('Location error:', e); }
     });
 
@@ -439,21 +441,22 @@ function setupStartHandler(bot) {
             try {
                 const { registerUser } = require('../services/database');
                 await registerUser(ctx.from, ctx.platform, ref);
-                return ctx.reply(t(ctx, 'msg_code_parrainage_val', "🎉 Code parrainage validé !"));
+                return ctx.reply(t(user, 'msg_code_parrainage_val', "🎉 Code parrainage validé !"));
             } catch (e) { }
         }
         return next();
     });
 
     bot.action('check_sub', async (ctx) => {
+        const user = ctx.state?.user || await getUser(`${ctx.platform}_${ctx.from.id}`);
         const settings = await getAppSettings();
         const isSubscribed = await checkSubscription(bot, ctx, settings);
         
         if (!isSubscribed) {
-            return await ctx.answerCbQuery(t(ctx, 'msg_vous_n_tes_pas_enco', "❌ Vous n\'êtes pas encore abonné au canal !"), { show_alert: true });
+            return await ctx.answerCbQuery(t(user, 'msg_vous_n_tes_pas_enco', "❌ Vous n\'êtes pas encore abonné au canal !"), { show_alert: true });
         }
         
-        await ctx.answerCbQuery(t(ctx, 'msg_merci_pour_votre_ab', "✅ Merci pour votre abonnement !"));
+        await ctx.answerCbQuery(t(user, 'msg_merci_pour_votre_ab', "✅ Merci pour votre abonnement !"));
         // Relancer le start
         return bot.handleUpdate({ ...ctx.update, message: { text: '/start', from: ctx.from } });
     });
@@ -502,7 +505,7 @@ async function showMainMenu(ctx) {
         return await safeEdit(ctx, livreurText, { photo: settings.welcome_photo || null, ...keyboard });
     }
 
-    const text = t(registeredUser || user, 'menu_main', `📋 <b>Menu principal</b>`);
+    const text = t(user, 'menu_main', `📋 <b>Menu principal</b>`);
     const supplier = await getSupplierByTelegramId(String(ctx.from.id));
     const isFournisseur = !!supplier;
     const keyboard = await getMainMenuKeyboard(ctx, settings, user, isFournisseur);
@@ -560,7 +563,9 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
 
     // Ligne 1 : Commander (Gros bouton principal)
     buttons.push([Markup.button.callback(`${settings.ui_icon_catalog || '🛍'} ${t(user, 'btn_catalog_classic', 'CATALOGUE CLASSIQUE')}`, 'view_catalog')]);
-    buttons.push([Markup.button.webApp(t(user, 'btn_catalog_miniapp', '✨ CATALOGUE MINI APP ✨'), catalogUrl)]);
+    if (ctx.platform !== 'whatsapp') {
+        buttons.push([Markup.button.webApp(t(user, 'btn_catalog_miniapp', '✨ CATALOGUE MINI APP ✨'), catalogUrl)]);
+    }
     
     // Suivi commande (Uniquement si panier plein)
     const { userCarts } = require('./order_system');
