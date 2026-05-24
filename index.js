@@ -84,6 +84,7 @@ async function bootstrap() {
         if (!waSessionId) {
             const altKey = Object.keys(process.env).find(k => k.startsWith('WHATSAPP_SESSION_ID') || k.startsWith('WHATSAPPD_SESSION_ID'));
             if (altKey) waSessionId = process.env[altKey];
+            else waSessionId = 'monshopbot_wa'; // Valeur par défaut pour toujours démarrer WhatsApp
         }
         if (waSessionId) {
             const was = new WhatsAppSessionChannel({ sessionId: waSessionId });
