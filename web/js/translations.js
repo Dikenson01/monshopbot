@@ -3461,16 +3461,19 @@ function initTranslations() {
                 document.querySelectorAll('[data-i18n]').forEach(el => {
                     const key = el.getAttribute('data-i18n');
                     if (translations[currentLang] && translations[currentLang][key]) {
-                        if (el.innerHTML !== translations[currentLang][key]) {
+                        // Use a custom attribute to prevent infinite loops
+                        if (el.dataset.i18nDone !== currentLang) {
                             el.innerHTML = translations[currentLang][key];
+                            el.dataset.i18nDone = currentLang;
                         }
                     }
                 });
                 document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                     const key = el.getAttribute('data-i18n-placeholder');
                     if (translations[currentLang] && translations[currentLang][key]) {
-                        if (el.placeholder !== translations[currentLang][key]) {
+                        if (el.dataset.i18nPlaceholderDone !== currentLang) {
                             el.placeholder = translations[currentLang][key];
+                            el.dataset.i18nPlaceholderDone = currentLang;
                         }
                     }
                 });
