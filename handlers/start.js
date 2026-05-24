@@ -255,9 +255,42 @@ function setupStartHandler(bot) {
                 ...keyboard
             });
 
+            
             if (ctx.telegram) {
                 await updateMenuButton(ctx, registeredUser, settings);
+                
+                // Force command translation per user
+                const cmdLang = registeredUser.language_code || 'fr';
+                const cmds = {
+                    'en': [
+                        { command: 'start', description: '🏠 Start the bot / Home' },
+                        { command: 'menu', description: '🛒 View catalog' },
+                        { command: 'orders', description: '📦 My orders' },
+                        { command: 'help', description: '❓ Help and support' }
+                    ],
+                    'de': [
+                        { command: 'start', description: '🏠 Bot starten / Startseite' },
+                        { command: 'menu', description: '🛒 Katalog ansehen' },
+                        { command: 'orders', description: '📦 Meine Bestellungen' },
+                        { command: 'help', description: '❓ Hilfe und Support' }
+                    ],
+                    'es': [
+                        { command: 'start', description: '🏠 Iniciar el bot / Inicio' },
+                        { command: 'menu', description: '🛒 Ver catálogo' },
+                        { command: 'orders', description: '📦 Mis pedidos' },
+                        { command: 'help', description: '❓ Ayuda y soporte' }
+                    ],
+                    'fr': [
+                        { command: 'start', description: '🏠 Lancer le bot / Accueil' },
+                        { command: 'menu', description: '🛒 Voir le catalogue' },
+                        { command: 'orders', description: '📦 Mes commandes' },
+                        { command: 'help', description: '❓ Aide et support' }
+                    ]
+                };
+                const userCmds = cmds[cmdLang] || cmds['fr'];
+                await ctx.telegram.setMyCommands(userCmds, { scope: { type: 'chat', chat_id: ctx.chat.id } }).catch(()=>{});
             }
+
 
         } catch (error) {
             console.error('❌ Erreur /start:', error);
@@ -475,7 +508,42 @@ async function showMainMenu(ctx) {
         ...keyboard
     });
     
+    
     await updateMenuButton(ctx, user, settings);
+    
+    // Force command translation per user when returning to menu
+    if (ctx.telegram && ctx.chat) {
+        const cmdLang = user?.language_code || 'fr';
+        const cmds = {
+            'en': [
+                { command: 'start', description: '🏠 Start the bot / Home' },
+                { command: 'menu', description: '🛒 View catalog' },
+                { command: 'orders', description: '📦 My orders' },
+                { command: 'help', description: '❓ Help and support' }
+            ],
+            'de': [
+                { command: 'start', description: '🏠 Bot starten / Startseite' },
+                { command: 'menu', description: '🛒 Katalog ansehen' },
+                { command: 'orders', description: '📦 Meine Bestellungen' },
+                { command: 'help', description: '❓ Hilfe und Support' }
+            ],
+            'es': [
+                { command: 'start', description: '🏠 Iniciar el bot / Inicio' },
+                { command: 'menu', description: '🛒 Ver catálogo' },
+                { command: 'orders', description: '📦 Mis pedidos' },
+                { command: 'help', description: '❓ Ayuda y soporte' }
+            ],
+            'fr': [
+                { command: 'start', description: '🏠 Lancer le bot / Accueil' },
+                { command: 'menu', description: '🛒 Voir le catalogue' },
+                { command: 'orders', description: '📦 Mes commandes' },
+                { command: 'help', description: '❓ Aide et support' }
+            ]
+        };
+        const userCmds = cmds[cmdLang] || cmds['fr'];
+        await ctx.telegram.setMyCommands(userCmds, { scope: { type: 'chat', chat_id: ctx.chat.id } }).catch(()=>{});
+    }
+
 }
 
 async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, isAdminUser = false) {
@@ -591,7 +659,7 @@ async function updateMenuButton(ctx, user, settings, forceClient = false) {
         } else {
             await ctx.telegram.setChatMenuButton(ctx.chat.id, {
                 type: 'web_app',
-                text: `${settings.ui_icon_catalog || '🛍️'} Catalogue`,
+                text: `${settings.ui_icon_catalog || '🛍️'} ` + require('../services/i18n').t({ language_code: langCode }, 'btn_catalog', 'Catalogue'),
                 web_app: { url: catalogUrl }
             }).catch(() => {});
         }
