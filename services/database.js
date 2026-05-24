@@ -397,11 +397,6 @@ async function getProducts(onlyActive = false) {
             image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Enterprise+VIP', is_active: true, is_featured: false, priority: 4, promo: '-50€ de remise immédiate'
         },
         {
-            id: 'mod_payment', name: '💳 Paiement Stripe & Crypto Intégré', category: 'MODULES SUR MESURE', price: 150,
-            description: 'Encaissement automatisé et sécurisé par carte bancaire via Stripe et portefeuilles cryptographiques (USDT/BTC/ETH).',
-            image_url: 'https://placehold.co/400x300/222/00ff88?text=Module+Paiement', is_active: true, is_featured: false, priority: 5
-        },
-        {
             id: 'mod_livreur', name: '🚴 Système Console Livreur & Tracking', category: 'MODULES SUR MESURE', price: 200,
             description: 'Interface WebApp dédiée aux livreurs, suivi GPS en direct, calcul du temps estimé d\'arrivée (ETA) et chat de coordination sécurisé.',
             image_url: 'https://placehold.co/400x300/222/ffaa00?text=Console+Livreur', is_active: true, is_featured: false, priority: 6
@@ -452,11 +447,6 @@ async function getProduct(id) {
             id: 'pack_enterprise', name: '🚀 Pack Enterprise (Sur mesure)', category: 'PACKS BOT', price: 950,
             description: 'Solution sur mesure clé en main. Architecture dédiée haute performance, intégration API personnalisée et accompagnement stratégique dédié.',
             image_url: 'https://placehold.co/400x300/111/fff?text=Pack+Enterprise+VIP', is_active: true, is_featured: false, priority: 4, promo: '-50€ de remise immédiate'
-        },
-        {
-            id: 'mod_payment', name: '💳 Paiement Stripe & Crypto Intégré', category: 'MODULES SUR MESURE', price: 150,
-            description: 'Encaissement automatisé et sécurisé par carte bancaire via Stripe et portefeuilles cryptographiques (USDT/BTC/ETH).',
-            image_url: 'https://placehold.co/400x300/222/00ff88?text=Module+Paiement', is_active: true, is_featured: false, priority: 5
         },
         {
             id: 'mod_livreur', name: '🚴 Système Console Livreur & Tracking', category: 'MODULES SUR MESURE', price: 200,
