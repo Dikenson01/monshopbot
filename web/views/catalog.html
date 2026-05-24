@@ -543,7 +543,8 @@
 
         function getImgUrl(product) {
             const media = getAllMedia(product);
-            return media.length > 0 ? media[0].url : null;
+            const imgs = media.filter(m => m.type !== 'video' && !m.url.match(/\.(mp4|webm|mov)$/i));
+            return imgs.length > 0 ? imgs[0].url : (media.length > 0 ? media[0].url : null);
         }
 
         function renderMediaGallery(product, containerId) {
