@@ -82,10 +82,10 @@ async function bootstrap() {
         const WhatsAppSessionChannel = require('./channels/WhatsAppSessionChannel');
         let waSessionId = process.env.WHATSAPPD_SESSION_ID || process.env.WHATSAPP_SESSION_ID || process.env.SESSION_ID;
         if (!waSessionId) {
-            const altKey = Object.keys(process.env).find(k => k.startsWith('WHATSAPP_SESSION_ID') || k.startsWith('WHATSAPPD_SESSION_ID'));
+            const altKey = Object.keys(process.env).find(k => (k.startsWith('WHATSAPP_SESSION_ID') || k.startsWith('WHATSAPPD_SESSION_ID')) && process.env[k]);
             if (altKey) waSessionId = process.env[altKey];
-            else waSessionId = 'monshopbot_wa'; // Valeur par défaut pour toujours démarrer WhatsApp
         }
+        if (!waSessionId) waSessionId = 'monshopbot_wa'; // Force fallback if empty
         if (waSessionId) {
             const was = new WhatsAppSessionChannel({ sessionId: waSessionId });
             
