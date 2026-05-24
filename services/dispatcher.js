@@ -115,13 +115,14 @@ class Dispatcher {
             incomingMsg._settings = settings;
 
             if (isCallback) {
-                const docId = `telegram_${userId}`;
+                const actualPlatform = channel ? channel.id || channel.type || 'telegram' : 'telegram';
+                const docId = `${actualPlatform}_${userId}`;
                 const db = require('./database');
                 let entry = db._userCache?.get(docId);
                 registeredUser = entry?.data || null;
                 
                 if (!registeredUser) {
-                    registeredUser = await db.getUser(userId, 'telegram');
+                    registeredUser = await db.getUser(userId, actualPlatform);
                 }
             } else {
                 const reg = await registerUser({
@@ -129,7 +130,7 @@ class Dispatcher {
                     first_name: incomingMsg.name || 'Utilisateur Telegram',
                     username: incomingMsg.username || '',
                     type: 'user'
-                }, 'telegram');
+                }, channel ? channel.id || channel.type || 'telegram' : 'telegram');
 
                 registeredUser = reg?.user;
                 isNew = !!reg?.isNew;
@@ -196,7 +197,7 @@ class Dispatcher {
 
     _isPrivilegedUser(userId, user, settings) {
         if (user?.is_livreur) return true;
-        const cleanId = String(userId).replace('telegram_', '');
+        const cleanId = String(userId).replace(/^.*?_/, '');
         const adminIds = String(settings?.admin_telegram_id || '').match(/\d+/g) || [];
         const envAdmin = String(process.env.ADMIN_TELEGRAM_ID || '').match(/\d+/g)?.[0] || '';
         return adminIds.includes(cleanId) || cleanId === envAdmin;
@@ -209,7 +210,7 @@ class Dispatcher {
 
         const ctx = {
             channel: channel,
-            platform: 'telegram',
+            platform: channel ? channel.id || channel.type || 'telegram' : 'telegram',
             from: { id: userId, first_name: msg.name, username: msg.user?.username || msg.username || '', is_bot: false },
             chat: { id: userId, type: 'private' },
             state: { user: msg.user, settings: settings },
