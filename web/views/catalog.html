@@ -278,7 +278,7 @@
         </div>
 
         <div class="featured-section" style="margin-top:15px;">
-            <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;">${t("recommended_formulas", "LES FORMULES RECOMMANDÉES")}</div>
+            <div style="font-size:11px; font-weight:900; opacity:0.3; margin-bottom:12px; letter-spacing:1px;"><span data-i18n="recommended_formulas">LES FORMULES RECOMMANDÉES</span></div>
             <div class="carousel" id="bots-featured-carousel"></div>
         </div>
 
@@ -545,8 +545,14 @@
 
         function getImgUrl(product) {
             const media = getAllMedia(product);
-            const imgs = media.filter(m => m.type !== 'video' && !m.url.match(/\.(mp4|webm|mov)$/i));
-            return imgs.length > 0 ? imgs[0].url : (media.length > 0 ? media[0].url : null);
+            const imgs = media.filter(m => {
+                const u = typeof m === 'string' ? m : (m && m.url ? m.url : '');
+                const type = m && m.type ? m.type : 'image';
+                return type !== 'video' && !u.match(/\.(mp4|webm|mov)$/i);
+            });
+            const firstImg = imgs.length > 0 ? imgs[0] : (media.length > 0 ? media[0] : null);
+            if (!firstImg) return null;
+            return typeof firstImg === 'string' ? firstImg : firstImg.url;
         }
 
         function renderMediaGallery(product, containerId) {
