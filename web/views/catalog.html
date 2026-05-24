@@ -1552,7 +1552,7 @@
                 totalRow.style.display = 'flex';
                 
                 cart.forEach((i, idx) => {
-                    const p = allProducts.find(x => x.id === i.id);
+                    const p = allProducts.find(x => String(x.id) === String(i.id));
                     const img = getImgUrl(p) || `https://placehold.co/100x100/111/fff?text=${encodeURIComponent(i.name.substring(0,5))}`;
                     
                     let descHtml = '';

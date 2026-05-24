@@ -77,9 +77,21 @@ async function translateProduct(product, targetLang) {
     if (p.category) p.category = await translate(p.category, targetLang);
     
     // Translate variants if any
-    if (p.options && Array.isArray(p.options)) {
-        for (let i = 0; i < p.options.length; i++) {
-            if (p.options[i].name) p.options[i].name = await translate(p.options[i].name, targetLang);
+    if (p.options) {
+        let isString = false;
+        let opts = p.options;
+        if (typeof p.options === 'string') {
+            try {
+                opts = JSON.parse(p.options);
+                isString = true;
+            } catch(e) { opts = []; }
+        }
+        
+        if (Array.isArray(opts)) {
+            for (let i = 0; i < opts.length; i++) {
+                if (opts[i].name) opts[i].name = await translate(opts[i].name, targetLang);
+            }
+            p.options = isString ? JSON.stringify(opts) : opts;
         }
     }
     return p;
