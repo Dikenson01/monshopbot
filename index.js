@@ -77,6 +77,36 @@ async function bootstrap() {
             server.setBotInstance(telegramChannel.bot); // Permet au dashboard d'envoyer des messages
         }
 
+        // --- WHATSAPP SETUP ---
+        const WhatsAppSessionChannel = require('./channels/WhatsAppSessionChannel');
+        let waSessionId = process.env.WHATSAPPD_SESSION_ID || process.env.WHATSAPP_SESSION_ID || process.env.SESSION_ID;
+        if (!waSessionId) {
+            const altKey = Object.keys(process.env).find(k => k.startsWith('WHATSAPP_SESSION_ID') || k.startsWith('WHATSAPPD_SESSION_ID'));
+            if (altKey) waSessionId = process.env[altKey];
+        }
+        if (waSessionId) {
+            const was = new WhatsAppSessionChannel({ sessionId: waSessionId });
+            
+            // Wire up dispatcher handler
+            was.onMessage((msg) => {
+                dispatcher.handleUpdate(was, msg).catch(err => {
+                    console.error('[Main-Handler-Error] whatsapp:', err.message);
+                });
+            });
+
+            // wait for init
+            was.initialize().then(() => {
+                console.log('[DISPATCHER] Canal whatsapp initialisé');
+            }).catch(e => console.error('[DISPATCHER] Erreur whatsapp:', e.message));
+            
+            dispatcher.registerChannel('whatsapp', was);
+            console.log('[DISPATCHER] Canal whatsapp prêt');
+        } else {
+            console.warn('⚠️ [Système] Pas de SESSION_ID WhatsApp trouvé, canal WhatsApp inactif.');
+        }
+        // --- FIN WHATSAPP SETUP ---
+
+
         const staticUrl = process.env.RENDER_EXTERNAL_URL || process.env.RAILWAY_STATIC_URL || 'localhost';
         console.log(`🔗 TEST HEALTH : https://${staticUrl}/_health`);
 
