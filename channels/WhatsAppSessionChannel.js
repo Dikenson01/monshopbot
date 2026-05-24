@@ -288,7 +288,15 @@ class WhatsAppSessionChannel extends Channel {
                     if (normalized && !normalized.includes('@lid')) {
                         remoteJid = normalized;
                     } else if (isMe) {
-                        const selfJidClean = selfJid?.split(':')[0]?.split('@')[0];
+                        
+                // [🛡️ CRITIQUE] Ignorer les groupes WhatsApp
+                if (remoteJid?.endsWith('@g.us')) {
+                    waLog(`[WA-MSG] SKIP: Group message (${remoteJid})`);
+                    continue;
+                }
+                
+                const selfJidClean = selfJid?.split(':')[0]?.split('@')[0];
+
                         remoteJid = selfJidClean + '@s.whatsapp.net';
                     }
                     // Si on n'a pas pu résoudre, on garde le LID mais on ne le transforme pas en FAUX numéro
