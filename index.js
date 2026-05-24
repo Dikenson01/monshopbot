@@ -54,6 +54,7 @@ async function bootstrap() {
 
         // 3. Initialisation du Serveur Web (Dashboard)
         console.log(`[System] Initializing server on port: ${portToUse}`);
+        server.setDispatcherInstance(dispatcher);
         const app = server.createServer(portToUse);
         
         // --- IMPORTANT: Enregistrement du bot dans le serveur pour les notifs admin ---

@@ -48,7 +48,8 @@ function escapeHTML(str) {
 
 // configuration handled in index.js
 
-const { dispatcher } = require('./services/dispatcher');
+let _dispatcher = null;
+function setDispatcherInstance(d) { _dispatcher = d; }
 const { registry } = require('./channels/ChannelRegistry');
 
 // Référence partagée au bot Telegram (définie par index.js)
@@ -157,7 +158,7 @@ function createServer(port = 8080) {
     // --- DEBUT INJECTION WHATSAPP ---
     // Webhook WhatsApp (Cloud API)
     app.post('/api/whatsapp/webhook', async (req, res) => {
-        const waChannel = dispatcher.channels.get('whatsapp');
+        const waChannel = _dispatcher.channels.get('whatsapp');
         if (waChannel && waChannel.handleWebhook) {
             await waChannel.handleWebhook(req, res);
         } else {
@@ -166,7 +167,7 @@ function createServer(port = 8080) {
     });
 
     app.get('/api/whatsapp/webhook', (req, res) => {
-        const waChannel = dispatcher.channels.get('whatsapp');
+        const waChannel = _dispatcher.channels.get('whatsapp');
         if (waChannel && waChannel.handleWebhook) {
             waChannel.handleWebhook(req, res);
         } else {
@@ -188,7 +189,7 @@ function createServer(port = 8080) {
     // Redémarrage WhatsApp - nettoie la session et relance le QR
     app.get('/wa-restart', authMiddleware, async (req, res) => {
         try {
-            const waSession = dispatcher.channels.get('whatsapp');
+            const waSession = _dispatcher.channels.get('whatsapp');
             const redirect = req.query.redirect;
 
             if (waSession && waSession.restart) {
@@ -232,7 +233,7 @@ function createServer(port = 8080) {
                 return res.status(400).send('Numéro de téléphone manquant. Utilisez ?phone=337XXXXXXXX');
             }
 
-            const waSession = dispatcher.channels.get('whatsapp');
+            const waSession = _dispatcher.channels.get('whatsapp');
             if (waSession && waSession.requestPairingCode) {
                 const code = await waSession.requestPairingCode(phoneNumber);
                 res.send(`<html><body style="background:#111;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column">
@@ -257,7 +258,7 @@ function createServer(port = 8080) {
     // [🛡️ RESET] Endpoint POST pour purger la session WhatsApp et relancer proprement
     app.post('/wa-connector/reset', async (req, res) => {
         try {
-            const waSession = dispatcher.channels.get('whatsapp');
+            const waSession = _dispatcher.channels.get('whatsapp');
             if (waSession) {
                 console.log('[WA-RESET] Purge de session demandée via dashboard...');
                 await waSession.restart({ pairingPhone: waSession.pairingPhone });
@@ -277,7 +278,7 @@ function createServer(port = 8080) {
             let phoneNumber = settings.private_contact_wa_url?.replace('https://wa.me/', '').replace(/[^0-9]/g, '');
             if (!phoneNumber) phoneNumber = process.env.WHATSAPP_PAIRING_NUMBER;
 
-            const waSession = dispatcher.channels.get('whatsapp');
+            const waSession = _dispatcher.channels.get('whatsapp');
             let lastError = null;
 
             // Support polling JSON pour mise à jour dynamique sans rechargement
@@ -2916,5 +2917,5 @@ function createServer(port = 8080) {
     return app;
 }
 
-module.exports = { createServer, setBotInstance, getBotInstance };
+module.exports = { createServer, setBotInstance, getBotInstance, setDispatcherInstance };
 
