@@ -1928,7 +1928,10 @@ async function useSupabaseAuthState(sessionId) {
             }
         },
         saveCreds: () => writeData('creds', creds),
-        clearSession: clearAllData
+        clearSession: clearAllData,
+        claimLock: async () => {},
+        checkLock: async () => null,
+        releaseLock: async () => {}
     };
 }
 
