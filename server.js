@@ -1658,11 +1658,15 @@ function createServer(port = 8080) {
                 }
                 
                 let cart = o.cart;
-                if (targetLang !== 'fr' && Array.isArray(cart)) {
-                    cart = await Promise.all(cart.map(async item => {
-                        const tName = await translate(item.name, targetLang);
-                        return { ...item, name: tName };
-                    }));
+                if (targetLang !== 'fr') {
+                    if (Array.isArray(cart)) {
+                        cart = await Promise.all(cart.map(async item => {
+                            const tName = await translate(item.name, targetLang);
+                            return { ...item, name: tName };
+                        }));
+                    }
+                    if (o.product_name) o.product_name = await translate(o.product_name, targetLang);
+                    if (o.product) o.product = await translate(o.product, targetLang);
                 }
                 
                 return {

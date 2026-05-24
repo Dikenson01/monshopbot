@@ -1,6 +1,3 @@
-<!DOCTYPE html>
-<html translate="no" lang="fr">
-<head>
     <meta name="google" content="notranslate">
     <meta name="google" content="notranslate">
     <meta charset="UTF-8">
@@ -194,8 +191,6 @@
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     </style>
     <script src="/js/translations.js?v=1779629206"></script>
-</head>
-<body>
     <div id="loading-screen">
         <div style="margin-bottom:15px; text-align:center;">
             <img id="main-logo-1" class="app-dynamic-logo" src="/public/img/logo.png" style="width:100px; height:100px; object-fit:contain; border-radius:50%; margin-bottom:10px;" onerror="this.onerror=null; document.getElementById('loading-text-logo').style.display='block';">
@@ -2565,5 +2560,3 @@
     
     <!-- End Google Translate -->
 
-</body>
-</html>

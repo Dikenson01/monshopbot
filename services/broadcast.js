@@ -237,7 +237,7 @@ async function sendToUser(user, message, unifiedMediaList = [], options = {}) {
             const method = m.type === 'video' ? 'sendVideo' : 'sendPhoto';
             await _bot.bot.telegram[method](chatId, m.file_id || m.url, { caption, parse_mode: 'HTML', ...(_protect ? { protect_content: true } : {}), ...(keyboard || {}) });
         } else {
-            await _bot.bot.telegram.sendMessage(chatId, localizedMessage, { parse_mode: 'HTML', ...(_protect ? { protect_content: true } : {}), ...(keyboard || {}) });
+            await _bot.bot.telegram.sendMessage(chatId, finalMessage, { parse_mode: 'HTML', ...(_protect ? { protect_content: true } : {}), ...(keyboard || {}) });
         }
         return { success: true };
     } catch (error) {

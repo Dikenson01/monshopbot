@@ -862,16 +862,7 @@ const translations = {
         "Membre ShopTonBot": "Membre ShopTonBot",
         "Description...": "Description...",
         "Commande": "Commande",
-        "TITRE": "TITRE",
-        "no_saved_addr": "Aucune adresse enregistrée.",
-        "click_addr_edit": "💡 Cliquez sur une adresse pour l'éditer ou la définir par défaut",
-        "addr_type": "Type d'adresse",
-        "addr_home": "Domicile",
-        "addr_office": "Bureau",
-        "addr_friend": "Ami(e)",
-        "addr_hotel": "Hôtel",
-        "addr_other": "Autre",
-        "add_address": "AJOUTER UNE ADRESSE"
+        "TITRE": "TITRE"
     },
     "en": {
         "discussion_entamee": "Chat started",
@@ -1736,16 +1727,7 @@ const translations = {
         "nav_products": "Products",
         "nav_chat": "Chat",
         "nav_settings": "Settings",
-        "nav_menu": "Menu",
-        "no_saved_addr": "No saved addresses.",
-        "click_addr_edit": "💡 Click an address to edit or set as default",
-        "addr_type": "Address type",
-        "addr_home": "Home",
-        "addr_office": "Office",
-        "addr_friend": "Friend",
-        "addr_hotel": "Hotel",
-        "addr_other": "Other",
-        "add_address": "ADD AN ADDRESS"
+        "nav_menu": "Menu"
     },
     "es": {
         "discussion_entamee": "Chat iniciado",
@@ -2610,16 +2592,7 @@ const translations = {
         "nav_products": "Productos",
         "nav_chat": "Chat",
         "nav_settings": "Ajustes",
-        "nav_menu": "Menú",
-        "no_saved_addr": "No hay direcciones guardadas.",
-        "click_addr_edit": "💡 Haz clic en una dirección para editarla o establecerla como predeterminada",
-        "addr_type": "Tipo de dirección",
-        "addr_home": "Casa",
-        "addr_office": "Oficina",
-        "addr_friend": "Amigo/a",
-        "addr_hotel": "Hotel",
-        "addr_other": "Otro",
-        "add_address": "AÑADIR UNA DIRECCIÓN"
+        "nav_menu": "Menú"
     },
     "de": {
         "discussion_entamee": "Chat gestartet",
@@ -3484,121 +3457,7 @@ const translations = {
         "status_refused": "ABGELEHNT",
         "btn_cancel": "STORNIEREN",
         "btn_reorder": "ERNEUT BESTELLEN",
-        "btn_help": "HELFEN",
-        "no_saved_addr": "Keine gespeicherten Adressen.",
-        "click_addr_edit": "💡 Klicken Sie auf eine Adresse, um sie zu bearbeiten oder als Standard festzulegen",
-        "addr_type": "Adresstyp",
-        "addr_home": "Zuhause",
-        "addr_office": "Büro",
-        "addr_friend": "Freund(in)",
-        "addr_hotel": "Hotel",
-        "addr_other": "Andere",
-        "add_address": "ADRESSE HINZUFÜGEN"
+        "btn_help": "HELFEN"
     }
-};
-
-
-
-
-let currentLang = 'fr';
-
-function initTranslations() {
-    // Determine language from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('lang')) {
-        currentLang = urlParams.get('lang');
-    } else if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) {
-        currentLang = Telegram.WebApp.initDataUnsafe.user.language_code || 'fr';
-    } else if (navigator && navigator.language) {
-        currentLang = navigator.language.split('-')[0];
-    }
-
-    if (!translations[currentLang]) {
-        currentLang = 'fr';
-    }
-    
-    window.currentLang = currentLang;
-
-    // Add MutationObserver to catch dynamically added elements
-    if (!window.i18nObserver && typeof document !== 'undefined') {
-        window.i18nObserver = new MutationObserver((mutations) => {
-            let shouldTranslate = false;
-            for (const m of mutations) {
-                if (m.addedNodes.length > 0) {
-                    shouldTranslate = true;
-                    break;
-                }
-            }
-            if (shouldTranslate) {
-                // translate only new elements or just re-run querySelectorAll
-                document.querySelectorAll('[data-i18n]').forEach(el => {
-                    const key = el.getAttribute('data-i18n');
-                    if (translations[currentLang] && translations[currentLang][key]) {
-                        // Use a custom attribute to prevent infinite loops
-                        if (el.dataset.i18nDone !== currentLang) {
-                            el.innerHTML = translations[currentLang][key];
-                            el.dataset.i18nDone = currentLang;
-                        }
-                    }
-                });
-                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                    const key = el.getAttribute('data-i18n-placeholder');
-                    if (translations[currentLang] && translations[currentLang][key]) {
-                        if (el.dataset.i18nPlaceholderDone !== currentLang) {
-                            el.placeholder = translations[currentLang][key];
-                            el.dataset.i18nPlaceholderDone = currentLang;
-                        }
-                    }
-                });
-            }
-        });
-        window.i18nObserver.observe(document.body, { childList: true, subtree: true });
-    }
-
-
-    // Apply translations to DOM
-    
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (translations[currentLang] && translations[currentLang][key]) {
-            el.setAttribute('placeholder', translations[currentLang][key]);
-            el.classList.add('notranslate');
-        } else if (translations['fr'] && translations['fr'][key]) {
-            el.setAttribute('placeholder', translations['fr'][key]);
-            el.classList.add('notranslate');
-        }
-    });
-
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        el.classList.add('notranslate');
-        if (translations[currentLang] && translations[currentLang][key]) {
-            if (el.tagName === 'INPUT' && el.type === 'text') {
-                el.placeholder = translations[currentLang][key];
-            } else {
-                el.innerText = translations[currentLang][key];
-            }
-        }
-    });
 }
-
-function t(key, defaultTextOrVariables = {}, vars = {}) {
-    let defaultText = '';
-    let variables = {};
-    if (typeof defaultTextOrVariables === 'string') {
-        defaultText = defaultTextOrVariables;
-        variables = vars;
-    } else {
-        variables = defaultTextOrVariables;
-    }
-    let text = (translations[currentLang] && translations[currentLang][key]) ? translations[currentLang][key] : (translations['fr'][key] || defaultText || key);
-    for (const [k, v] of Object.entries(variables)) {
-        text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
-    }
-    return text;
-}
-
-// Auto-init on load if in browser environment
-if (typeof window !== 'undefined') {
-    document.addEventListener('DOMContentLoaded', initTranslations);
-}
+module.exports = translations;
