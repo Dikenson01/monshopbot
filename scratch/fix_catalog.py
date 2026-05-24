@@ -1,20 +1,23 @@
 import re
 
-filepath = 'web/views/catalog.html'
-with open(filepath, 'r') as f:
+with open('web/views/catalog.html', 'r', encoding='utf-8') as f:
     content = f.read()
 
-# Fix 1622
-content = content.replace(r"${t(\'promo_placeholder\', \'Saisir le code...\')}", r"${t('promo_placeholder', 'Saisir le code...')}")
+# Replace category logic in renderBots
+old_bot = "const botProducts = allProducts.filter(p => p.category && (p.category.includes('PACK') || p.category.includes('MODULE')));"
+new_bot = "const botProducts = allProducts.filter(p => (p.raw_category || p.category) && ((p.raw_category || p.category).includes('PACK') || (p.raw_category || p.category).includes('MODULE')));"
+content = content.replace(old_bot, new_bot)
 
-# Fix 1710
-content = content.replace(r'${t(\'del_tag_msg\', \"💬 M\'envoyer un message en arrivant\")}', r'${t("del_tag_msg", "💬 M\'envoyer un message en arrivant")}')
+# Also category logic in renderShop
+old_shop = "const demoProducts = allProducts.filter(p => !p.category || (!p.category.includes('PACK') && !p.category.includes('MODULE')));"
+new_shop = "const demoProducts = allProducts.filter(p => !(p.raw_category || p.category) || (!(p.raw_category || p.category).includes('PACK') && !(p.raw_category || p.category).includes('MODULE')));"
+content = content.replace(old_shop, new_shop)
 
-# Fix 1723
-content = content.replace(r'${t("leave_empty_asap", "Laissez vide pour une livraison \\"Dès que possible\\"")}', r'${t("leave_empty_asap", "Laissez vide pour une livraison \"Dès que possible\"")}')
+# In renderBots, for filter logic by category tab:
+# Wait! p.category is used for display in the tab: cats = ['TOUT', ...new Set(botProducts.map(p => p.category).filter(c => c))];
+# If we filter by p.category === c, it works because c is from p.category!
 
-# Fix any other stray backslashes introduced
-content = content.replace(r"${t('del_tag_msg', \"💬 M'envoyer un message en arrivant\")}", r"${t('del_tag_msg', '💬 M\'envoyer un message en arrivant')}")
-
-with open(filepath, 'w') as f:
+with open('web/views/catalog.html', 'w', encoding='utf-8') as f:
     f.write(content)
+
+print("catalog.html fixed!")
