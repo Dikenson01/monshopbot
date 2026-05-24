@@ -217,7 +217,8 @@ async function registerUser(platformUser, platform = 'telegram', referrerId = nu
 
     const encryptedData = {
         id: docId,
-        telegram_id: String(platformUser.id),
+        doc_id: docId,
+        platform_id: String(platformUser.id),
         platform: platform,
         username: platformUser.username || '',
         first_name: platformUser.first_name || 'Utilisateur',
@@ -225,7 +226,7 @@ async function registerUser(platformUser, platform = 'telegram', referrerId = nu
         referral_code: existing?.referral_code || generateReferralCode(),
         referred_by: existing?.referred_by || referrerId,
         is_approved: existing ? existing.is_approved : autoApprove,
-        created_at: existing?.created_at || ts()
+        date_inscription: existing?.date_inscription || ts()
     };
 
     if (existing) {
@@ -243,15 +244,24 @@ async function registerUser(platformUser, platform = 'telegram', referrerId = nu
         console.error('[DB] Register error:', error.message);
         
         // 2. Si l'erreur concerne 'created_at', on réessaie sans ce champ
-        if (error.message.includes('created_at')) {
+        if (error.message.includes('created_at') || error.message.includes('date_inscription')) {
             console.log('[DB] Retrying register without created_at column...');
-            delete encryptedData.created_at;
+            delete encryptedData.created_at; delete encryptedData.date_inscription;
             const { data: data2, error: error2 } = await supabase.from(COL_USERS).upsert(encryptedData).select().single();
             if (!error2) {
                 const user = data2;
                 if (user) _userCacheSet(docId, user);
                 return { user, isNew };
+            } else {
+                console.error('[DB] Retry register error:', error2.message);
             }
+        } else {
+            console.error('[DB] Register error (not created_at):', error.message);
+        }
+        
+        if (!existing) {
+            console.warn('[DB] Fallback: Returning temporary user object to prevent crash');
+            return { user: encryptedData, isNew: true };
         }
 
         // Fallback sur l'existant si l'upsert échoue vraiment
