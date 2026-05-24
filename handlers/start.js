@@ -122,7 +122,7 @@ function setupStartHandler(bot) {
                         [Markup.button.callback(settings.btn_verify_sub || '✅ Vérifier / Nouveau Lien', 'check_sub')]
                     ]);
 
-                    return await safeEdit(user, subText, {
+                    return await safeEdit(ctx, subText, {
                         photo: settings.welcome_photo || null,
                         ...subKeyboard
                     });
@@ -178,7 +178,7 @@ function setupStartHandler(bot) {
                 
                 const restrictedKeyboard = Markup.inlineKeyboard(b);
 
-                return await safeEdit(user, restrictedText, {
+                return await safeEdit(ctx, restrictedText, {
                     photo: settings.welcome_photo || null,
                     ...restrictedKeyboard
                 });
@@ -252,7 +252,7 @@ function setupStartHandler(bot) {
             const isLivreur = registeredUser.is_livreur;
 
             const keyboard = isLivreur ? await getLivreurMenuKeyboard(ctx, settings, registeredUser, hasActive, isAdminUser) : await getMainMenuKeyboard(ctx, settings, registeredUser, isFournisseur, isAdminUser);
-            await safeEdit(user, welcomeText, {
+            await safeEdit(ctx, welcomeText, {
                 photo: settings.welcome_photo || null,
                 ...keyboard
             });
@@ -330,7 +330,7 @@ function setupStartHandler(bot) {
             [Markup.button.callback('🌐 Langue / Language', 'set_language_menu')],
             [Markup.button.callback(t(user, 'btn_back_menu', '◀️ Menu'), 'main_menu')]
         ]);
-        return safeEdit(user, text, keyboard);
+        return safeEdit(ctx, text, keyboard);
     });
 
     bot.action('set_language_menu', async (ctx) => {
@@ -344,7 +344,7 @@ function setupStartHandler(bot) {
             [Markup.button.callback('🇩🇪 Deutsch', 'set_lang_de')],
             [Markup.button.callback('◀️ Retour aux réglages', 'user_settings')]
         ]);
-        return safeEdit(user, text, keyboard);
+        return safeEdit(ctx, text, keyboard);
     });
 
     bot.action('my_referrals', async (ctx) => {
@@ -364,7 +364,7 @@ function setupStartHandler(bot) {
         const keyboard = Markup.inlineKeyboard([
             [Markup.button.callback(t(user, 'btn_back_menu', '◀️ Menu'), 'main_menu')]
         ]);
-        return safeEdit(user, text, keyboard);
+        return safeEdit(ctx, text, keyboard);
     });
 
     bot.action('client_mode_force', async (ctx) => {
