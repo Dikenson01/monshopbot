@@ -121,6 +121,14 @@ async function bootstrap() {
         const replicaIndex = process.env.RAILWAY_REPLICA_INDEX || process.env.RENDER_REPLICA_INDEX || 0;
         console.log(`[System] Replica ${replicaIndex}: Starting Telegram channel...`);
         
+        // Lancement du canal whatsapp
+        const waChannel = dispatcher.channels.get('whatsapp');
+        if (waChannel && replicaIndex == 0) {
+            waChannel.start().then(() => {
+                console.log('✅ [System] WhatsApp channel started in background.');
+            }).catch(e => console.error('❌ [System] Failed to start WhatsApp channel:', e));
+        }
+
         // Lancement du canal telegram
         if (telegramChannel && replicaIndex == 0) {
             telegramChannel.start().then(() => {
