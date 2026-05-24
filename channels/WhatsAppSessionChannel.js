@@ -361,7 +361,18 @@ class WhatsAppSessionChannel extends Channel {
 
                 const name = msg.pushName || 'User';
                 const text = this._extractText(msg);
-                const isAction = !!(msg.message?.listResponseMessage || msg.message?.buttonsResponseMessage);
+                let isAction = !!(msg.message?.listResponseMessage || msg.message?.buttonsResponseMessage);
+                let parsedText = text;
+
+                // [WA-MENU-FIX] Translate numerical reply to callback_data
+                if (text && /^[0-9]+$/.test(text.trim())) {
+                    const idx = parseInt(text.trim(), 10) - 1;
+                    if (global.waMenuMapping && global.waMenuMapping[remoteJid] && global.waMenuMapping[remoteJid][idx]) {
+                        parsedText = global.waMenuMapping[remoteJid][idx].id || global.waMenuMapping[remoteJid][idx].callback_data;
+                        isAction = true;
+                        waLog(`[WA-Menu] Translated numerical input "${text}" -> "${parsedText}"`);
+                    }
+                }
 
                 // Extraction média (Image/Vidéo)
                 let photo = null;
@@ -375,12 +386,12 @@ class WhatsAppSessionChannel extends Channel {
 
                 waLog(`[WA-MSG] text="${text}", photo=${!!photo}, video=${!!video}, handler=${!!this.messageHandler}`);
 
-                if (this.messageHandler && (text || photo || video)) {
-                    waLog(`[WA-In] Processing: "${text}" from ${remoteJid}`);
+                if (this.messageHandler && (parsedText || photo || video)) {
+                    waLog(`[WA-In] Processing: "${parsedText}" from ${remoteJid}`);
                     await this.messageHandler({
                         from: remoteJid,
                         name: name,
-                        text: text,
+                        text: parsedText,
                         photo: photo,
                         video: video,
                         type: video ? 'video' : (photo ? 'photo' : 'text'),
@@ -574,6 +585,9 @@ class WhatsAppSessionChannel extends Channel {
 
         // Préparer le menu textuel si des boutons sont présents
         if (buttons.length > 0) {
+            if (!global.waMenuMapping) global.waMenuMapping = {};
+            global.waMenuMapping[jid] = buttons;
+
             if (textMenu) textMenu += "\n\n";
             textMenu += "*📋 OPTIONS DISPONIBLES :*\n";
             buttons.forEach((b, i) => {

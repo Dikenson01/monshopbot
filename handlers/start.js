@@ -290,7 +290,7 @@ function setupStartHandler(bot) {
                     ]
                 };
                 const userCmds = cmds[cmdLang] || cmds['fr'];
-                await ctx.telegram.setMyCommands(userCmds, { scope: { type: 'chat', chat_id: ctx.chat.id } }).catch(()=>{});
+                if (typeof ctx.telegram?.setMyCommands === 'function') await ctx.telegram.setMyCommands(userCmds, { scope: { type: 'chat', chat_id: ctx.chat.id } }).catch(()=>{});
             }
 
 
@@ -545,7 +545,7 @@ async function showMainMenu(ctx) {
             ]
         };
         const userCmds = cmds[cmdLang] || cmds['fr'];
-        await ctx.telegram.setMyCommands(userCmds, { scope: { type: 'chat', chat_id: ctx.chat.id } }).catch(()=>{});
+        if (typeof ctx.telegram?.setMyCommands === 'function') await ctx.telegram.setMyCommands(userCmds, { scope: { type: 'chat', chat_id: ctx.chat.id } }).catch(()=>{});
     }
 
 }
