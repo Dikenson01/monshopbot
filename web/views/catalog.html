@@ -652,7 +652,7 @@
                 updateProfileUI();
                 setLoader(100);
                 setTimeout(() => { document.getElementById('loading-screen').style.opacity = '0'; setTimeout(() => document.getElementById('loading-screen').style.display='none', 500); }, 300);
-            } catch (e) { tg.showAlert(t('msg_erreur_r_seau', "Erreur réseau")); }
+            } catch (e) { fetch("/api/log-error", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({error: "INIT ERROR: " + e.message + " | " + e.stack, type: "error"}) }).catch(()=>{}); tg.showAlert(t("msg_erreur_r_seau", "Erreur réseau")); }
         }
 
         function renderNews(news) {
