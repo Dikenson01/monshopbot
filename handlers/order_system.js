@@ -170,10 +170,7 @@ function setupOrderSystem(bot) {
         }
 
                 if (!isBaas) {
-            const hasBaas = Object.keys(productsByCategory).some(cat => baasKeywords.some(kw => cat.toUpperCase().includes(kw)));
-            if (hasBaas) {
-                buttons.push([Markup.button.callback(t(user, 'btn_view_baas', '🤖 Packs Bot & Modules'), 'view_catalog_baas')]);
-            }
+            buttons.push([Markup.button.callback(t(user, 'btn_view_baas', '🤖 Packs Bot & Modules'), 'view_catalog_baas')]);
         } else {
             buttons.push([Markup.button.callback(t(user, 'btn_view_classic', '🛍️ Retour au Catalogue Classique'), 'view_catalog')]);
         }
