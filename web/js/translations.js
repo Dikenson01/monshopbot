@@ -874,6 +874,19 @@ const translations = {
         "add_address": "AJOUTER UNE ADRESSE"
     },
     "en": {
+        "delivery_title": "DELIVERY",
+        "delivery_address_caps": "DELIVERY ADDRESS",
+        "enter_another_address": "➕ Enter another address",
+        "address_placeholder_auto": "Enter street, city... (Autocomplete)",
+        "address_placeholder_rt": "Enter street, city... (Real-time autocomplete)",
+        "digicode_placeholder": "Intercom, access code...",
+        "delivery_instructions_caps": "DELIVERY INSTRUCTIONS",
+        "del_tag_car": "🚗 I'll come down to the vehicle",
+        "extra_instructions_placeholder": "Additional instructions for the courier (optional)",
+        "schedule_delivery_caps": "SCHEDULE DELIVERY",
+        "confirm_and_pay": "CONFIRM & PAY",
+        "del_tag_msg": "💬 Send me a message upon arrival",
+
         "discussion_entamee": "Chat started",
         "remettre": "Put back in circuit",
         "restock_alert_msg": "This product is back in stock!",
@@ -1748,6 +1761,19 @@ const translations = {
         "add_address": "ADD AN ADDRESS"
     },
     "es": {
+        "delivery_title": "ENTREGA",
+        "delivery_address_caps": "DIRECCIÓN DE ENTREGA",
+        "enter_another_address": "➕ Introducir otra dirección",
+        "address_placeholder_auto": "Introduce calle, ciudad... (Autocompletar)",
+        "address_placeholder_rt": "Introduce calle, ciudad... (Autocompletado en tiempo real)",
+        "digicode_placeholder": "Intercomunicador, código de acceso...",
+        "delivery_instructions_caps": "INSTRUCCIONES DE ENTREGA",
+        "del_tag_car": "🚗 Bajaré al vehículo",
+        "extra_instructions_placeholder": "Instrucciones adicionales para el repartidor (opcional)",
+        "schedule_delivery_caps": "PROGRAMAR ENTREGA",
+        "confirm_and_pay": "CONFIRMAR Y PAGAR",
+        "del_tag_msg": "💬 Envíame un mensaje al llegar",
+
         "discussion_entamee": "Chat iniciado",
         "remettre": "Volver a poner en circuito",
         "restock_alert_msg": "¡Este producto vuelve a estar en stock!",
@@ -2622,6 +2648,19 @@ const translations = {
         "add_address": "AÑADIR UNA DIRECCIÓN"
     },
     "de": {
+        "delivery_title": "LIEFERUNG",
+        "delivery_address_caps": "LIEFERADRESSE",
+        "enter_another_address": "➕ Andere Adresse eingeben",
+        "address_placeholder_auto": "Straße, Stadt eingeben... (Autovervollständigung)",
+        "address_placeholder_rt": "Straße, Stadt eingeben... (Echtzeit-Autovervollständigung)",
+        "digicode_placeholder": "Gegensprechanlage, Zugangscode...",
+        "delivery_instructions_caps": "LIEFERANWEISUNGEN",
+        "del_tag_car": "🚗 Ich komme zum Fahrzeug",
+        "del_tag_msg": "💬 Senden Sie mir bei Ankunft eine Nachricht",
+        "extra_instructions_placeholder": "Zusätzliche Anweisungen für den Kurier (optional)",
+        "schedule_delivery_caps": "LIEFERUNG PLANEN",
+        "confirm_and_pay": "BESTÄTIGEN & BEZAHLEN",
+
         "discussion_entamee": "Chat gestartet",
         "remettre": "Zurück in den Kreislauf",
         "restock_alert_msg": "Dieses Produkt ist wieder auf Lager!",
