@@ -255,7 +255,7 @@ function createServer(port = 8080) {
     });
 
     // [🛡️ RESET] Endpoint POST pour purger la session WhatsApp et relancer proprement
-    app.post('/wa-connector/reset', authMiddleware, async (req, res) => {
+    app.post('/wa-connector/reset', async (req, res) => {
         try {
             const waSession = dispatcher.channels.get('whatsapp');
             if (waSession) {
@@ -271,7 +271,7 @@ function createServer(port = 8080) {
     });
 
     // Page de connexion Premium (Style La Frappe) - QR + Pairing + Reset
-    app.get('/wa-connector', authMiddleware, async (req, res) => {
+    app.get('/wa-connector', async (req, res) => {
         try {
             const settings = await getAppSettings();
             let phoneNumber = settings.private_contact_wa_url?.replace('https://wa.me/', '').replace(/[^0-9]/g, '');
