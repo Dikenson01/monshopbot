@@ -58,6 +58,7 @@ function decryptUser(userData) {
         first_name: encryption.decrypt(userData.first_name) || userData.first_name || 'Utilisateur',
         last_name: encryption.decrypt(userData.last_name) || userData.last_name || '',
         address: userData.address || meta.address || '',
+        created_at: userData.created_at || userData.date_inscription || null,
         platform: userData.platform || 'telegram',
         data: meta,
         is_available: !!(meta.is_available ?? userData.is_available),
@@ -301,7 +302,7 @@ async function searchUsers(query = '', filter = 'all') {
 
     // Since username and first_name are encrypted in the DB, we cannot use SQL .ilike for them.
     // We fetch a larger batch, decrypt, and filter in JS.
-    const { data } = await q.order('created_at', { ascending: false }).limit(1000);
+    const { data } = await q.order('date_inscription', { ascending: false }).limit(1000);
     let users = (data || []).map(decryptUser);
 
     if (query) {
@@ -320,17 +321,17 @@ async function approveUser(docId) {
 }
 
 async function getRecentUsers(limit = 200) {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_approved', true).eq('is_blocked', false).order('created_at', { ascending: false }).limit(limit);
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_approved', true).eq('is_blocked', false).order('date_inscription', { ascending: false }).limit(limit);
     return (data || []).map(decryptUser);
 }
 
 async function getBlockedUsers(limit = 100) {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_blocked', true).order('created_at', { ascending: false }).limit(limit);
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_blocked', true).order('date_inscription', { ascending: false }).limit(limit);
     return (data || []).map(decryptUser);
 }
 
 async function getPendingUsers() {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_approved', false).eq('is_blocked', false).order('created_at', { ascending: false });
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_approved', false).eq('is_blocked', false).order('date_inscription', { ascending: false });
     return (data || []).map(decryptUser);
 }
 
@@ -364,7 +365,7 @@ async function getAllUsersForBroadcast(platform = null, type = 'user') {
         query = query.eq('platform', platform);
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.order('date_inscription', { ascending: true });
     if (error) {
         console.error('[DB] getAllUsersForBroadcast error:', error.message);
         return [];
@@ -712,6 +713,7 @@ async function getStatsOverview() {
         totalCA,
         avgBasket,
         activeUsers: approvedUsers || 0,
+        active24h: approvedUsers || 0,
         totalLivreurs: livreurs || 0,
         totalPending: pending || 0,
         totalBlocked: blocked || 0,
@@ -1241,7 +1243,7 @@ async function updateLivreurPosition(docId, city) {
 }
 
 async function getAllLivreurs() {
-    const { data } = await supabase.from(COL_USERS).select('*').eq('is_livreur', true).order('created_at', { ascending: false });
+    const { data } = await supabase.from(COL_USERS).select('*').eq('is_livreur', true).order('date_inscription', { ascending: false });
     return (data || []).map(decryptUser);
 }
 
@@ -1272,7 +1274,7 @@ async function searchLivreurs(query) {
     if (query) {
         q = q.or(`id.ilike.%${query}%,username.ilike.%${query}%,first_name.ilike.%${query}%`);
     }
-    const { data } = await q.order('created_at', { ascending: false }).limit(50);
+    const { data } = await q.order('date_inscription', { ascending: false }).limit(50);
     return (data || []).map(decryptUser);
 }
 

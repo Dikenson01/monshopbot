@@ -125,12 +125,27 @@ class Dispatcher {
                     registeredUser = await db.getUser(userId, actualPlatform);
                 }
             } else {
+                const actualPlatform = channel ? channel.id || channel.type || 'telegram' : 'telegram';
+                const db = require('./database');
+                
+                let existingUser = db._userCache?.get(`${actualPlatform}_${userId}`)?.data;
+                if (!existingUser) existingUser = await db.getUser(userId, actualPlatform);
+                
+                if (!existingUser) {
+                    const text = incomingMsg.text || '';
+                    const isStrictStart = text.trim() === '/start' || text.trim().startsWith('/start ');
+                    if (!isStrictStart) {
+                        waLog(`[Dispatcher] Nouveau user ${userId} ignoré car pas de /start explicite`);
+                        return; // Ignore completely without registering
+                    }
+                }
+
                 const reg = await registerUser({
                     id: userId,
                     first_name: incomingMsg.name || 'Utilisateur Telegram',
                     username: incomingMsg.username || '',
                     type: 'user'
-                }, channel ? channel.id || channel.type || 'telegram' : 'telegram');
+                }, actualPlatform);
 
                 registeredUser = reg?.user;
                 isNew = !!reg?.isNew;
@@ -216,6 +231,7 @@ class Dispatcher {
             state: { user: msg.user, settings: settings },
             _handled: false,
             _isPrivileged,
+            _isNewUser: msg._isNewUser,
             message: { text: msg.text, photo: msg.photo, video: msg.video, message_id: msg.message_id || msg.rawId },
             updateType: msg.type || 'message',
             match: null,

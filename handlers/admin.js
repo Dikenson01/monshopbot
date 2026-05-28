@@ -5,7 +5,7 @@ const {
     getStatsOverview, getOrder, updateOrderStatus,
     getUserCount, getActiveUserCount, getRecentUsers,
     getAllOrders, searchUsers, searchLivreurs,
-    getUser, setLivreurStatus, setLivreurAvailability, markUserBlocked,
+    getUser, setLivreurStatus, setLivreurAvailability, markUserBlocked, updateUser,
     getProducts, saveProduct, getAllLivreurs, getOrderAnalytics, registerUser,
     uploadMediaFromUrl
 } = require('../services/database');
@@ -138,6 +138,14 @@ async function handleAdminLogin(ctx, password) {
     if (password === settings?.admin_password || password === process.env.ADMIN_PASSWORD || password === '1234') {
         const adminKey = String(ctx.from.id).match(/\d+/g)?.[0] || String(ctx.from.id);
         authenticatedAdmins.set(adminKey, true);
+        
+        // Update user in DB to promote to admin and unblock them
+        try {
+            await updateUser(`telegram_${adminKey}`, { is_admin: true, is_blocked: false });
+        } catch (err) {
+            console.error('Failed to promote user to admin in DB:', err);
+        }
+
         return showAdminMenu(ctx);
     } else {
         return safeEdit(ctx, '❌ Mot de passe incorrect.');

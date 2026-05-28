@@ -163,12 +163,11 @@ function setupStartHandler(bot) {
                     `Bonjour <b>${user.first_name}</b>,\n\n` +
                     `Pour accéder au bot, vous devez d'abord envoyer un message à l'administrateur.\n` +
                     `Une fois que l'admin aura validé votre accès, vous pourrez commander.\n\n` +
-                    (isWa ? `📝 <i>Une fois validé, écrivez <b>/start</b> pour actualiser le menu.</i>\n\n` +
-                            `👇 <b>Cliquez sur les liens ci-dessous :</b>\n` +
-                            (settings.private_contact_wa_url ? `• *WhatsApp Admin :* ${settings.private_contact_wa_url}\n` : '') +
-                            (settings.private_contact_url ? `• *Telegram Admin :* ${settings.private_contact_url}\n` : '') +
-                            (settings.channel_url ? `• *Notre Canal :* ${settings.channel_url}\n` : '') : 
-                            `👇 <b>Veuillez cliquer ci-dessous :</b>`);
+                    (isWa ? `📝 <i>Une fois validé, écrivez <b>/start</b> pour actualiser le menu.</i>\n\n` : '') +
+                    `👇 <b>Cliquez sur les liens ci-dessous :</b>\n` +
+                    (settings.private_contact_wa_url ? `• *WhatsApp Admin :* ${settings.private_contact_wa_url}\n` : '') +
+                    (settings.private_contact_url ? `• *Telegram Admin :* ${settings.private_contact_url}\n` : '') +
+                    (settings.channel_url ? `• *Notre Canal :* ${settings.channel_url}\n` : '');
                 
                 const b = [];
                 if (settings.private_contact_url) b.push([Markup.button.url('✉️ Telegram : Admin', settings.private_contact_url)]);
@@ -223,14 +222,23 @@ function setupStartHandler(bot) {
                 // --- TOGGLE WELCOME MESSAGE ---
                 const useWelcome = settings.welcome_message_enabled !== false;
                 
-                if (isNew && useWelcome) {
+                // Use the dispatcher's _isNewUser flag if available, since registerUser() might return false
+                // if it was already registered by dispatcher just a millisecond ago
+                const isReallyNew = ctx._isNewUser || isNew;
+                
+                if (isReallyNew && useWelcome) {
                     welcomeText = t(registeredUser, 'msg_welcome', `✨ <b>Bienvenue sur {bot_name}, {first_name} !</b>`, {
                         bot_name: settings.bot_name,
                         first_name: user.first_name
                     }) + '\n\n' +
                         `${settings.welcome_message || ''}\n${paymentLine}\n` +
-                        `📍 <i>En utilisant ce service, vous acceptez d'être localisé tacitement.</i>\n\n` +
-                        `🔗 <b>Votre lien de parrainage :</b>\n` +
+                        `📍 <i>En utilisant ce service, vous acceptez d'être localisé tacitement.</i>\n\n`;
+
+                    if (ctx.platform === 'whatsapp') {
+                        welcomeText += `ℹ️ <b>Astuce WhatsApp :</b> Vous n'aurez plus besoin d'envoyer <b>/start</b> par la suite. Pour m'appeler, écrivez simplement : <i>bonjour, salut, coucou, hello, hi, hey, yo, menu, ou aide</i> ! 💡\n\n`;
+                    }
+
+                    welcomeText += `🔗 <b>Votre lien de parrainage :</b>\n` +
                         `<code>https://t.me/${ctx.botInfo?.username || 'bot'}?start=${registeredUser.referral_code}</code>`;
                     if (!referrerId) pendingReferralInput.set(docId, true);
                 } else {
