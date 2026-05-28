@@ -110,7 +110,8 @@ class TelegramChannel extends Channel {
         const replicaIndex = process.env.RAILWAY_REPLICA_INDEX || 0;
         const processUniqueId = Math.random().toString(36).substring(2, 8);
         const instanceId = `replica-${replicaIndex}-${processUniqueId}`;
-        const telegramLockId = `tg_lock`;
+        const tokenPrefix = this.token ? this.token.split(':')[0] : 'default';
+        const telegramLockId = `tg_lock_${tokenPrefix}`;
 
         try {
             const lock = await checkLock(telegramLockId);

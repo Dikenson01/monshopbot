@@ -63,7 +63,7 @@ async function bootstrap() {
         
         try {
             const settings = await getAppSettings();
-            if (settings && settings.telegram_token) {
+            if (settings && settings.telegram_token && !tgToken) {
                 tgToken = settings.telegram_token;
                 console.log('[System] Using Telegram token from Database configuration');
             }
