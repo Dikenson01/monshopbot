@@ -1465,6 +1465,27 @@ function createServer(port = 8080) {
         }
     });
 
+    app.post('/api/admin/request-profile', authMiddleware, async (req, res) => {
+        try {
+            const adminId = req.user.id.replace('telegram_', '');
+            const { platformId } = req.body;
+            
+            const { sendTelegramMessage } = require('./services/notifications');
+            const cleanId = String(platformId).replace('telegram_', '');
+            const profileUrl = `tg://openmessage?user_id=${cleanId}`;
+            
+            await sendTelegramMessage(adminId, `Voici le profil de l'utilisateur :`, {
+                reply_markup: {
+                    inline_keyboard: [[{ text: '👤 Ouvrir Profil', url: profileUrl }]]
+                }
+            });
+            
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/users/profile', authMiddleware, async (req, res) => {
         const { userId, first_name, phone } = req.body;
         try {

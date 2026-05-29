@@ -7806,7 +7806,20 @@
                 }
             } else if (platformId && platformId !== 'undefined' && platformId !== 'null') {
                 const cleanId = String(platformId).replace('telegram_', '');
-                window.location.href = `tg://openmessage?user_id=${cleanId}`;
+                if (window.Telegram && window.Telegram.WebApp) {
+                    try {
+                        const token = localStorage.getItem('miniapp_token');
+                        fetch('/api/admin/request-profile', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ platformId: cleanId })
+                        }).then(() => {
+                            window.Telegram.WebApp.close();
+                        });
+                    } catch(e) {}
+                } else {
+                    window.location.href = `tg://openmessage?user_id=${cleanId}`;
+                }
             }
         }
 
