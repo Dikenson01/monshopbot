@@ -582,26 +582,32 @@ async function getMainMenuKeyboard(ctx, settings, user, isFournisseur = false, i
         buttons.push([Markup.button.callback(`🛒 ${t(user, 'btn_cart').toUpperCase()} (${cart.length})`, 'view_cart')]);
     }
 
+    // Helper to force short text to prevent Telegram column wrapping
+    const sanitizeLabel = (text, maxLen = 14) => {
+        let cleaned = text.replace(/[🛒📦📱❓🎁📢⚙️🛠]/g, '').trim();
+        return cleaned.length > maxLen ? cleaned.substring(0, maxLen) + '.' : cleaned;
+    };
+
     // Ligne 2 : Panier & Mes Commandes
     buttons.push([
-        Markup.button.callback(`${settings.ui_icon_cart || '🛒'} ${t(user, 'btn_cart', 'Panier')}`, 'view_cart'),
-        Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${t(user, 'btn_orders', 'Commandes')}`, 'my_orders')
+        Markup.button.callback(`${settings.ui_icon_cart || '🛒'} ${sanitizeLabel(t(user, 'btn_cart', 'Panier'), 12)}`, 'view_cart'),
+        Markup.button.callback(`${settings.ui_icon_orders || '📦'} ${sanitizeLabel(t(user, 'btn_orders', 'Commandes'), 14)}`, 'my_orders')
     ]);
 
     // Ligne 3 : Aide & Contact
     const row3 = [];
     if (settings.enable_help_menu !== false) {
-        row3.push(Markup.button.callback(`${settings.ui_icon_support || '❓'} ${t(user, 'btn_support', 'Aide')}`, 'help_menu'));
+        row3.push(Markup.button.callback(`${settings.ui_icon_support || '❓'} ${sanitizeLabel(t(user, 'btn_support', 'Aide'), 10)}`, 'help_menu'));
     }
-    row3.push(Markup.button.callback(`${settings.ui_icon_contact || '📱'} ${t(user, 'btn_contact', 'Contact')}`, 'private_contact'));
+    row3.push(Markup.button.callback(`${settings.ui_icon_contact || '📱'} ${sanitizeLabel(t(user, 'btn_contact', 'Contact'), 10)}`, 'private_contact'));
     if (row3.length > 0) buttons.push(row3);
 
     // Ligne 4 : Parrainage & Canal
     const row4 = [];
     if (settings.enable_referral !== false) {
-        row4.push(Markup.button.callback(`${settings.ui_icon_profile || '🎁'} ${t(user, 'btn_referral', 'Parrain')}`, 'my_referrals'));
+        row4.push(Markup.button.callback(`${settings.ui_icon_profile || '🎁'} ${sanitizeLabel(t(user, 'btn_referral', 'Parrain'), 11)}`, 'my_referrals'));
     }
-    row4.push(Markup.button.callback(`${settings.ui_icon_channel || '📢'} ${t(user, 'btn_channel', 'Canal')}`, 'channel_link'));
+    row4.push(Markup.button.callback(`${settings.ui_icon_channel || '📢'} ${sanitizeLabel(t(user, 'btn_channel', 'Canal'), 10)}`, 'channel_link'));
     if (row4.length > 0) buttons.push(row4);
 
     // Ligne 5 : Espace Livreur / Fournisseur
