@@ -648,7 +648,10 @@ function setupAdminHandlers(bot) {
             buttons.push([Markup.button.callback('✅ DONNER ACCÈS (APPROUVER)', `approve_${u.id}`)]);
         }
 
+        const profileUrl = u.username ? `https://t.me/${u.username.replace('@', '')}` : `tg://openmessage?user_id=${(u.platform_id || u.id || '').replace('telegram_', '')}`;
+
         if (fullAdmin) {
+            buttons.push([Markup.button.url('👤 Accéder au Profil Telegram', profileUrl)]);
             buttons.push([Markup.button.callback(isLivreur ? '🚫 Retirer Livreur' : '🚴 Passer Livreur', `admin_user_toggle_livreur_${u.id}`)]);
             buttons.push([Markup.button.callback(u.is_admin === true ? '🚫 Retirer Admin' : '🛂 Promouvoir Admin', `admin_user_toggle_admin_${u.id}`)]);
             buttons.push([Markup.button.callback(u.is_moderator === true ? '🚫 Retirer Modo' : '🛂 Promouvoir Modo', `admin_user_toggle_moderator_${u.id}`)]);
