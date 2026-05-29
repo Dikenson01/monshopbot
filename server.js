@@ -1472,7 +1472,7 @@ function createServer(port = 8080) {
             
             const { sendTelegramMessage } = require('./services/notifications');
             const cleanId = String(platformId).replace('telegram_', '');
-            const profileUrl = `tg://openmessage?user_id=${cleanId}`;
+            const profileUrl = `tg://user?id=${cleanId}`;
             
             await sendTelegramMessage(adminId, `Voici le profil de l'utilisateur :`, {
                 reply_markup: {

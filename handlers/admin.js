@@ -648,7 +648,7 @@ function setupAdminHandlers(bot) {
             buttons.push([Markup.button.callback('✅ DONNER ACCÈS (APPROUVER)', `approve_${u.id}`)]);
         }
 
-        const profileUrl = u.username ? `https://t.me/${u.username.replace('@', '')}` : `tg://openmessage?user_id=${(u.platform_id || u.id || '').replace('telegram_', '')}`;
+        const profileUrl = u.username ? `https://t.me/${u.username.replace('@', '')}` : `tg://user?id=${(u.platform_id || u.id || '').replace('telegram_', '')}`;
 
         if (fullAdmin) {
             buttons.push([Markup.button.url('👤 Accéder au Profil Telegram', profileUrl)]);
