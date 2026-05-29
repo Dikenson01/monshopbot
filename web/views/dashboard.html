@@ -7806,15 +7806,7 @@
                 }
             } else if (platformId && platformId !== 'undefined' && platformId !== 'null') {
                 const cleanId = String(platformId).replace('telegram_', '');
-                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
-                    try {
-                        window.Telegram.WebApp.openTelegramLink(`tg://user?id=${cleanId}`);
-                    } catch(e) {
-                        window.location.href = `tg://user?id=${cleanId}`;
-                    }
-                } else {
-                    window.location.href = `tg://user?id=${cleanId}`;
-                }
+                window.location.href = `tg://openmessage?user_id=${cleanId}`;
             }
         }
 
