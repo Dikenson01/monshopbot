@@ -2882,7 +2882,7 @@ function createServer(port = 8080) {
             // Notify the client via Telegram
             const bot = getBotInstance();
             if (bot) {
-                const tgId = targetUserId.split('_')[1];
+                const tgId = targetUserId.includes('_') ? targetUserId.split('_')[1] : targetUserId;
                 if (tgId) {
                     await bot.telegram.sendMessage(tgId,
                         `💬 <b>Réponse du Support</b>\n\n${text}`,

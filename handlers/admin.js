@@ -235,6 +235,9 @@ function setupAdminHandlers(bot) {
             if (ctx.message.photo) options.photo = ctx.message.photo[ctx.message.photo.length - 1].file_id;
             else if (ctx.message.video) { options.video = ctx.message.video.file_id; options.caption = text; }
 
+            const { appendChatHistory } = require('../services/database');
+            await appendChatHistory(userKey, { role: 'client', text: text || (options.photo ? '📸 Photo envoyée' : '🎥 Vidéo envoyée') });
+
             for (const adminId of targetAdmins) {
                 await sendTelegramMessage(adminId, `👤 <b>SUPPORT CLIENT (${ctx.from.first_name})</b>\n\n${text ? `"${text}"` : ''}`, options).catch(() => {});
             }
