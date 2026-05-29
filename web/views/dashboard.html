@@ -6928,6 +6928,7 @@
                             <button class="btn btn-outline btn-sm" onclick="editUserProfileUI('${u.doc_id}', '${(u.first_name || '').replace(/'/g, "\\'")}', '${u.phone || ''}')" style="border-color:#ff9500; color:#ff9500">✏️ Profil</button>
                             <button class="btn btn-outline btn-sm" onclick="viewUserAddresses('${u.doc_id}')" style="border-color:#5ac8fa; color:#5ac8fa">📍 Adresses</button>
                             <button class="btn btn-outline btn-sm" onclick="checkUserStatus('${u.doc_id}')" style="border-color:var(--accent); color:var(--accent)">🔄 Check</button>
+                            <button class="btn btn-outline btn-sm" style="border-color:#007aff; color:#007aff" onclick="openTelegramProfile(null, '${u.username || ''}', '${u.platform_id || ''}')">👤 Profil Telegram</button>
                             <button class="btn btn-outline btn-sm" onclick="delUser('${u.doc_id}')">Supprimer</button>
                             ${u.is_blocked ? `<button class="btn btn-accent btn-sm" onclick="toggleBlock('${u.doc_id}', false)">Débloquer</button>` : `<button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="toggleBlock('${u.doc_id}', true)">Bloquer</button>`}
                             
@@ -7009,6 +7010,7 @@
                             ${u.is_approved === false ?
                                 `<button class="m-btn m-btn-approve" onclick="approveUserJS('${u.doc_id}')">✅ APPROUVER</button>` : ''
                             }
+                            <button class="m-btn" style="flex: 1 1 100%; color:#007aff; border-color:rgba(0,122,255,0.3);" onclick="openTelegramProfile(null, '${u.username || ''}', '${u.platform_id || ''}')">👤 Accéder au Profil Telegram</button>
                             <button class="m-btn m-btn-danger" onclick="delUser('${u.doc_id}')" style="flex: 1 1 100%;">🗑️ Supprimer</button>
                         </div>
                     </div>`;
@@ -7785,6 +7787,37 @@
         /**
          * Ouvre une conversation avec le client sur Telegram
          */
+        function openTelegramProfile(event, username, platformId) {
+            if (event && event.target) {
+                const isClickableChild = event.target.closest('button, a, .m-user-actions, .stat-item, select');
+                if (isClickableChild) return;
+            }
+
+            if (username && username !== 'undefined' && username !== 'null' && username.trim() !== '') {
+                const cleanUsername = username.replace('@', '');
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
+                    try {
+                        window.Telegram.WebApp.openTelegramLink(`https://t.me/${cleanUsername}`);
+                    } catch(e) {
+                        window.open(`https://t.me/${cleanUsername}`, '_blank');
+                    }
+                } else {
+                    window.open(`https://t.me/${cleanUsername}`, '_blank');
+                }
+            } else if (platformId && platformId !== 'undefined' && platformId !== 'null') {
+                const cleanId = String(platformId).replace('telegram_', '');
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
+                    try {
+                        window.Telegram.WebApp.openTelegramLink(`tg://user?id=${cleanId}`);
+                    } catch(e) {
+                        window.location.href = `tg://user?id=${cleanId}`;
+                    }
+                } else {
+                    window.location.href = `tg://user?id=${cleanId}`;
+                }
+            }
+        }
+
         function contactUser(platform, username, platformId, phone, userId) {
             if (userId) {
                 switchTab('chat');
