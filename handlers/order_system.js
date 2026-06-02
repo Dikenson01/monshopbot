@@ -1382,7 +1382,6 @@ function setupOrderSystem(bot) {
                     let alertMsg = null;
                     if (newStock <= 0 && p.stock > 0) {
                         updates.is_active = false;
-                        updates.is_available = false;
                         alertMsg = `🚫 <b>Rupture de Stock</b>\nLe produit <b>${p.name}</b> est épuisé. Il a été automatiquement masqué du catalogue du bot.`;
                     } else if (newStock <= 2 && p.stock > 2) {
                         alertMsg = `⚠️ <b>Alerte Stock Critique (${newStock} restants)</b>\nLe produit <b>${p.name}</b> n'a plus que ${newStock} unités en stock ! Veuillez réapprovisionner au plus vite.`;
